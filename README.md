@@ -35,6 +35,39 @@ This is especially useful for homelabbers that can't/don't want to setup somethi
 ### Future Backends
 The architecture is designed to easily support additional backends like Matrix, MQTT, Pushbullet, IRC, Signal, etc.
 
+## Configuration (cmd/slendmail)
+
+The rewrite under `cmd/slendmail` (`go build -o slendmail ./cmd/slendmail`) reads
+`/etc/slendmail.conf` in a new schema; the legacy format below is not accepted.
+Every run parses the file strictly: an unknown key, a key that the target type
+does not use, or an invalid value rejects the file, the message is not delivered
+and the exit status is 78.
+
+```toml
+[general]
+syslog_tag = "slendmail"        # optional, default "slendmail"
+
+[target.hook]                   # the table key is the target name: [a-z0-9-]
+type = "http"
+url_file = "/etc/slendmail.d/hook.url"  # or url = "https://..."
+preset = "generic-json"
+```
+
+- Exactly one of `url` and `url_file` is set; likewise `token` and
+  `token_file`. A `*_file` key takes an absolute path; the file content, with
+  surrounding whitespace removed, is used as the value.
+- The `http` target with `preset = "generic-json"` posts
+  `{"subject": ..., "body": ..., "hostname": ...}` with
+  `Content-Type: application/json`. Other target types and presets are
+  recognized by the parser but rejected with exit status 78 until implemented.
+- Exit status: 0 when at least one target accepted the message, 69 when none
+  did, 66 when stdin cannot be read.
+- Not ready to replace `/usr/sbin/sendmail`: HTTP requests have no timeout,
+  so a receiver that accepts the connection and never answers hangs the
+  process and the cron job that called it.
+
+The sections below describe the legacy `main.go` in the repository root.
+
 ## Configuration
 
 Configuration file should be placed at `/etc/slendmail.conf` in TOML format.
