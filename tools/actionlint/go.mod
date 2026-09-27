@@ -1,6 +1,6 @@
 module github.com/6RUN0/slendmail/tools/actionlint
 
-go 1.25.0
+go 1.27.0
 
 toolchain go1.27.1
 

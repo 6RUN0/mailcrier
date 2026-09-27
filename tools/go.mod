@@ -1,6 +1,6 @@
 module github.com/6RUN0/slendmail/tools
 
-go 1.26.0
+go 1.27.0
 
 toolchain go1.27.1
 
