@@ -1,0 +1,33 @@
+-- plain --
+Cron <root@host1> test -x /usr/sbin/anacron || run-parts /etc/cron.daily
+host1.example.org: Cron Daemon <root>
+
+/etc/cron.daily/logrotate: überprüft, 12 Dateien rotiert, eine sehr lange Zeile die weicht umgebrochen wird
+-- telegram-html --
+<b>Cron &lt;root@host1&gt; test -x /usr/sbin/anacron || run-parts /etc/cron.daily</b>
+<i>host1.example.org: Cron Daemon &lt;root&gt;</i>
+<pre>/etc/cron.daily/logrotate: überprüft, 12 Dateien rotiert, eine sehr lange Zeile die weicht umgebrochen wird</pre>
+-- telegram-markdownv2 --
+*Cron <root@host1\> test \-x /usr/sbin/anacron \|\| run\-parts /etc/cron\.daily*
+_host1\.example\.org: Cron Daemon <root\>_
+```
+/etc/cron.daily/logrotate: überprüft, 12 Dateien rotiert, eine sehr lange Zeile die weicht umgebrochen wird
+```
+-- slack-mrkdwn --
+*Cron &lt;root@host1&gt; test -x /usr/sbin/anacron || run-parts /etc/cron.daily*
+_host1.example.org: Cron Daemon &lt;root&gt;_
+```/etc/cron.daily/logrotate: überprüft, 12 Dateien rotiert, eine sehr lange Zeile die weicht umgebrochen wird```
+-- discord --
+**Cron <root@host1> test -x /usr/sbin/anacron \|\| run-parts /etc/cron.daily**
+*host1.example.org: Cron Daemon <root>*
+```
+/etc/cron.daily/logrotate: überprüft, 12 Dateien rotiert, eine sehr lange Zeile die weicht umgebrochen wird
+```
+-- ntfy --
+/etc/cron.daily/logrotate: überprüft, 12 Dateien rotiert, eine sehr lange Zeile die weicht umgebrochen wird
+-- mattermost --
+{"text": "#### Cron \\<root@host1\\> test -x /usr/sbin/anacron \\|\\| run-parts /etc/cron.daily\n_host1.example.org: Cron Daemon \\<root\\>_\n```\n/etc/cron.daily/logrotate: überprüft, 12 Dateien rotiert, eine sehr lange Zeile die weicht umgebrochen wird\n```"}
+-- slack-webhook --
+{"text": "*Cron &lt;root@host1&gt; test -x /usr/sbin/anacron || run-parts /etc/cron.daily*\n_host1.example.org: Cron Daemon &lt;root&gt;_\n```/etc/cron.daily/logrotate: überprüft, 12 Dateien rotiert, eine sehr lange Zeile die weicht umgebrochen wird```"}
+-- generic-json --
+{"subject": "Cron <root@host1> test -x /usr/sbin/anacron || run-parts /etc/cron.daily", "body": "/etc/cron.daily/logrotate: überprüft, 12 Dateien rotiert, eine sehr lange Zeile die weicht umgebrochen wird\n", "hostname": "host1.example.org"}

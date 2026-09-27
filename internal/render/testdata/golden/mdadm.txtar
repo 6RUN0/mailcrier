@@ -1,0 +1,93 @@
+-- plain --
+DegradedArray event on /dev/md0:host1
+host1.example.org: mdadm monitoring <root>
+
+This is an automatically generated mail message.
+
+A DegradedArray event had been detected on md device /dev/md0.
+
+The /proc/mdstat file currently contains the following:
+
+Personalities : [raid1]
+md0 : active raid1 sdb1[1]
+      1048512 blocks [2/1] [_U]
+
+unused devices: <none>
+-- telegram-html --
+<b>DegradedArray event on /dev/md0:host1</b>
+<i>host1.example.org: mdadm monitoring &lt;root&gt;</i>
+<pre>This is an automatically generated mail message.
+
+A DegradedArray event had been detected on md device /dev/md0.
+
+The /proc/mdstat file currently contains the following:
+
+Personalities : [raid1]
+md0 : active raid1 sdb1[1]
+      1048512 blocks [2/1] [_U]
+
+unused devices: &lt;none&gt;</pre>
+-- telegram-markdownv2 --
+*DegradedArray event on /dev/md0:host1*
+_host1\.example\.org: mdadm monitoring <root\>_
+```
+This is an automatically generated mail message.
+
+A DegradedArray event had been detected on md device /dev/md0.
+
+The /proc/mdstat file currently contains the following:
+
+Personalities : [raid1]
+md0 : active raid1 sdb1[1]
+      1048512 blocks [2/1] [_U]
+
+unused devices: <none>
+```
+-- slack-mrkdwn --
+*DegradedArray event on /dev/md0:host1*
+_host1.example.org: mdadm monitoring &lt;root&gt;_
+```This is an automatically generated mail message.
+
+A DegradedArray event had been detected on md device /dev/md0.
+
+The /proc/mdstat file currently contains the following:
+
+Personalities : [raid1]
+md0 : active raid1 sdb1[1]
+      1048512 blocks [2/1] [_U]
+
+unused devices: &lt;none&gt;```
+-- discord --
+**DegradedArray event on /dev/md0:host1**
+*host1.example.org: mdadm monitoring <root>*
+```
+This is an automatically generated mail message.
+
+A DegradedArray event had been detected on md device /dev/md0.
+
+The /proc/mdstat file currently contains the following:
+
+Personalities : [raid1]
+md0 : active raid1 sdb1[1]
+      1048512 blocks [2/1] [_U]
+
+unused devices: <none>
+```
+-- ntfy --
+This is an automatically generated mail message.
+
+A DegradedArray event had been detected on md device /dev/md0.
+
+The /proc/mdstat file currently contains the following:
+
+Personalities : [raid1]
+md0 : active raid1 sdb1[1]
+      1048512 blocks [2/1] [_U]
+
+unused devices: <none>
+-- mattermost --
+{"text": "#### DegradedArray event on /dev/md0:host1\n_host1.example.org: mdadm monitoring \\<root\\>_\n```\nThis is an automatically generated mail message.\n\nA DegradedArray event had been detected on md device /dev/md0.\n\nThe /proc/mdstat file currently contains the following:\n\nPersonalities : [raid1]\nmd0 : active raid1 sdb1[1]\n      1048512 blocks [2/1] [_U]\n\nunused devices: <none>\n```"}
+-- slack-webhook --
+{"text": "*DegradedArray event on /dev/md0:host1*\n_host1.example.org: mdadm monitoring &lt;root&gt;_\n```This is an automatically generated mail message.\n\nA DegradedArray event had been detected on md device /dev/md0.\n\nThe /proc/mdstat file currently contains the following:\n\nPersonalities : [raid1]\nmd0 : active raid1 sdb1[1]\n      1048512 blocks [2/1] [_U]\n\nunused devices: &lt;none&gt;```"}
+-- generic-json --
+{"subject": "DegradedArray event on /dev/md0:host1", "body": "This is an automatically generated mail message.\n\nA DegradedArray event had been detected on md device /dev/md0.\n\nThe /proc/mdstat file currently contains the following:\n\nPersonalities : [raid1]\nmd0 : active raid1 sdb1[1]\n      1048512 blocks [2/1] [_U]\n\nunused devices: <none>\n", "hostname": "host1.example.org"}

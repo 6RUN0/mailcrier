@@ -1,0 +1,33 @@
+-- plain --
+s-nail test
+host1.example.org: alice@host1.example.org
+
+hello
+-- telegram-html --
+<b>s-nail test</b>
+<i>host1.example.org: alice@host1.example.org</i>
+<pre>hello</pre>
+-- telegram-markdownv2 --
+*s\-nail test*
+_host1\.example\.org: alice@host1\.example\.org_
+```
+hello
+```
+-- slack-mrkdwn --
+*s-nail test*
+_host1.example.org: alice@host1.example.org_
+```hello```
+-- discord --
+**s-nail test**
+*host1.example.org: alice@host1.example.org*
+```
+hello
+```
+-- ntfy --
+hello
+-- mattermost --
+{"text": "#### s-nail test\n_host1.example.org: alice@host1.example.org_\n```\nhello\n```"}
+-- slack-webhook --
+{"text": "*s-nail test*\n_host1.example.org: alice@host1.example.org_\n```hello```"}
+-- generic-json --
+{"subject": "s-nail test", "body": "hello\n", "hostname": "host1.example.org"}

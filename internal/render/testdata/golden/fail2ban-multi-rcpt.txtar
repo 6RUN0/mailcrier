@@ -1,0 +1,45 @@
+-- plain --
+[Fail2Ban] sshd: started on host1.example.org
+host1.example.org: Fail2Ban <root@host1.example.org>
+
+Hi,
+
+The jail sshd has been started successfully.
+-- telegram-html --
+<b>[Fail2Ban] sshd: started on host1.example.org</b>
+<i>host1.example.org: Fail2Ban &lt;root@host1.example.org&gt;</i>
+<pre>Hi,
+
+The jail sshd has been started successfully.</pre>
+-- telegram-markdownv2 --
+*\[Fail2Ban\] sshd: started on host1\.example\.org*
+_host1\.example\.org: Fail2Ban <root@host1\.example\.org\>_
+```
+Hi,
+
+The jail sshd has been started successfully.
+```
+-- slack-mrkdwn --
+*[Fail2Ban] sshd: started on host1.example.org*
+_host1.example.org: Fail2Ban &lt;root@host1.example.org&gt;_
+```Hi,
+
+The jail sshd has been started successfully.```
+-- discord --
+**\[Fail2Ban\] sshd: started on host1.example.org**
+*host1.example.org: Fail2Ban <root@host1.example.org>*
+```
+Hi,
+
+The jail sshd has been started successfully.
+```
+-- ntfy --
+Hi,
+
+The jail sshd has been started successfully.
+-- mattermost --
+{"text": "#### \\[Fail2Ban\\] sshd: started on host1.example.org\n_host1.example.org: Fail2Ban \\<root@host1.example.org\\>_\n```\nHi,\n\nThe jail sshd has been started successfully.\n```"}
+-- slack-webhook --
+{"text": "*[Fail2Ban] sshd: started on host1.example.org*\n_host1.example.org: Fail2Ban &lt;root@host1.example.org&gt;_\n```Hi,\n\nThe jail sshd has been started successfully.```"}
+-- generic-json --
+{"subject": "[Fail2Ban] sshd: started on host1.example.org", "body": "Hi,\n\nThe jail sshd has been started successfully.\n", "hostname": "host1.example.org"}

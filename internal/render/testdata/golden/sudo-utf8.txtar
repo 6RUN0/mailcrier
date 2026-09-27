@@ -1,0 +1,33 @@
+-- plain --
+*** SECURITY information for host1 ***
+host1.example.org: alice
+
+host1 : 27 сен 10:00:00 : alice : пользователь НЕ в sudoers ; TTY=pts/0 ; COMMAND=/usr/bin/id
+-- telegram-html --
+<b>*** SECURITY information for host1 ***</b>
+<i>host1.example.org: alice</i>
+<pre>host1 : 27 сен 10:00:00 : alice : пользователь НЕ в sudoers ; TTY=pts/0 ; COMMAND=/usr/bin/id</pre>
+-- telegram-markdownv2 --
+*\*\*\* SECURITY information for host1 \*\*\**
+_host1\.example\.org: alice_
+```
+host1 : 27 сен 10:00:00 : alice : пользователь НЕ в sudoers ; TTY=pts/0 ; COMMAND=/usr/bin/id
+```
+-- slack-mrkdwn --
+**** SECURITY information for host1 ****
+_host1.example.org: alice_
+```host1 : 27 сен 10:00:00 : alice : пользователь НЕ в sudoers ; TTY=pts/0 ; COMMAND=/usr/bin/id```
+-- discord --
+**\*\*\* SECURITY information for host1 \*\*\***
+*host1.example.org: alice*
+```
+host1 : 27 сен 10:00:00 : alice : пользователь НЕ в sudoers ; TTY=pts/0 ; COMMAND=/usr/bin/id
+```
+-- ntfy --
+host1 : 27 сен 10:00:00 : alice : пользователь НЕ в sudoers ; TTY=pts/0 ; COMMAND=/usr/bin/id
+-- mattermost --
+{"text": "#### \\*\\*\\* SECURITY information for host1 \\*\\*\\*\n_host1.example.org: alice_\n```\nhost1 : 27 сен 10:00:00 : alice : пользователь НЕ в sudoers ; TTY=pts/0 ; COMMAND=/usr/bin/id\n```"}
+-- slack-webhook --
+{"text": "**** SECURITY information for host1 ****\n_host1.example.org: alice_\n```host1 : 27 сен 10:00:00 : alice : пользователь НЕ в sudoers ; TTY=pts/0 ; COMMAND=/usr/bin/id```"}
+-- generic-json --
+{"subject": "*** SECURITY information for host1 ***", "body": "host1 : 27 сен 10:00:00 : alice : пользователь НЕ в sudoers ; TTY=pts/0 ; COMMAND=/usr/bin/id\n\n", "hostname": "host1.example.org"}

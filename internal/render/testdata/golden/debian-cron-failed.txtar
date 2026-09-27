@@ -1,0 +1,33 @@
+-- plain --
+Cron <root@host1> /usr/local/bin/sync (failed)
+host1.example.org: Cron Daemon <root>
+
+sync: connection refused
+-- telegram-html --
+<b>Cron &lt;root@host1&gt; /usr/local/bin/sync (failed)</b>
+<i>host1.example.org: Cron Daemon &lt;root&gt;</i>
+<pre>sync: connection refused</pre>
+-- telegram-markdownv2 --
+*Cron <root@host1\> /usr/local/bin/sync \(failed\)*
+_host1\.example\.org: Cron Daemon <root\>_
+```
+sync: connection refused
+```
+-- slack-mrkdwn --
+*Cron &lt;root@host1&gt; /usr/local/bin/sync (failed)*
+_host1.example.org: Cron Daemon &lt;root&gt;_
+```sync: connection refused```
+-- discord --
+**Cron <root@host1> /usr/local/bin/sync (failed)**
+*host1.example.org: Cron Daemon <root>*
+```
+sync: connection refused
+```
+-- ntfy --
+sync: connection refused
+-- mattermost --
+{"text": "#### Cron \\<root@host1\\> /usr/local/bin/sync (failed)\n_host1.example.org: Cron Daemon \\<root\\>_\n```\nsync: connection refused\n```"}
+-- slack-webhook --
+{"text": "*Cron &lt;root@host1&gt; /usr/local/bin/sync (failed)*\n_host1.example.org: Cron Daemon &lt;root&gt;_\n```sync: connection refused```"}
+-- generic-json --
+{"subject": "Cron <root@host1> /usr/local/bin/sync (failed)", "body": "sync: connection refused\n", "hostname": "host1.example.org"}

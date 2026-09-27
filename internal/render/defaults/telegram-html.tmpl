@@ -1,0 +1,9 @@
+<b>{{ .Subject | default .Strings.NoSubject | tgHTML }}</b>
+<i>{{ .Hostname | tgHTML }}: {{ .From.String | tgHTML }}</i>
+<pre>{{ .Body | default .Strings.EmptyBody | trimEnd | tgHTML }}</pre>
+{{- range .Attachments }}
+{{ .Name | tgHTML }} ({{ .ContentType | tgHTML }}, {{ humanizeBytes .Size }})
+{{- end }}
+{{- if .MoreAttachments }}
+{{ printf .Strings.MoreAttachments .MoreAttachments | tgHTML }}
+{{- end }}

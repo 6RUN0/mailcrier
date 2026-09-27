@@ -1,0 +1,33 @@
+-- plain --
+[reboot required] Ergebnis von unattended-upgrades für host1: ERFOLG
+host1.example.org: root
+
+Ergebnis des unbeaufsichtigten Upgrades: Alle Upgrades installiert
+-- telegram-html --
+<b>[reboot required] Ergebnis von unattended-upgrades für host1: ERFOLG</b>
+<i>host1.example.org: root</i>
+<pre>Ergebnis des unbeaufsichtigten Upgrades: Alle Upgrades installiert</pre>
+-- telegram-markdownv2 --
+*\[reboot required\] Ergebnis von unattended\-upgrades für host1: ERFOLG*
+_host1\.example\.org: root_
+```
+Ergebnis des unbeaufsichtigten Upgrades: Alle Upgrades installiert
+```
+-- slack-mrkdwn --
+*[reboot required] Ergebnis von unattended-upgrades für host1: ERFOLG*
+_host1.example.org: root_
+```Ergebnis des unbeaufsichtigten Upgrades: Alle Upgrades installiert```
+-- discord --
+**\[reboot required\] Ergebnis von unattended-upgrades für host1: ERFOLG**
+*host1.example.org: root*
+```
+Ergebnis des unbeaufsichtigten Upgrades: Alle Upgrades installiert
+```
+-- ntfy --
+Ergebnis des unbeaufsichtigten Upgrades: Alle Upgrades installiert
+-- mattermost --
+{"text": "#### \\[reboot required\\] Ergebnis von unattended-upgrades für host1: ERFOLG\n_host1.example.org: root_\n```\nErgebnis des unbeaufsichtigten Upgrades: Alle Upgrades installiert\n```"}
+-- slack-webhook --
+{"text": "*[reboot required] Ergebnis von unattended-upgrades für host1: ERFOLG*\n_host1.example.org: root_\n```Ergebnis des unbeaufsichtigten Upgrades: Alle Upgrades installiert```"}
+-- generic-json --
+{"subject": "[reboot required] Ergebnis von unattended-upgrades für host1: ERFOLG", "body": "Ergebnis des unbeaufsichtigten Upgrades: Alle Upgrades installiert\n", "hostname": "host1.example.org"}

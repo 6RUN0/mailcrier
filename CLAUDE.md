@@ -15,6 +15,7 @@ go build -o slendmail ./cmd/slendmail   # new binary; the name is gitignored
 go build -o /dev/null .                 # legacy root main.go, must still build
 go test ./internal/backend/webhook -update   # rewrite golden files
 go test ./internal/app -run TestCallers -update   # caller golden files
+go test ./internal/render -run TestBuiltinGolden -update   # template golden
 mandoc -T lint docs/slendmail.8         # man page; not part of make check
 ```
 
@@ -77,7 +78,17 @@ it.
   repeated in README and `docs/slendmail.8`; change all three together.
 - `internal/message.Read` returns the message without Bcc, the Bcc
   addresses separately (routing only, never rendered), and constant
-  warning texts that `app` logs as they are.
+  warning texts that `app` logs as they are. MIME, encoded words and
+  charsets are decoded there (stdlib plus `x/text`, own multipart splitter
+  over slices of the input, `x/net/html` tokenizer for HTML to text); the
+  input is held once, so a new step must not copy it per line or per part.
+- `internal/text` (leaf): escapers per target markup, `MeasureTelegramHTML`,
+  truncation. `internal/render`: `Data` (built by `NewData`, which drops
+  Bcc-only recipients), built-in templates in `defaults/<format>.tmpl` keyed
+  by `text.Format`, `Fit` (a long subject cut to a quarter of the limit,
+  then binary searches over the attachment list, the raw body and the
+  subject, measured after escaping). Golden output of every template for
+  every caller fixture is in `internal/render/testdata/golden`.
 - `internal/config.Load` parses strictly: an unknown key, a key of another
   target type, a bad name or value gives `*config.Error` with
   `path:line:col` and exit 78. URLs must be absolute http(s) (for

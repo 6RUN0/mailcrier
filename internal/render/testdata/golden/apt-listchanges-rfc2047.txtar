@@ -1,0 +1,33 @@
+-- plain --
+apt-listchanges: news for hôst
+host1.example.org: alice@host1.example.org
+
+example-tool (2.0-1) unstable; urgency=medium
+-- telegram-html --
+<b>apt-listchanges: news for hôst</b>
+<i>host1.example.org: alice@host1.example.org</i>
+<pre>example-tool (2.0-1) unstable; urgency=medium</pre>
+-- telegram-markdownv2 --
+*apt\-listchanges: news for hôst*
+_host1\.example\.org: alice@host1\.example\.org_
+```
+example-tool (2.0-1) unstable; urgency=medium
+```
+-- slack-mrkdwn --
+*apt-listchanges: news for hôst*
+_host1.example.org: alice@host1.example.org_
+```example-tool (2.0-1) unstable; urgency=medium```
+-- discord --
+**apt-listchanges: news for hôst**
+*host1.example.org: alice@host1.example.org*
+```
+example-tool (2.0-1) unstable; urgency=medium
+```
+-- ntfy --
+example-tool (2.0-1) unstable; urgency=medium
+-- mattermost --
+{"text": "#### apt-listchanges: news for hôst\n_host1.example.org: alice@host1.example.org_\n```\nexample-tool (2.0-1) unstable; urgency=medium\n```"}
+-- slack-webhook --
+{"text": "*apt-listchanges: news for hôst*\n_host1.example.org: alice@host1.example.org_\n```example-tool (2.0-1) unstable; urgency=medium```"}
+-- generic-json --
+{"subject": "apt-listchanges: news for hôst", "body": "example-tool (2.0-1) unstable; urgency=medium\n", "hostname": "host1.example.org"}

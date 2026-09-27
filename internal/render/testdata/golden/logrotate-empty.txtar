@@ -1,0 +1,33 @@
+-- plain --
+/var/log/empty.log.1
+host1.example.org: alice@host1.example.org
+
+(empty body)
+-- telegram-html --
+<b>/var/log/empty.log.1</b>
+<i>host1.example.org: alice@host1.example.org</i>
+<pre>(empty body)</pre>
+-- telegram-markdownv2 --
+*/var/log/empty\.log\.1*
+_host1\.example\.org: alice@host1\.example\.org_
+```
+(empty body)
+```
+-- slack-mrkdwn --
+*/var/log/empty.log.1*
+_host1.example.org: alice@host1.example.org_
+```(empty body)```
+-- discord --
+**/var/log/empty.log.1**
+*host1.example.org: alice@host1.example.org*
+```
+(empty body)
+```
+-- ntfy --
+(empty body)
+-- mattermost --
+{"text": "#### /var/log/empty.log.1\n_host1.example.org: alice@host1.example.org_\n```\n(empty body)\n```"}
+-- slack-webhook --
+{"text": "*/var/log/empty.log.1*\n_host1.example.org: alice@host1.example.org_\n```(empty body)```"}
+-- generic-json --
+{"subject": "/var/log/empty.log.1", "body": "", "hostname": "host1.example.org"}

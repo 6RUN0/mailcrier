@@ -1,0 +1,39 @@
+-- plain --
+apt-listchanges: Changelogs
+host1.example.org: alice@host1.example.org
+
+example-tool (2.0-1)
+  * Fix bug 1 (https://example.org/bugs/1).
+-- telegram-html --
+<b>apt-listchanges: Changelogs</b>
+<i>host1.example.org: alice@host1.example.org</i>
+<pre>example-tool (2.0-1)
+  * Fix bug 1 (https://example.org/bugs/1).</pre>
+-- telegram-markdownv2 --
+*apt\-listchanges: Changelogs*
+_host1\.example\.org: alice@host1\.example\.org_
+```
+example-tool (2.0-1)
+  * Fix bug 1 (https://example.org/bugs/1).
+```
+-- slack-mrkdwn --
+*apt-listchanges: Changelogs*
+_host1.example.org: alice@host1.example.org_
+```example-tool (2.0-1)
+  * Fix bug 1 (https://example.org/bugs/1).```
+-- discord --
+**apt-listchanges: Changelogs**
+*host1.example.org: alice@host1.example.org*
+```
+example-tool (2.0-1)
+  * Fix bug 1 (https://example.org/bugs/1).
+```
+-- ntfy --
+example-tool (2.0-1)
+  * Fix bug 1 (https://example.org/bugs/1).
+-- mattermost --
+{"text": "#### apt-listchanges: Changelogs\n_host1.example.org: alice@host1.example.org_\n```\nexample-tool (2.0-1)\n  * Fix bug 1 (https://example.org/bugs/1).\n```"}
+-- slack-webhook --
+{"text": "*apt-listchanges: Changelogs*\n_host1.example.org: alice@host1.example.org_\n```example-tool (2.0-1)\n  * Fix bug 1 (https://example.org/bugs/1).```"}
+-- generic-json --
+{"subject": "apt-listchanges: Changelogs", "body": "example-tool (2.0-1)\n  * Fix bug 1 (https://example.org/bugs/1).\n", "hostname": "host1.example.org"}

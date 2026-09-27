@@ -1,0 +1,33 @@
+-- plain --
+*** SECURITY information for host1 ***
+host1.example.org: alice
+
+host1 : Sep 27 10:00:00 : alice : user NOT in sudoers ; TTY=pts/0 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/id
+-- telegram-html --
+<b>*** SECURITY information for host1 ***</b>
+<i>host1.example.org: alice</i>
+<pre>host1 : Sep 27 10:00:00 : alice : user NOT in sudoers ; TTY=pts/0 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/id</pre>
+-- telegram-markdownv2 --
+*\*\*\* SECURITY information for host1 \*\*\**
+_host1\.example\.org: alice_
+```
+host1 : Sep 27 10:00:00 : alice : user NOT in sudoers ; TTY=pts/0 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/id
+```
+-- slack-mrkdwn --
+**** SECURITY information for host1 ****
+_host1.example.org: alice_
+```host1 : Sep 27 10:00:00 : alice : user NOT in sudoers ; TTY=pts/0 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/id```
+-- discord --
+**\*\*\* SECURITY information for host1 \*\*\***
+*host1.example.org: alice*
+```
+host1 : Sep 27 10:00:00 : alice : user NOT in sudoers ; TTY=pts/0 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/id
+```
+-- ntfy --
+host1 : Sep 27 10:00:00 : alice : user NOT in sudoers ; TTY=pts/0 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/id
+-- mattermost --
+{"text": "#### \\*\\*\\* SECURITY information for host1 \\*\\*\\*\n_host1.example.org: alice_\n```\nhost1 : Sep 27 10:00:00 : alice : user NOT in sudoers ; TTY=pts/0 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/id\n```"}
+-- slack-webhook --
+{"text": "**** SECURITY information for host1 ****\n_host1.example.org: alice_\n```host1 : Sep 27 10:00:00 : alice : user NOT in sudoers ; TTY=pts/0 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/id```"}
+-- generic-json --
+{"subject": "*** SECURITY information for host1 ***", "body": "host1 : Sep 27 10:00:00 : alice : user NOT in sudoers ; TTY=pts/0 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/id\n\n", "hostname": "host1.example.org"}

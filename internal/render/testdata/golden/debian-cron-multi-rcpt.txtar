@@ -1,0 +1,33 @@
+-- plain --
+Cron <root@host1> date
+host1.example.org: Cron Daemon <root>
+
+Sat Sep 27 10:00:00 UTC 2026
+-- telegram-html --
+<b>Cron &lt;root@host1&gt; date</b>
+<i>host1.example.org: Cron Daemon &lt;root&gt;</i>
+<pre>Sat Sep 27 10:00:00 UTC 2026</pre>
+-- telegram-markdownv2 --
+*Cron <root@host1\> date*
+_host1\.example\.org: Cron Daemon <root\>_
+```
+Sat Sep 27 10:00:00 UTC 2026
+```
+-- slack-mrkdwn --
+*Cron &lt;root@host1&gt; date*
+_host1.example.org: Cron Daemon &lt;root&gt;_
+```Sat Sep 27 10:00:00 UTC 2026```
+-- discord --
+**Cron <root@host1> date**
+*host1.example.org: Cron Daemon <root>*
+```
+Sat Sep 27 10:00:00 UTC 2026
+```
+-- ntfy --
+Sat Sep 27 10:00:00 UTC 2026
+-- mattermost --
+{"text": "#### Cron \\<root@host1\\> date\n_host1.example.org: Cron Daemon \\<root\\>_\n```\nSat Sep 27 10:00:00 UTC 2026\n```"}
+-- slack-webhook --
+{"text": "*Cron &lt;root@host1&gt; date*\n_host1.example.org: Cron Daemon &lt;root&gt;_\n```Sat Sep 27 10:00:00 UTC 2026```"}
+-- generic-json --
+{"subject": "Cron <root@host1> date", "body": "Sat Sep 27 10:00:00 UTC 2026\n", "hostname": "host1.example.org"}

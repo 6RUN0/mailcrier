@@ -1,0 +1,33 @@
+-- plain --
+nightly report
+host1.example.org: alice@example.org
+
+all green
+-- telegram-html --
+<b>nightly report</b>
+<i>host1.example.org: alice@example.org</i>
+<pre>all green</pre>
+-- telegram-markdownv2 --
+*nightly report*
+_host1\.example\.org: alice@example\.org_
+```
+all green
+```
+-- slack-mrkdwn --
+*nightly report*
+_host1.example.org: alice@example.org_
+```all green```
+-- discord --
+**nightly report**
+*host1.example.org: alice@example.org*
+```
+all green
+```
+-- ntfy --
+all green
+-- mattermost --
+{"text": "#### nightly report\n_host1.example.org: alice@example.org_\n```\nall green\n```"}
+-- slack-webhook --
+{"text": "*nightly report*\n_host1.example.org: alice@example.org_\n```all green```"}
+-- generic-json --
+{"subject": "nightly report", "body": "all green\n", "hostname": "host1.example.org"}

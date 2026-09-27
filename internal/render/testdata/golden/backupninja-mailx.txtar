@@ -1,0 +1,39 @@
+-- plain --
+backupninja: host1
+host1.example.org: alice@host1.example.org
+
+success -- /etc/backup.d/10.sys
+success -- /etc/backup.d/20.rdiff
+-- telegram-html --
+<b>backupninja: host1</b>
+<i>host1.example.org: alice@host1.example.org</i>
+<pre>success -- /etc/backup.d/10.sys
+success -- /etc/backup.d/20.rdiff</pre>
+-- telegram-markdownv2 --
+*backupninja: host1*
+_host1\.example\.org: alice@host1\.example\.org_
+```
+success -- /etc/backup.d/10.sys
+success -- /etc/backup.d/20.rdiff
+```
+-- slack-mrkdwn --
+*backupninja: host1*
+_host1.example.org: alice@host1.example.org_
+```success -- /etc/backup.d/10.sys
+success -- /etc/backup.d/20.rdiff```
+-- discord --
+**backupninja: host1**
+*host1.example.org: alice@host1.example.org*
+```
+success -- /etc/backup.d/10.sys
+success -- /etc/backup.d/20.rdiff
+```
+-- ntfy --
+success -- /etc/backup.d/10.sys
+success -- /etc/backup.d/20.rdiff
+-- mattermost --
+{"text": "#### backupninja: host1\n_host1.example.org: alice@host1.example.org_\n```\nsuccess -- /etc/backup.d/10.sys\nsuccess -- /etc/backup.d/20.rdiff\n```"}
+-- slack-webhook --
+{"text": "*backupninja: host1*\n_host1.example.org: alice@host1.example.org_\n```success -- /etc/backup.d/10.sys\nsuccess -- /etc/backup.d/20.rdiff```"}
+-- generic-json --
+{"subject": "backupninja: host1", "body": "success -- /etc/backup.d/10.sys\nsuccess -- /etc/backup.d/20.rdiff\n", "hostname": "host1.example.org"}

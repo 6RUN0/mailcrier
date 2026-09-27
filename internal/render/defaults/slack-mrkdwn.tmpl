@@ -1,0 +1,9 @@
+*{{ .Subject | default .Strings.NoSubject | slackEscape }}*
+_{{ .Hostname | slackEscape }}: {{ .From.String | slackEscape }}_
+```{{ .Body | default .Strings.EmptyBody | trimEnd | slackCode }}```
+{{- range .Attachments }}
+{{ .Name | slackEscape }} ({{ .ContentType | slackEscape }}, {{ humanizeBytes .Size }})
+{{- end }}
+{{- if .MoreAttachments }}
+{{ printf .Strings.MoreAttachments .MoreAttachments | slackEscape }}
+{{- end }}

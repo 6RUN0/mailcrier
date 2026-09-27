@@ -1,0 +1,63 @@
+-- plain --
+[Fail2Ban] sshd: banned 198.51.100.7 from host1.example.org
+host1.example.org: Fail2Ban <root@host1.example.org>
+
+Hi,
+
+Here is more information about 198.51.100.7 :
+
+netname:        EXAMPLE-NET
+descr:          Société Exemple
+-- telegram-html --
+<b>[Fail2Ban] sshd: banned 198.51.100.7 from host1.example.org</b>
+<i>host1.example.org: Fail2Ban &lt;root@host1.example.org&gt;</i>
+<pre>Hi,
+
+Here is more information about 198.51.100.7 :
+
+netname:        EXAMPLE-NET
+descr:          Société Exemple</pre>
+-- telegram-markdownv2 --
+*\[Fail2Ban\] sshd: banned 198\.51\.100\.7 from host1\.example\.org*
+_host1\.example\.org: Fail2Ban <root@host1\.example\.org\>_
+```
+Hi,
+
+Here is more information about 198.51.100.7 :
+
+netname:        EXAMPLE-NET
+descr:          Société Exemple
+```
+-- slack-mrkdwn --
+*[Fail2Ban] sshd: banned 198.51.100.7 from host1.example.org*
+_host1.example.org: Fail2Ban &lt;root@host1.example.org&gt;_
+```Hi,
+
+Here is more information about 198.51.100.7 :
+
+netname:        EXAMPLE-NET
+descr:          Société Exemple```
+-- discord --
+**\[Fail2Ban\] sshd: banned 198.51.100.7 from host1.example.org**
+*host1.example.org: Fail2Ban <root@host1.example.org>*
+```
+Hi,
+
+Here is more information about 198.51.100.7 :
+
+netname:        EXAMPLE-NET
+descr:          Société Exemple
+```
+-- ntfy --
+Hi,
+
+Here is more information about 198.51.100.7 :
+
+netname:        EXAMPLE-NET
+descr:          Société Exemple
+-- mattermost --
+{"text": "#### \\[Fail2Ban\\] sshd: banned 198.51.100.7 from host1.example.org\n_host1.example.org: Fail2Ban \\<root@host1.example.org\\>_\n```\nHi,\n\nHere is more information about 198.51.100.7 :\n\nnetname:        EXAMPLE-NET\ndescr:          Société Exemple\n```"}
+-- slack-webhook --
+{"text": "*[Fail2Ban] sshd: banned 198.51.100.7 from host1.example.org*\n_host1.example.org: Fail2Ban &lt;root@host1.example.org&gt;_\n```Hi,\n\nHere is more information about 198.51.100.7 :\n\nnetname:        EXAMPLE-NET\ndescr:          Société Exemple```"}
+-- generic-json --
+{"subject": "[Fail2Ban] sshd: banned 198.51.100.7 from host1.example.org", "body": "Hi,\n\nHere is more information about 198.51.100.7 :\n\nnetname:        EXAMPLE-NET\ndescr:          Société Exemple\n", "hostname": "host1.example.org"}

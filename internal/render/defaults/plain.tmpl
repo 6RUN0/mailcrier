@@ -1,0 +1,10 @@
+{{ .Subject | default .Strings.NoSubject }}
+{{ .Hostname }}: {{ .From }}
+
+{{ .Body | default .Strings.EmptyBody | trimEnd }}
+{{- range .Attachments }}
+{{ .Name }} ({{ .ContentType }}, {{ humanizeBytes .Size }})
+{{- end }}
+{{- if .MoreAttachments }}
+{{ printf .Strings.MoreAttachments .MoreAttachments }}
+{{- end }}

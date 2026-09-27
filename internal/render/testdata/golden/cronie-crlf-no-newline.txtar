@@ -1,0 +1,33 @@
+-- plain --
+Cron <root@host1> printf done
+host1.example.org: (Cron Daemon) <root>
+
+done
+-- telegram-html --
+<b>Cron &lt;root@host1&gt; printf done</b>
+<i>host1.example.org: (Cron Daemon) &lt;root&gt;</i>
+<pre>done</pre>
+-- telegram-markdownv2 --
+*Cron <root@host1\> printf done*
+_host1\.example\.org: \(Cron Daemon\) <root\>_
+```
+done
+```
+-- slack-mrkdwn --
+*Cron &lt;root@host1&gt; printf done*
+_host1.example.org: (Cron Daemon) &lt;root&gt;_
+```done```
+-- discord --
+**Cron <root@host1> printf done**
+*host1.example.org: (Cron Daemon) <root>*
+```
+done
+```
+-- ntfy --
+done
+-- mattermost --
+{"text": "#### Cron \\<root@host1\\> printf done\n_host1.example.org: (Cron Daemon) \\<root\\>_\n```\ndone\n```"}
+-- slack-webhook --
+{"text": "*Cron &lt;root@host1&gt; printf done*\n_host1.example.org: (Cron Daemon) &lt;root&gt;_\n```done```"}
+-- generic-json --
+{"subject": "Cron <root@host1> printf done", "body": "done", "hostname": "host1.example.org"}

@@ -1,0 +1,33 @@
+-- plain --
+Output from your job 8
+host1.example.org: alice@host1.example.org
+
+(empty body)
+-- telegram-html --
+<b>Output from your job 8</b>
+<i>host1.example.org: alice@host1.example.org</i>
+<pre>(empty body)</pre>
+-- telegram-markdownv2 --
+*Output from your job 8*
+_host1\.example\.org: alice@host1\.example\.org_
+```
+(empty body)
+```
+-- slack-mrkdwn --
+*Output from your job 8*
+_host1.example.org: alice@host1.example.org_
+```(empty body)```
+-- discord --
+**Output from your job 8**
+*host1.example.org: alice@host1.example.org*
+```
+(empty body)
+```
+-- ntfy --
+(empty body)
+-- mattermost --
+{"text": "#### Output from your job 8\n_host1.example.org: alice@host1.example.org_\n```\n(empty body)\n```"}
+-- slack-webhook --
+{"text": "*Output from your job 8*\n_host1.example.org: alice@host1.example.org_\n```(empty body)```"}
+-- generic-json --
+{"subject": "Output from your job 8", "body": "", "hostname": "host1.example.org"}

@@ -123,14 +123,14 @@ T-CALL-16	critical	done	A message without MIME headers and with an 8-bit body is
 T-CALL-17	high	done	Content-Type and Content-Transfer-Encoding without MIME-Version are honoured	https://github.com/sudo-project/sudo/blob/2802bb3/lib/eventlog/eventlog.c#L588
 T-CALL-18	high	done	Content-Transfer-Encoding binary and a quoted charset parameter are accepted	https://github.com/systemd-cron/systemd-cron/blob/b952d94d095a/src/bin/mail_for_job.sh#L97-L99
 T-CALL-19	high	done	A text/html body is converted to text and keeps its links	https://salsa.debian.org/debian/apt-listchanges/-/blob/75cc40f/apt_listchanges/frontends.py#L700-L710
-T-CALL-20	high	todo	X-Cron-Env headers stay out of the default text but are available to templates	https://github.com/cronie-crond/cronie/blob/59a3d15/src/do_command.c#L539-L540
+T-CALL-20	high	done	X-Cron-Env headers stay out of the default text but are available to templates	https://github.com/cronie-crond/cronie/blob/59a3d15/src/do_command.c#L539-L540
 T-CALL-21	critical	done	An empty body is delivered with an empty-body marker	https://salsa.debian.org/debian/at/-/blob/282d01d/atd.c#L570
 T-CALL-22	high	todo	A message of headers only without a separator line is not lost	https://github.com/openzfs/zfs/blob/1f380a4/cmd/zed/zed.d/zed-functions.sh#L283-L291
 T-CALL-23	low	todo	Completely empty stdin without subject does not produce an empty notification; the chosen exit code is pinned	https://github.com/smartmontools/smartmontools/blob/9f83095/smartmontools/smartd_warning.sh.in#L235
 T-CALL-24	low	todo	Called as mail or mailx, -s sets the subject and the body has no headers	https://github.com/smartmontools/smartmontools/blob/9f83095/smartmontools/smartd_warning.sh.in#L221
 T-CALL-25	low	todo	A subject with trailing whitespace is trimmed for display	https://0xacab.org/liberate/backupninja/-/blob/b4ec0299/src/backupninja.in#L668-688
 T-CALL-26	high	todo	A large body such as a 2 MB log goes out as a file above the target threshold	https://github.com/logrotate/logrotate/blob/1aba376/logrotate.c#L1060-L1150
-T-CALL-27	high	todo	A body with invalid UTF-8 and control characters does not break JSON or markup of any target	https://github.com/fail2ban/fail2ban/blob/7212404/config/action.d/sendmail-whois-lines.conf#L24-L37
+T-CALL-27	high	done	A body with invalid UTF-8 and control characters does not break JSON or markup of any target	https://github.com/fail2ban/fail2ban/blob/7212404/config/action.d/sendmail-whois-lines.conf#L24-L37
 T-CALL-28	high	todo	Closed stdout and stderr do not crash the process and logging goes to syslog	https://salsa.debian.org/debian/at/-/blob/282d01d/atd.c#L549-L557
 T-CALL-29	high	todo	argv[0] only matters for the mailq, newaliases and mail modes	https://github.com/sudo-project/sudo/blob/2802bb3/lib/eventlog/eventlog.c#L371
 T-CALL-30	critical	done	From "(Cron Daemon)" <root> and From root (Cron Daemon) parse into a name and a domain-less address	https://github.com/cronie-crond/cronie/blob/59a3d15/src/do_command.c#L492
@@ -163,20 +163,20 @@ T-LIM-13	high	todo	ntfy: a body over 4096 UTF-8 bytes goes as an attachment and 
 T-LIM-14	low	todo	Matrix: the body budget counts bytes of the serialized event including formatted_body	https://github.com/matrix-org/matrix-spec/blob/main/content/client-server-api/_index.md
 T-LIM-15	critical	done	Rune truncation never splits a multibyte UTF-8 character	https://github.com/prometheus/alertmanager/blob/6a79679/notify/util.go#L106-L117
 T-LIM-16	high	todo	When the template wrapper alone exceeds the limit a hard cut of the rendered text is sent and the full text goes as a file	https://github.com/KostyaEsmukov/smtp_to_telegram/blob/279f5fc/smtp_to_telegram_test.go#L315-L362
-T-LIM-17	critical	todo	Fitting the body into the limit keeps the rendered result within the limit for any escaping; checked as an invariant	https://github.com/KostyaEsmukov/smtp_to_telegram/blob/279f5fc/smtp_to_telegram_test.go#L364
+T-LIM-17	critical	done	Fitting the body into the limit keeps the rendered result within the limit for any escaping; checked as an invariant	https://github.com/KostyaEsmukov/smtp_to_telegram/blob/279f5fc/smtp_to_telegram_test.go#L364
 T-LIM-18	low	todo	Optional split mode sends numbered parts in order with the suffix width counted in the budget	https://github.com/caronc/apprise/blob/68f0eaf/apprise/plugins/base.py#L1340-L1380
 T-LIM-19	high	todo	With max_lines the first N lines go as text and the rest as a file	https://github.com/caronc/apprise/blob/68f0eaf/apprise/plugins/base.py#L1216-L1218
-T-TPL-01	critical	todo	Each built-in template has golden output for the cronie, smartd and mdadm fixtures	https://github.com/cronie-crond/cronie/blob/59a3d15/src/do_command.c
-T-TPL-02	critical	todo	An empty Subject renders as (no subject) and an empty body still gives non-empty text accepted by the API	https://github.com/YoRyan/mailrise/blob/60d485e/src/mailrise/smtp.py#L129-L133
+T-TPL-01	critical	done	Each built-in template has golden output for the cronie, smartd and mdadm fixtures	https://github.com/cronie-crond/cronie/blob/59a3d15/src/do_command.c
+T-TPL-02	critical	done	An empty Subject renders as (no subject) and an empty body still gives non-empty text accepted by the API	https://github.com/YoRyan/mailrise/blob/60d485e/src/mailrise/smtp.py#L129-L133
 T-TPL-03	high	todo	Headers with a dash are reachable from templates case-insensitively; repeated headers give all values	https://github.com/nadiamoe/sendmail-telegram/blob/b76fa85b4572/sendmail-telegram.go#L96-L99
 T-TPL-04	critical	todo	A template parse error is a configuration error (exit 78), found at startup and by --check-config	https://github.com/binwiederhier/ntfy/blob/6560158/docs/publish.md
 T-TPL-05	critical	todo	A template execution error falls back to the built-in template with a warning and the call exits 0	https://github.com/prometheus/alertmanager/blob/6a79679/template/template.go#L321-L324
 T-TPL-06	high	todo	Rendering has a timeout and an output size limit; a huge body cannot hang the process	https://github.com/binwiederhier/ntfy/blob/6560158/docs/publish.md#L3226-L3233
-T-TPL-07	critical	todo	toJson on a body with quotes, backslashes, control characters and invalid UTF-8 yields valid JSON	https://github.com/prometheus/alertmanager/blob/6a79679/template/template.go#L366
+T-TPL-07	critical	done	toJson on a body with quotes, backslashes, control characters and invalid UTF-8 yields valid JSON	https://github.com/prometheus/alertmanager/blob/6a79679/template/template.go#L366
 T-TPL-08	high	todo	truncate n keeps n runes including a three-dot ASCII marker; no marker when n is 3 or less	https://github.com/prometheus/alertmanager/blob/6a79679/notify/util.go#L106-L117
 T-TPL-09	low	todo	join takes the separator first and works in pipelines over strings and addresses	https://github.com/prometheus/alertmanager/blob/6a79679/template/template.go#L294-L312
 T-TPL-10	low	todo	date and tz format the message date in a zone; an unknown zone is an execution error	https://github.com/prometheus/alertmanager/blob/6a79679/template/template.go#L335-L345
-T-TPL-11	critical	todo	Bcc never reaches template data, even with -t	https://github.com/marlam/msmtp/blob/755df9f0d3ac/tests/test-header-handling.sh#L35-L55
+T-TPL-11	critical	done	Bcc never reaches template data, even with -t	https://github.com/marlam/msmtp/blob/755df9f0d3ac/tests/test-header-handling.sh#L35-L55
 T-TPL-12	critical	done	A bot token or webhook URL never appears in logs or exit messages; it is replaced by ***	https://github.com/KostyaEsmukov/smtp_to_telegram/blob/279f5fc/smtp_to_telegram.go#L644-L646
-T-TPL-13	critical	todo	The default MarkdownV2 template escapes the body, so dots and dashes do not cause an API error	https://github.com/nadiamoe/sendmail-telegram/blob/b76fa85b4572/sendmail-telegram.go
+T-TPL-13	critical	done	The default MarkdownV2 template escapes the body, so dots and dashes do not cause an API error	https://github.com/nadiamoe/sendmail-telegram/blob/b76fa85b4572/sendmail-telegram.go
 T-TPL-14	critical	done	An ISO-8859-1 base64 body and a Q-encoded ISO-8859-1 Subject reach the template as UTF-8	https://github.com/KostyaEsmukov/smtp_to_telegram/blob/279f5fc/smtp_to_telegram_test.go#L641

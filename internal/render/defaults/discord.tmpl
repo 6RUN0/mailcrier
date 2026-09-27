@@ -1,0 +1,11 @@
+**{{ .Subject | default .Strings.NoSubject | discordEscape }}**
+*{{ .Hostname | discordEscape }}: {{ .From.String | discordEscape }}*
+```
+{{ .Body | default .Strings.EmptyBody | trimEnd | discordCode }}
+```
+{{- range .Attachments }}
+{{ .Name | discordEscape }} ({{ .ContentType | discordEscape }}, {{ humanizeBytes .Size }})
+{{- end }}
+{{- if .MoreAttachments }}
+{{ printf .Strings.MoreAttachments .MoreAttachments | discordEscape }}
+{{- end }}

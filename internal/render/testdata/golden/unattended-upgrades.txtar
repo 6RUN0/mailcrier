@@ -1,0 +1,75 @@
+-- plain --
+unattended-upgrades result for host1: SUCCESS
+host1.example.org: root
+
+Unattended upgrade result: All upgrades installed
+
+Packages that were upgraded:
+ example-lib example-tool
+
+Package installation log:
+Log started: 2026-09-27  06:25:01
+Preparing to unpack .../example-lib_2.0-1_amd64.deb ...
+-- telegram-html --
+<b>unattended-upgrades result for host1: SUCCESS</b>
+<i>host1.example.org: root</i>
+<pre>Unattended upgrade result: All upgrades installed
+
+Packages that were upgraded:
+ example-lib example-tool
+
+Package installation log:
+Log started: 2026-09-27  06:25:01
+Preparing to unpack .../example-lib_2.0-1_amd64.deb ...</pre>
+-- telegram-markdownv2 --
+*unattended\-upgrades result for host1: SUCCESS*
+_host1\.example\.org: root_
+```
+Unattended upgrade result: All upgrades installed
+
+Packages that were upgraded:
+ example-lib example-tool
+
+Package installation log:
+Log started: 2026-09-27  06:25:01
+Preparing to unpack .../example-lib_2.0-1_amd64.deb ...
+```
+-- slack-mrkdwn --
+*unattended-upgrades result for host1: SUCCESS*
+_host1.example.org: root_
+```Unattended upgrade result: All upgrades installed
+
+Packages that were upgraded:
+ example-lib example-tool
+
+Package installation log:
+Log started: 2026-09-27  06:25:01
+Preparing to unpack .../example-lib_2.0-1_amd64.deb ...```
+-- discord --
+**unattended-upgrades result for host1: SUCCESS**
+*host1.example.org: root*
+```
+Unattended upgrade result: All upgrades installed
+
+Packages that were upgraded:
+ example-lib example-tool
+
+Package installation log:
+Log started: 2026-09-27  06:25:01
+Preparing to unpack .../example-lib_2.0-1_amd64.deb ...
+```
+-- ntfy --
+Unattended upgrade result: All upgrades installed
+
+Packages that were upgraded:
+ example-lib example-tool
+
+Package installation log:
+Log started: 2026-09-27  06:25:01
+Preparing to unpack .../example-lib_2.0-1_amd64.deb ...
+-- mattermost --
+{"text": "#### unattended-upgrades result for host1: SUCCESS\n_host1.example.org: root_\n```\nUnattended upgrade result: All upgrades installed\n\nPackages that were upgraded:\n example-lib example-tool\n\nPackage installation log:\nLog started: 2026-09-27  06:25:01\nPreparing to unpack .../example-lib_2.0-1_amd64.deb ...\n```"}
+-- slack-webhook --
+{"text": "*unattended-upgrades result for host1: SUCCESS*\n_host1.example.org: root_\n```Unattended upgrade result: All upgrades installed\n\nPackages that were upgraded:\n example-lib example-tool\n\nPackage installation log:\nLog started: 2026-09-27  06:25:01\nPreparing to unpack .../example-lib_2.0-1_amd64.deb ...```"}
+-- generic-json --
+{"subject": "unattended-upgrades result for host1: SUCCESS", "body": "Unattended upgrade result: All upgrades installed\n\nPackages that were upgraded:\n example-lib example-tool\n\nPackage installation log:\nLog started: 2026-09-27  06:25:01\nPreparing to unpack .../example-lib_2.0-1_amd64.deb ...\n", "hostname": "host1.example.org"}

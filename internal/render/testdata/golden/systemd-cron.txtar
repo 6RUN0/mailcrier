@@ -1,0 +1,39 @@
+-- plain --
+[host1] Failure: /etc/cron.daily/backup
+host1.example.org: systemd-cron <root>
+
+x cron-daily-backup.service - [Cron] "/etc/cron.daily/backup"
+     Active: failed (Result: exit-code)
+-- telegram-html --
+<b>[host1] Failure: /etc/cron.daily/backup</b>
+<i>host1.example.org: systemd-cron &lt;root&gt;</i>
+<pre>x cron-daily-backup.service - [Cron] "/etc/cron.daily/backup"
+     Active: failed (Result: exit-code)</pre>
+-- telegram-markdownv2 --
+*\[host1\] Failure: /etc/cron\.daily/backup*
+_host1\.example\.org: systemd\-cron <root\>_
+```
+x cron-daily-backup.service - [Cron] "/etc/cron.daily/backup"
+     Active: failed (Result: exit-code)
+```
+-- slack-mrkdwn --
+*[host1] Failure: /etc/cron.daily/backup*
+_host1.example.org: systemd-cron &lt;root&gt;_
+```x cron-daily-backup.service - [Cron] "/etc/cron.daily/backup"
+     Active: failed (Result: exit-code)```
+-- discord --
+**\[host1\] Failure: /etc/cron.daily/backup**
+*host1.example.org: systemd-cron <root>*
+```
+x cron-daily-backup.service - [Cron] "/etc/cron.daily/backup"
+     Active: failed (Result: exit-code)
+```
+-- ntfy --
+x cron-daily-backup.service - [Cron] "/etc/cron.daily/backup"
+     Active: failed (Result: exit-code)
+-- mattermost --
+{"text": "#### \\[host1\\] Failure: /etc/cron.daily/backup\n_host1.example.org: systemd-cron \\<root\\>_\n```\nx cron-daily-backup.service - [Cron] \"/etc/cron.daily/backup\"\n     Active: failed (Result: exit-code)\n```"}
+-- slack-webhook --
+{"text": "*[host1] Failure: /etc/cron.daily/backup*\n_host1.example.org: systemd-cron &lt;root&gt;_\n```x cron-daily-backup.service - [Cron] \"/etc/cron.daily/backup\"\n     Active: failed (Result: exit-code)```"}
+-- generic-json --
+{"subject": "[host1] Failure: /etc/cron.daily/backup", "body": "x cron-daily-backup.service - [Cron] \"/etc/cron.daily/backup\"\n     Active: failed (Result: exit-code)\n", "hostname": "host1.example.org"}

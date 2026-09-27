@@ -1,0 +1,33 @@
+-- plain --
+Cron <root@host1> /usr/local/bin/report
+host1.example.org: (Cron Daemon) <root>
+
+Report: details (https://example.org/r/1)
+-- telegram-html --
+<b>Cron &lt;root@host1&gt; /usr/local/bin/report</b>
+<i>host1.example.org: (Cron Daemon) &lt;root&gt;</i>
+<pre>Report: details (https://example.org/r/1)</pre>
+-- telegram-markdownv2 --
+*Cron <root@host1\> /usr/local/bin/report*
+_host1\.example\.org: \(Cron Daemon\) <root\>_
+```
+Report: details (https://example.org/r/1)
+```
+-- slack-mrkdwn --
+*Cron &lt;root@host1&gt; /usr/local/bin/report*
+_host1.example.org: (Cron Daemon) &lt;root&gt;_
+```Report: details (https://example.org/r/1)```
+-- discord --
+**Cron <root@host1> /usr/local/bin/report**
+*host1.example.org: (Cron Daemon) <root>*
+```
+Report: details (https://example.org/r/1)
+```
+-- ntfy --
+Report: details (https://example.org/r/1)
+-- mattermost --
+{"text": "#### Cron \\<root@host1\\> /usr/local/bin/report\n_host1.example.org: (Cron Daemon) \\<root\\>_\n```\nReport: details (https://example.org/r/1)\n```"}
+-- slack-webhook --
+{"text": "*Cron &lt;root@host1&gt; /usr/local/bin/report*\n_host1.example.org: (Cron Daemon) &lt;root&gt;_\n```Report: details (https://example.org/r/1)```"}
+-- generic-json --
+{"subject": "Cron <root@host1> /usr/local/bin/report", "body": "Report: details (https://example.org/r/1)\n", "hostname": "host1.example.org"}

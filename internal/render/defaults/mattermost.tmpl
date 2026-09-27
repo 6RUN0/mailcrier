@@ -1,0 +1,1 @@
+{"text": {{ toJson (print "#### " (.Subject | default .Strings.NoSubject | mmEscape) "\n_" (.Hostname | mmEscape) ": " (.From.String | mmEscape) "_\n```\n" (.Body | default .Strings.EmptyBody | trimEnd | mmCode) "\n```") }}}

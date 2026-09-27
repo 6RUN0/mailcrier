@@ -1,0 +1,33 @@
+-- plain --
+cron: /etc/periodic/15min/check
+host1.example.org: alice@host1.example.org
+
+check: load 4.2
+-- telegram-html --
+<b>cron: /etc/periodic/15min/check</b>
+<i>host1.example.org: alice@host1.example.org</i>
+<pre>check: load 4.2</pre>
+-- telegram-markdownv2 --
+*cron: /etc/periodic/15min/check*
+_host1\.example\.org: alice@host1\.example\.org_
+```
+check: load 4.2
+```
+-- slack-mrkdwn --
+*cron: /etc/periodic/15min/check*
+_host1.example.org: alice@host1.example.org_
+```check: load 4.2```
+-- discord --
+**cron: /etc/periodic/15min/check**
+*host1.example.org: alice@host1.example.org*
+```
+check: load 4.2
+```
+-- ntfy --
+check: load 4.2
+-- mattermost --
+{"text": "#### cron: /etc/periodic/15min/check\n_host1.example.org: alice@host1.example.org_\n```\ncheck: load 4.2\n```"}
+-- slack-webhook --
+{"text": "*cron: /etc/periodic/15min/check*\n_host1.example.org: alice@host1.example.org_\n```check: load 4.2```"}
+-- generic-json --
+{"subject": "cron: /etc/periodic/15min/check", "body": "check: load 4.2\n", "hostname": "host1.example.org"}

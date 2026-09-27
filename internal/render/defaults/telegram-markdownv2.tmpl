@@ -1,0 +1,11 @@
+*{{ .Subject | default .Strings.NoSubject | tgMDv2 }}*
+_{{ .Hostname | tgMDv2 }}: {{ .From.String | tgMDv2 }}_
+```
+{{ .Body | default .Strings.EmptyBody | trimEnd | tgMDv2Code }}
+```
+{{- range .Attachments }}
+{{ .Name | tgMDv2 }} \({{ .ContentType | tgMDv2 }}, {{ humanizeBytes .Size | tgMDv2 }}\)
+{{- end }}
+{{- if .MoreAttachments }}
+{{ printf .Strings.MoreAttachments .MoreAttachments | tgMDv2 }}
+{{- end }}
