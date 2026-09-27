@@ -63,19 +63,24 @@ preset = "generic-json"
   `Content-Type: application/json`. Other target types and presets are
   recognized by the parser but rejected with exit status 78 until implemented.
 - Exit status: 0 when at least one target accepted the message, 69 when none
-  did, 66 when stdin cannot be read, 70 on an internal error (a bug; the
-  record in the log carries the details).
+  did, 66 when stdin cannot be read, 70 on a panic in the main goroutine (a
+  bug; the redacted record in the log carries the details). A panic in any
+  other goroutine ends the process with the Go runtime's own report on
+  stderr and status 2; that report is not redacted.
 - Logging goes to syslog, facility `mail`. Where no syslog socket exists (a
   container without `/dev/log`) the records go to stderr, with time and
   level, after one `syslog unavailable` warning; PHP-FPM passes the stderr
   of a worker to its own log only with `catch_workers_output = yes` in the
-  pool configuration. Each record is a constant message with logfmt fields:
-  `call` (16 hex digits, one value per invocation) on every record, `msgid`
-  (the Message-ID header, cut to 256 bytes, absent when the message has
-  none) and `size` (bytes read) for the message, `target`, `class` (`temp`
-  or `perm`) and `status` (the HTTP status, when the service answered) for
-  a failed target. Headers and body of the message are never logged, nor
-  is the response body of a service.
+  pool configuration. A setgid-elevated process without syslog writes to
+  stderr only `slendmail: <message>` for warnings and errors, without
+  fields, because its caller must not see what only the group may read.
+  Each record is a constant message with logfmt fields: `call` (16 hex
+  digits, one value per invocation) on every record, `msgid` (the
+  Message-ID header, cut to 256 bytes, absent when the message has none)
+  and `size` (bytes read) for the message, `target`, `class` (`temp` or
+  `perm`) and `status` (the HTTP status, when the service answered) for a
+  failed target. Headers and body of the message are never logged, nor is
+  the response body of a service.
 - Tokens and URLs, including the content of `*_file`, are replaced by `***`
   in every log record and in the debug output of the Go HTTP stack. A URL
   is masked whole, and so are its host, host labels, request URI, path
@@ -85,6 +90,48 @@ preset = "generic-json"
   response; `deadline` bounds the delivery to all targets together. Both
   take Go duration strings (`"500ms"`, `"15s"`, `"1m"`) and must be
   positive. A target that runs out of either counts as a temporary failure.
+- Proxy environment variables (`HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`)
+  are honoured without elevation and ignored by a setgid-elevated process.
+- The file mode creation mask is always `007`.
+
+### Options, privileges and containers
+
+- `--config PATH` or the environment variable `SLENDMAIL_CONFIG` names
+  another configuration file; `--config` wins. sendmail's `-C` is always
+  ignored with a warning. Other arguments are accepted and ignored.
+- `--probe` and `--check-config` are reserved and exit 64 (not
+  implemented).
+- The intended install is setgid: binary `root:slendmail 2755`,
+  configuration and `*_file` files `root:slendmail 0640`, so that cron jobs
+  of any user can send while only root and the binary read the secrets.
+  When a user other than root runs the binary and the kernel applies the
+  setgid bit:
+  - before doing anything else the process executes itself once more, through `/proc/self/exe` or
+    else `/usr/sbin/slendmail`, with the environment reduced to `USER`,
+    `LOGNAME`, `HOME`, `LANG`, `LC_*` and `TZ` (a zone name such as
+    `Europe/Berlin` only), so that `GODEBUG`, proxy or TLS variables of the
+    caller cannot act with the group privilege. If both fail, it replaces
+    its environment the same way and goes on with HTTP/2 off, the Go debug
+    output dropped and no proxy, and logs `reexec failed` as an error;
+  - `--config` and `SLENDMAIL_CONFIG` are ignored with a warning;
+  - `--probe` and `--check-config` exit 77 unless the caller is the
+    `slendmail` user.
+- Without the setgid bit taking effect the binary runs with the ids of its
+  caller, and that is the normal mode for containers: Docker with
+  `--security-opt no-new-privileges`, Kubernetes with
+  `allowPrivilegeEscalation: false`, a systemd unit with
+  `NoNewPrivileges=yes` or `RestrictSUIDSGID=yes`, or a binary copied
+  without the bit. The configuration and its `*_file` files must then be
+  readable by the caller (for PHP-FPM, for example `0640 root:www-data`),
+  `--config` and `SLENDMAIL_CONFIG` work, and secrets mounted as files
+  (Docker or Kubernetes secrets) go in through `*_file`. For PHP set
+  `sendmail_path = /usr/sbin/sendmail -t -i` with `/usr/sbin/sendmail` a
+  link to the binary, and pass the variable with
+  `env[SLENDMAIL_CONFIG] = /run/secrets/slendmail.conf` in the pool
+  configuration.
+- On a host with the setgid install, a caller running under
+  `NoNewPrivileges=yes` or `RestrictSUIDSGID=yes` does not get the group:
+  the configuration is unreadable and the call exits 78.
 
 The sections below describe the legacy `main.go` in the repository root.
 

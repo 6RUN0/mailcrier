@@ -14,6 +14,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"path/filepath"
 	"strings"
 
 	"github.com/6RUN0/slendmail/internal/backend"
@@ -26,18 +27,25 @@ import (
 
 // Exit statuses from sysexits.h that Run produces itself.
 const (
+	exitUsage    = 64
 	exitNoInput  = 66
 	exitSoftware = 70
+	exitNoPerm   = 77
 	exitConfig   = 78
 )
+
+// envConfig names another configuration file, like --config.
+const envConfig = "SLENDMAIL_CONFIG"
 
 // Deps are the parts of the environment an invocation uses.
 type Deps struct {
 	// NewLogger returns the logger for a syslog tag. Run calls it once with
 	// the default tag and again when the configuration sets another one.
 	NewLogger func(tag string) *slog.Logger
-	// ConfigFS and ConfigPath locate the configuration file; secret files
-	// named in it are read from ConfigFS too.
+	// ConfigFS is the file system root, "/" in a real invocation; ConfigPath
+	// is the default configuration file relative to it. An absolute path
+	// from --config or SLENDMAIL_CONFIG and the secret files named in the
+	// configuration are read from ConfigFS with the leading slash removed.
 	ConfigFS   fs.FS
 	ConfigPath string
 	// HTTP performs the requests of HTTP-based targets. Run uses a copy
@@ -50,15 +58,25 @@ type Deps struct {
 	Stderr io.Writer
 	// SetLogOutput redirects the standard log package, as log.SetOutput.
 	SetLogOutput func(w io.Writer)
+	// Credentials decide whether the process runs with the group of a
+	// setgid binary.
+	Credentials Credentials
+	// Environ is the environment of the process, as os.Environ, after
+	// Harden.
+	Environ []string
+	// ReexecErr is the error Harden returned: an elevated process that
+	// could not execute itself with a clean environment.
+	ReexecErr error
 }
 
-// Run handles one invocation and returns the process exit status. Command
-// line arguments are accepted and ignored.
+// Run handles one invocation and returns the process exit status. Of the
+// command line it acts on --config, --probe, --check-config and -C; other
+// arguments are accepted and ignored.
 //
 // Every log record and everything the standard log package prints passes
 // through one redactor, which learns the secrets of the configuration
 // right after loading it, before the first record that could quote them.
-func Run(ctx context.Context, d Deps, _ []string, stdin io.Reader) (code int) {
+func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int) {
 	redactor := &redact.Redactor{}
 	d.SetLogOutput(redactor.Writer(d.Stderr))
 	// call ties the records of one invocation together: cron sets no
@@ -77,6 +95,37 @@ func Run(ctx context.Context, d Deps, _ []string, stdin io.Reader) (code int) {
 			code = exitSoftware
 		}
 	}()
+	client := *d.HTTP
+	if d.ReexecErr != nil {
+		// Harden has already replaced the environment; what it cannot
+		// undo is what package init read from the caller's one. The HTTP/2
+		// debug switch is avoided by speaking HTTP/1.1, and the standard
+		// log output is dropped. The process keeps its group, or it could
+		// not read the configuration.
+		d.SetLogOutput(io.Discard)
+		client.Transport = withoutHTTP2(client.Transport)
+		log.Error("reexec failed", "err", d.ReexecErr)
+	}
+	opts, err := parseOptions(args)
+	if err != nil {
+		_, _ = fmt.Fprintf(d.Stderr, "slendmail: %v\n", err)
+		log.Error("command line rejected", "err", err)
+		return exitUsage
+	}
+	if opts.hasAltConfig {
+		log.Warn("option ignored", "option", optionAltConfig)
+	}
+	if opts.hasEnvConfigMarker && d.Credentials.isElevated() {
+		log.Warn("configuration override ignored", "source", envConfig)
+	}
+	if opts.mode != "" {
+		return refuseMode(d, log, opts.mode)
+	}
+	configPath, err := selectConfigPath(d, opts, log)
+	if err != nil {
+		log.Error("configuration rejected, message not delivered", "err", err)
+		return exitConfig
+	}
 	msg, err := message.Read(stdin)
 	if err != nil {
 		log.Error("message not read, giving up", "err", err)
@@ -88,7 +137,7 @@ func Run(ctx context.Context, d Deps, _ []string, stdin io.Reader) (code int) {
 	msgAttrs := messageAttrs(msg)
 	log = log.With(msgAttrs...)
 	log.Info("message received", "size", len(msg.Raw))
-	cfg, err := config.Load(d.ConfigFS, d.ConfigPath)
+	cfg, err := config.Load(d.ConfigFS, configPath)
 	if err != nil {
 		log.Error("configuration rejected, message not delivered", "err", err)
 		return exitConfig
@@ -97,7 +146,6 @@ func Run(ctx context.Context, d Deps, _ []string, stdin io.Reader) (code int) {
 	if cfg.General.SyslogTag != config.DefaultSyslogTag {
 		log = newLogger(cfg.General.SyslogTag).With(msgAttrs...)
 	}
-	client := *d.HTTP
 	client.Timeout = cfg.General.HTTPTimeout.Duration
 	targets, err := buildTargets(cfg, d.Hostname, &client)
 	if err != nil {
@@ -136,6 +184,48 @@ func newCallID() string {
 	id := make([]byte, 8)
 	_, _ = rand.Read(id) // never fails on Linux, per crypto/rand
 	return hex.EncodeToString(id)
+}
+
+// refuseMode answers --probe and --check-config. Both read the whole
+// configuration or send to every target, so an elevated caller other than
+// root and the slendmail user gets 77. The modes themselves do not exist
+// yet; everyone else gets a usage error.
+func refuseMode(d Deps, log *slog.Logger, mode string) int {
+	if !d.Credentials.isPrivilegedCaller() {
+		_, _ = fmt.Fprintf(d.Stderr, "slendmail: %s: permission denied\n", mode)
+		log.Error("mode refused, caller not privileged", "option", mode, "uid", d.Credentials.UID)
+		return exitNoPerm
+	}
+	_, _ = fmt.Fprintf(d.Stderr, "slendmail: %s: not implemented\n", mode)
+	log.Error("mode refused, not implemented", "option", mode)
+	return exitUsage
+}
+
+// selectConfigPath returns the configuration file relative to d.ConfigFS:
+// --config wins over SLENDMAIL_CONFIG, which wins over the default. An
+// elevated process ignores both, with a warning: they would let any user
+// read an arbitrary file, or send the message to a receiver of their own,
+// with the group privilege.
+func selectConfigPath(d Deps, opts options, log *slog.Logger) (string, error) {
+	source, path := "", ""
+	if value, ok := lookupEnv(d.Environ, envConfig); ok && value != "" {
+		source, path = envConfig, value
+	}
+	if opts.configPath != "" {
+		source, path = optionConfig, opts.configPath
+	}
+	switch {
+	case source == "":
+		return d.ConfigPath, nil
+	case d.Credentials.isElevated():
+		log.Warn("configuration override ignored", "source", source)
+		return d.ConfigPath, nil
+	}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", source, err)
+	}
+	return strings.TrimPrefix(absolute, "/"), nil
 }
 
 // logResult records the outcome of one target: class is temp or perm,

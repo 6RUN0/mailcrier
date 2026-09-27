@@ -7,8 +7,9 @@ code in this repository.
 
 ```sh
 make check        # all CI checks of a push; govulncheck only warns here
-make lint         # other targets: tidy test build vuln check-refs
+make lint         # other targets: tidy test fuzz build vuln check-refs
                   # check-commits snapshot
+make fuzz FUZZTIME=10m   # longer fuzzing; check runs each target 10s
 go build -o slendmail ./cmd/slendmail   # new binary; the name is gitignored
 go build -o /dev/null .                 # legacy root main.go, must still build
 go test ./internal/backend/webhook -update   # rewrite golden files
@@ -32,9 +33,8 @@ go test ./internal/backend/webhook -update   # rewrite golden files
   and `check-refs` checks only their subject: the subjects embed module
   paths, the bodies quote upstream release notes. Dependabot is recognized
   by its noreply author email, not by the author name.
-- A manual run of the new binary needs `/etc/slendmail.conf`; without root:
-  `unshare -r -m sh -c 'mount --bind <dir> /etc && ./slendmail'`, where
-  `<dir>` holds `slendmail.conf`.
+- A manual run of the new binary reads `/etc/slendmail.conf`, or the file
+  in `SLENDMAIL_CONFIG` or `--config` (honoured when not setgid-elevated).
 
 CI: `.github/workflows/ci.yml` runs `make check` and `make snapshot` on push
 and PR to `develop` (the main branch) and a blocking `make vuln` daily;
@@ -49,9 +49,18 @@ from golangci-lint and govulncheck, and stays until native targets replace
 it.
 
 - `internal/app.Run(ctx, Deps, args, stdin) int` handles one invocation;
-  `Deps` carries the logger factory, config `fs.FS`, HTTP client and host
-  name. `app.SystemDeps` builds the real ones (syslog `LOG_MAIL`,
-  `/etc/slendmail.conf`).
+  `Deps` carries the logger factory, config `fs.FS` rooted at `/`, HTTP
+  client, host name, stderr, uid/gid/egid, environment and the error of a
+  failed re-exec. `app.SystemDeps` builds the real ones (syslog `LOG_MAIL`,
+  `/etc/slendmail.conf`, environment proxies only without elevation).
+- Elevated means `egid != gid` and `uid != 0` (`internal/app/privilege.go`).
+  `main` sets the umask, then calls `app.Harden` before `SystemDeps`, any
+  logger or any time formatting (the time package opens a `TZ` path): an
+  elevated process re-executes itself with `sanitizeEnv(environ)` unless
+  the environment is already sanitized. Nothing may move ahead of `Harden`.
+  `sanitizeEnv` must stay idempotent (`FuzzSanitize`), or the re-exec loops.
+  `SLENDMAIL_CONFIG` dropped by the re-exec is reported after it through
+  the argv marker `--ignored-env-config`.
 - `internal/config.Load` parses strictly: an unknown key, a key of another
   target type, a bad name or value gives `*config.Error` with
   `path:line:col` and exit 78. URLs must be absolute http(s) (for

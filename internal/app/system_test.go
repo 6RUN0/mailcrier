@@ -77,7 +77,7 @@ func TestFallbackLoggerUsesStderr(t *testing.T) {
 	dial := func(string) (*syslog.Writer, error) {
 		return nil, errors.New("dial unix /dev/log: connect: no such file or directory")
 	}
-	logger := newFallbackLogger("slendmail", dial, &stderr)
+	logger := newFallbackLogger("slendmail", dial, &stderr, false)
 	logger.Error("target failed", "target", "hook")
 	lines := strings.Split(strings.TrimSpace(stderr.String()), "\n")
 	if len(lines) != 2 {
@@ -88,5 +88,34 @@ func TestFallbackLoggerUsesStderr(t *testing.T) {
 	}
 	if !strings.Contains(lines[1], `level=ERROR msg="target failed" target=hook`) {
 		t.Errorf("record line = %q", lines[1])
+	}
+}
+
+// TestFallbackLoggerElevated pins that an elevated process tells its
+// caller only the constant messages of warnings and errors: configuration
+// positions, target names and statuses stay in syslog.
+func TestFallbackLoggerElevated(t *testing.T) {
+	var stderr bytes.Buffer
+	dial := func(string) (*syslog.Writer, error) {
+		return nil, errors.New("dial unix /dev/log: connect: no such file or directory")
+	}
+	logger := newFallbackLogger("slendmail", dial, &stderr, true).With("call", "0123")
+	logger.Info("message received", "size", 10)
+	logger.Error("configuration rejected, message not delivered", "err", "etc/slendmail.conf:3:1: target \"hook\"")
+	logger.Error("target failed", "target", "hook", "status", 502)
+	want := "slendmail: syslog unavailable, logging to stderr\nslendmail: configuration rejected, message not delivered\nslendmail: target failed\n"
+	if got := stderr.String(); got != want {
+		t.Errorf("stderr =\n%s\nwant\n%s", got, want)
+	}
+}
+
+// TestTransportProxy pins where the proxy comes from: the environment
+// without elevation (a container behind a proxy), nowhere with it.
+func TestTransportProxy(t *testing.T) {
+	if newTransport(false).Proxy == nil {
+		t.Error("unelevated transport ignores the proxy variables")
+	}
+	if newTransport(true).Proxy != nil {
+		t.Error("elevated transport uses a proxy")
 	}
 }

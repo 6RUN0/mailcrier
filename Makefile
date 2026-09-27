@@ -20,13 +20,19 @@ ZIZMOR_FLAGS ?= --offline
 # check-refs and check-commits.
 BASE ?= $(shell git rev-parse -q --verify origin/develop >/dev/null && echo origin/develop || echo HEAD)
 
+# Each fuzz target runs this long in check; a longer run takes
+# FUZZTIME=10m. Inputs that fail are saved under testdata/fuzz and belong
+# in the commit that fixes them.
+FUZZTIME ?= 10s
+FUZZ_TARGETS := ./internal/app:FuzzSanitize
+
 # The legacy root package is not shipped and is only a feature reference,
 # so its dependencies are not scanned.
 VULN_PACKAGES := ./cmd/... ./internal/... ./scripts/...
 
-.PHONY: check lint lint-go lint-yaml lint-actions tidy test build vuln check-refs check-commits snapshot
+.PHONY: check lint lint-go lint-yaml lint-actions tidy test fuzz build vuln check-refs check-commits snapshot
 
-check: lint tidy test build check-refs check-commits
+check: lint tidy test fuzz build check-refs check-commits
 	-$(MAKE) vuln
 
 lint: lint-go lint-yaml lint-actions
@@ -47,6 +53,11 @@ tidy:
 
 test:
 	$(GO) test -race ./...
+
+fuzz:
+	for target in $(FUZZ_TARGETS); do \
+		$(GO) test -run '^$$' -fuzz "^$${target#*:}$$" -fuzztime $(FUZZTIME) "$${target%%:*}" || exit 1; \
+	done
 
 build:
 	$(GO) build -o slendmail ./cmd/slendmail

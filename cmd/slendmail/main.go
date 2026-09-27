@@ -5,10 +5,21 @@ package main
 import (
 	"context"
 	"os"
+	"syscall"
 
 	"github.com/6RUN0/slendmail/internal/app"
 )
 
+// umask keeps every file the process creates, with the group of a setgid
+// binary, out of reach of other users.
+const umask = 0o007
+
+// main hardens the process before anything else: a setgid process must not
+// read the caller's environment, not even TZ, before it is sanitized.
 func main() {
-	os.Exit(app.Run(context.Background(), app.SystemDeps(), os.Args[1:], os.Stdin))
+	syscall.Umask(umask)
+	args, reexecErr := app.Harden(app.CurrentProcess())
+	deps := app.SystemDeps()
+	deps.ReexecErr = reexecErr
+	os.Exit(app.Run(context.Background(), deps, args, os.Stdin))
 }

@@ -29,6 +29,23 @@ type invocation struct {
 	// writer Run installs with SetLogOutput.
 	stderr    bytes.Buffer
 	logOutput io.Writer
+	// args defaults to cron's "-ti".
+	args []string
+	// creds, environ and files set the ids, the environment and extra
+	// files of the process.
+	creds   Credentials
+	environ []string
+	files   fstest.MapFS
+	// execs records the Exec calls, which all fail; replacedEnv is the
+	// environment passed to ReplaceEnv.
+	execs       []execCall
+	replacedEnv []string
+}
+
+// execCall is one attempt to replace the process image.
+type execCall struct {
+	path      string
+	argv, env []string
 }
 
 func (inv *invocation) run(t *testing.T) int {
@@ -38,20 +55,46 @@ func (inv *invocation) run(t *testing.T) int {
 	if client == nil {
 		client = &http.Client{}
 	}
+	fsys := fstest.MapFS{SystemConfigPath: {Data: []byte(inv.config)}}
+	for name, file := range inv.files {
+		fsys[name] = file
+	}
+	args := inv.args
+	if args == nil {
+		args = []string{"-ti"}
+	}
+	// As main does: Harden first, with an Exec that always fails.
+	environ := inv.environ
+	args, reexecErr := Harden(Process{
+		Argv:        append([]string{"/usr/sbin/sendmail"}, args...),
+		Environ:     inv.environ,
+		Credentials: inv.creds,
+		Exec: func(path string, argv, env []string) error {
+			inv.execs = append(inv.execs, execCall{path, argv, env})
+			return errors.New("exec: permission denied")
+		},
+		ReplaceEnv: func(env []string) {
+			inv.replacedEnv = env
+			environ = env
+		},
+	})
 	deps := Deps{
 		NewLogger: func(tag string) *slog.Logger {
 			buf := &bytes.Buffer{}
 			inv.logs[tag] = buf
 			return slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 		},
-		ConfigFS:     fstest.MapFS{SystemConfigPath: {Data: []byte(inv.config)}},
+		ConfigFS:     fsys,
 		ConfigPath:   SystemConfigPath,
 		HTTP:         client,
 		Hostname:     "host1.example.org",
 		Stderr:       &inv.stderr,
 		SetLogOutput: func(w io.Writer) { inv.logOutput = w },
+		Credentials:  inv.creds,
+		Environ:      environ,
+		ReexecErr:    reexecErr,
 	}
-	return Run(context.Background(), deps, []string{"-ti"}, inv.stdin)
+	return Run(context.Background(), deps, args, inv.stdin)
 }
 
 // callField is the random call id on every record; log and output drop it

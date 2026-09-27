@@ -9,53 +9,154 @@ import (
 	"log/syslog"
 	"net/http"
 	"os"
+	"os/user"
+	"strconv"
+	"strings"
 	"sync"
+	"syscall"
 )
 
 // SystemConfigPath is the configuration file, relative to the root of
 // SystemDeps().ConfigFS.
 const SystemConfigPath = "etc/slendmail.conf"
 
-// SystemDeps returns the Deps of a real invocation: syslog, the root file
-// system and the default HTTP transport.
+// serviceUser is the system user that runs the queue and owns the
+// configuration together with root.
+const serviceUser = "slendmail"
+
+// CurrentProcess returns what Harden needs, without reading anything but
+// the command line, the environment and the ids.
+func CurrentProcess() Process {
+	return Process{
+		Argv:        os.Args,
+		Environ:     os.Environ(),
+		Credentials: Credentials{UID: os.Getuid(), GID: os.Getgid(), EGID: os.Getegid()},
+		Exec:        syscall.Exec,
+		ReplaceEnv:  replaceEnv,
+	}
+}
+
+// SystemDeps returns the Deps of a real invocation, to be called after
+// Harden: syslog, the root file system, the ids and environment of the
+// process, and an HTTP transport.
 func SystemDeps() Deps {
 	hostname, err := os.Hostname()
 	if err != nil {
 		hostname = "unknown"
 	}
+	creds := Credentials{
+		UID:        os.Getuid(),
+		GID:        os.Getgid(),
+		EGID:       os.Getegid(),
+		ServiceUID: lookupServiceUID(),
+	}
 	return Deps{
-		NewLogger:    newSystemLogger,
+		NewLogger: func(tag string) *slog.Logger {
+			return newFallbackLogger(tag, dialSyslog, os.Stderr, creds.isElevated())
+		},
 		ConfigFS:     os.DirFS("/"),
 		ConfigPath:   SystemConfigPath,
-		HTTP:         &http.Client{},
+		HTTP:         &http.Client{Transport: newTransport(creds.isElevated())},
 		Hostname:     hostname,
 		Stderr:       os.Stderr,
 		SetLogOutput: log.SetOutput,
+		Credentials:  creds,
+		Environ:      os.Environ(),
 	}
 }
 
-// newSystemLogger logs to syslog with the mail facility, because cron and
-// at discard the output of the mailer they run.
-func newSystemLogger(tag string) *slog.Logger {
-	return newFallbackLogger(tag, dialSyslog, os.Stderr)
+// newTransport returns the HTTP transport of a real invocation. Without
+// elevation it honours the proxy variables, which a container behind a
+// proxy needs. An elevated process uses no proxy: the variables are the
+// caller's and would route token-bearing requests through a host of the
+// caller's choice.
+func newTransport(isElevated bool) *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = http.ProxyFromEnvironment
+	if isElevated {
+		transport.Proxy = nil
+	}
+	return transport
 }
 
+// lookupServiceUID returns the uid of the slendmail user, -1 when the
+// system has none.
+func lookupServiceUID() int {
+	account, err := user.Lookup(serviceUser)
+	if err != nil {
+		return -1
+	}
+	uid, err := strconv.Atoi(account.Uid)
+	if err != nil {
+		return -1
+	}
+	return uid
+}
+
+// replaceEnv clears the environment and sets env. os.Clearenv also resets
+// the settings the runtime took from GODEBUG.
+func replaceEnv(env []string) {
+	os.Clearenv()
+	for _, entry := range env {
+		if key, value, ok := strings.Cut(entry, "="); ok {
+			_ = os.Setenv(key, value)
+		}
+	}
+}
+
+// dialSyslog connects to syslog with the mail facility, because cron and
+// at discard the output of the mailer they run.
 func dialSyslog(tag string) (*syslog.Writer, error) {
 	return syslog.New(syslog.LOG_MAIL|syslog.LOG_INFO, tag)
 }
 
 // newFallbackLogger logs to the syslog writer dial returns or, when syslog
-// is unreachable (a container has no /dev/log), to stderr as logfmt with
-// time and level, so that the records are not lost and the call goes on.
-func newFallbackLogger(tag string, dial func(tag string) (*syslog.Writer, error), stderr io.Writer) *slog.Logger {
+// is unreachable (a container has no /dev/log), to stderr, so that the
+// records are not lost and the call goes on. Without elevation stderr gets
+// logfmt with time and level. An elevated process writes for its caller,
+// who must not see what only the group may read (configuration positions,
+// target names, statuses), so stderr gets only the constant message of
+// warnings and errors.
+func newFallbackLogger(tag string, dial func(tag string) (*syslog.Writer, error), stderr io.Writer, isElevated bool) *slog.Logger {
 	writer, err := dial(tag)
-	if err != nil {
-		logger := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
-		logger.Warn("syslog unavailable, logging to stderr", "err", err)
-		return logger
+	if err == nil {
+		return slog.New(newSyslogHandler(writer))
 	}
-	return slog.New(newSyslogHandler(writer))
+	var logger *slog.Logger
+	if isElevated {
+		logger = slog.New(&messageHandler{writer: stderr, mu: &sync.Mutex{}})
+	} else {
+		logger = slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	}
+	logger.Warn("syslog unavailable, logging to stderr", "err", err)
+	return logger
 }
+
+// messageHandler writes "slendmail: <message>" for warnings and errors and
+// drops every attribute. Messages are constants, so they carry no data.
+type messageHandler struct {
+	writer io.Writer
+	mu     *sync.Mutex
+}
+
+// Enabled accepts warnings and errors.
+func (h *messageHandler) Enabled(_ context.Context, level slog.Level) bool {
+	return level >= slog.LevelWarn
+}
+
+// Handle writes the message alone.
+func (h *messageHandler) Handle(_ context.Context, record slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	_, err := io.WriteString(h.writer, "slendmail: "+record.Message+"\n")
+	return err
+}
+
+// WithAttrs drops attrs.
+func (h *messageHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+
+// WithGroup drops the group.
+func (h *messageHandler) WithGroup(string) slog.Handler { return h }
 
 // syslogHandler formats records as logfmt without time and level, which
 // syslog records itself, and sends each one with the matching severity.
