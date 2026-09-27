@@ -33,7 +33,7 @@ T-ADJ-31	high	todo	--probe does not read stdin or touch the spool, sends a test 
 T-ADJ-32	high	todo	stdin is limited to 10 MiB: exactly the limit passes unchanged, the rest is drained and a warning is logged	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L310-L354
 T-ADJ-33	high	todo	Suppression by case-insensitive glob on subject and sender; a suppressed message is logged and not queued	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L250-L292
 T-ADJ-34	low	todo	A spool failure does not prevent the direct delivery attempt	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L512-L545
-T-ADJ-35	high	todo	The bot token is redacted in logs, including values passed as format arguments	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L364-L413
+T-ADJ-35	high	done	The bot token is redacted in logs, including values passed as format arguments	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L364-L413
 T-ADJ-36	high	todo	Whitespace-only input is delivered with an empty-body marker instead of being rejected	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_parser.py#L344
 T-ADJ-37	critical	todo	A folded Subject with repeated spaces collapses into one trimmed line	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_parser.py#L317-L340
 T-ADJ-38	high	todo	multipart/mixed with an attachment takes the body from the text/plain part and reports the attachment	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_parser.py#L377
@@ -176,6 +176,6 @@ T-TPL-08	high	todo	truncate n keeps n runes including a three-dot ASCII marker; 
 T-TPL-09	low	todo	join takes the separator first and works in pipelines over strings and addresses	https://github.com/prometheus/alertmanager/blob/6a79679/template/template.go#L294-L312
 T-TPL-10	low	todo	date and tz format the message date in a zone; an unknown zone is an execution error	https://github.com/prometheus/alertmanager/blob/6a79679/template/template.go#L335-L345
 T-TPL-11	critical	todo	Bcc never reaches template data, even with -t	https://github.com/marlam/msmtp/blob/755df9f0d3ac/tests/test-header-handling.sh#L35-L55
-T-TPL-12	critical	todo	A bot token or webhook URL never appears in logs or exit messages; it is replaced by ***	https://github.com/KostyaEsmukov/smtp_to_telegram/blob/279f5fc/smtp_to_telegram.go#L644-L646
+T-TPL-12	critical	done	A bot token or webhook URL never appears in logs or exit messages; it is replaced by ***	https://github.com/KostyaEsmukov/smtp_to_telegram/blob/279f5fc/smtp_to_telegram.go#L644-L646
 T-TPL-13	critical	todo	The default MarkdownV2 template escapes the body, so dots and dashes do not cause an API error	https://github.com/nadiamoe/sendmail-telegram/blob/b76fa85b4572/sendmail-telegram.go
 T-TPL-14	critical	todo	An ISO-8859-1 base64 body and a Q-encoded ISO-8859-1 Subject reach the template as UTF-8	https://github.com/KostyaEsmukov/smtp_to_telegram/blob/279f5fc/smtp_to_telegram_test.go#L641

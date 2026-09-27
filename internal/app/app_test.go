@@ -24,6 +24,10 @@ type invocation struct {
 	stdin  io.Reader
 	client *http.Client
 	logs   map[string]*bytes.Buffer
+	// stderr collects what the standard log package prints through the
+	// writer Run installs with SetLogOutput.
+	stderr    bytes.Buffer
+	logOutput io.Writer
 }
 
 func (inv *invocation) run(t *testing.T) int {
@@ -39,12 +43,24 @@ func (inv *invocation) run(t *testing.T) int {
 			inv.logs[tag] = buf
 			return slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 		},
-		ConfigFS:   fstest.MapFS{SystemConfigPath: {Data: []byte(inv.config)}},
-		ConfigPath: SystemConfigPath,
-		HTTP:       client,
-		Hostname:   "host1.example.org",
+		ConfigFS:     fstest.MapFS{SystemConfigPath: {Data: []byte(inv.config)}},
+		ConfigPath:   SystemConfigPath,
+		HTTP:         client,
+		Hostname:     "host1.example.org",
+		Stderr:       &inv.stderr,
+		SetLogOutput: func(w io.Writer) { inv.logOutput = w },
 	}
 	return Run(context.Background(), deps, []string{"-ti"}, inv.stdin)
+}
+
+// output returns everything the invocation wrote: all syslog tags and
+// stderr.
+func (inv *invocation) output() string {
+	var all strings.Builder
+	for tag, buf := range inv.logs {
+		all.WriteString("[" + tag + "]\n" + buf.String())
+	}
+	return all.String() + "[stderr]\n" + inv.stderr.String()
 }
 
 func (inv *invocation) log(tag string) string {

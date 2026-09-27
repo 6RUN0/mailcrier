@@ -16,13 +16,13 @@ const modulePath = "github.com/6RUN0/slendmail"
 
 // allowedImports lists, per package directory, the module packages its
 // non-test files may import. A trailing "/*" matches every direct
-// subpackage. The graph keeps leaves (text, message) free of dependencies,
+// subpackage. The graph keeps leaves (text, message, redact) free of dependencies,
 // keeps config ignorant of targets and templates, and leaves wiring to app
 // alone. A package missing from the table fails the test, so a new package
 // needs an explicit decision here.
 var allowedImports = map[string][]string{
 	"cmd/slendmail":      {"internal/app"},
-	"internal/app":       {"internal/sendmail", "internal/config", "internal/message", "internal/route", "internal/render", "internal/delivery", "internal/spool", "internal/backend", "internal/backend/*"},
+	"internal/app":       {"internal/sendmail", "internal/config", "internal/message", "internal/route", "internal/render", "internal/delivery", "internal/spool", "internal/backend", "internal/backend/*", "internal/redact"},
 	"internal/delivery":  {"internal/backend", "internal/render", "internal/text", "internal/message", "internal/spool"},
 	"internal/backend/*": {"internal/backend", "internal/text", "internal/message"},
 	"internal/backend":   {"internal/text", "internal/message"},
@@ -34,6 +34,7 @@ var allowedImports = map[string][]string{
 	"internal/text":      {},
 	"internal/message":   {},
 	"internal/golden":    {},
+	"internal/redact":    {},
 	"scripts/*":          {},
 }
 

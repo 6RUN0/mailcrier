@@ -63,6 +63,10 @@ it.
 - `internal/backend`: `Sender`, `Caps`, `Payload`, `*Error` with `Class`,
   `Classify`. Targets live in `internal/backend/<name>` (`webhook` is type
   `http`) and are mapped from config only in `internal/app`.
+- `internal/redact`: `app.Run` wraps every logger and the standard `log`
+  output with one `Redactor` and registers tokens and URLs right after
+  `config.Load`; a new secret-bearing config key must be registered in
+  `app.registerSecrets`.
 - `internal/delivery`: sequential `Deliver`; `ExitCode` is 0 when any target
   accepted the message, else 69.
 - `TestImportGraph` (`import_graph_test.go`) enforces the package graph: a

@@ -17,12 +17,14 @@ import (
 	"github.com/6RUN0/slendmail/internal/config"
 	"github.com/6RUN0/slendmail/internal/delivery"
 	"github.com/6RUN0/slendmail/internal/message"
+	"github.com/6RUN0/slendmail/internal/redact"
 )
 
 // Exit statuses from sysexits.h that Run produces itself.
 const (
-	exitNoInput = 66
-	exitConfig  = 78
+	exitNoInput  = 66
+	exitSoftware = 70
+	exitConfig   = 78
 )
 
 // Deps are the parts of the environment an invocation uses.
@@ -39,12 +41,35 @@ type Deps struct {
 	HTTP *http.Client
 	// Hostname is the name of the machine, sent along with each message.
 	Hostname string
+	// Stderr receives what the standard log package writes: net/http and
+	// its HTTP/2 transport print their debug output there.
+	Stderr io.Writer
+	// SetLogOutput redirects the standard log package, as log.SetOutput.
+	SetLogOutput func(w io.Writer)
 }
 
 // Run handles one invocation and returns the process exit status. Command
 // line arguments are accepted and ignored.
-func Run(ctx context.Context, d Deps, _ []string, stdin io.Reader) int {
-	log := d.NewLogger(config.DefaultSyslogTag)
+//
+// Every log record and everything the standard log package prints passes
+// through one redactor, which learns the secrets of the configuration
+// right after loading it, before the first record that could quote them.
+func Run(ctx context.Context, d Deps, _ []string, stdin io.Reader) (code int) {
+	redactor := &redact.Redactor{}
+	d.SetLogOutput(redactor.Writer(d.Stderr))
+	newLogger := func(tag string) *slog.Logger {
+		return slog.New(redactor.Handler(d.NewLogger(tag).Handler()))
+	}
+	log := newLogger(config.DefaultSyslogTag)
+	// A panic value may quote a request URL; logging it through the
+	// redactor keeps the token out, which the runtime's own crash report
+	// would not.
+	defer func() {
+		if value := recover(); value != nil {
+			log.Error("panic, message not delivered", "panic", value)
+			code = exitSoftware
+		}
+	}()
 	msg, err := message.Read(stdin)
 	if err != nil {
 		log.Error("message not read, giving up", "err", err)
@@ -55,8 +80,9 @@ func Run(ctx context.Context, d Deps, _ []string, stdin io.Reader) int {
 		log.Error("configuration rejected, message not delivered", "err", err)
 		return exitConfig
 	}
+	registerSecrets(redactor, cfg)
 	if cfg.General.SyslogTag != config.DefaultSyslogTag {
-		log = d.NewLogger(cfg.General.SyslogTag)
+		log = newLogger(cfg.General.SyslogTag)
 	}
 	client := *d.HTTP
 	client.Timeout = cfg.General.HTTPTimeout.Duration
@@ -77,6 +103,16 @@ func Run(ctx context.Context, d Deps, _ []string, stdin io.Reader) int {
 		log.Error("target failed", "target", r.TargetID, "status", r.Status, "err", r.Err)
 	}
 	return delivery.ExitCode(results)
+}
+
+// registerSecrets hands every value that may hold a secret to the redactor:
+// tokens and URLs, including those read from *_file.
+func registerSecrets(redactor *redact.Redactor, cfg *config.Config) {
+	for _, name := range cfg.TargetNames() {
+		target := cfg.Targets[name]
+		redactor.Add(target.Token)
+		redactor.AddURL(target.URL)
+	}
 }
 
 // buildTargets maps configured targets to senders, in name order so that

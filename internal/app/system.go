@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"log"
 	"log/slog"
 	"log/syslog"
 	"net/http"
@@ -22,11 +23,13 @@ func SystemDeps() Deps {
 		hostname = "unknown"
 	}
 	return Deps{
-		NewLogger:  newSystemLogger,
-		ConfigFS:   os.DirFS("/"),
-		ConfigPath: SystemConfigPath,
-		HTTP:       &http.Client{},
-		Hostname:   hostname,
+		NewLogger:    newSystemLogger,
+		ConfigFS:     os.DirFS("/"),
+		ConfigPath:   SystemConfigPath,
+		HTTP:         &http.Client{},
+		Hostname:     hostname,
+		Stderr:       os.Stderr,
+		SetLogOutput: log.SetOutput,
 	}
 }
 

@@ -63,7 +63,13 @@ preset = "generic-json"
   `Content-Type: application/json`. Other target types and presets are
   recognized by the parser but rejected with exit status 78 until implemented.
 - Exit status: 0 when at least one target accepted the message, 69 when none
-  did, 66 when stdin cannot be read.
+  did, 66 when stdin cannot be read, 70 on an internal error (a bug; the
+  record in the log carries the details).
+- Tokens and URLs, including the content of `*_file`, are replaced by `***`
+  in every log record and in the debug output of the Go HTTP stack. A URL
+  is masked whole, and so are its host, host labels, request URI, path
+  segments and query values of 16 characters or more (the request URI also
+  when it has a query) and its userinfo.
 - `http_timeout` bounds one HTTP request from dialing to the end of the
   response; `deadline` bounds the delivery to all targets together. Both
   take Go duration strings (`"500ms"`, `"15s"`, `"1m"`) and must be
