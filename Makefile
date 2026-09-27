@@ -1,12 +1,18 @@
 GO ?= go
 UVX ?= uvx
 
-# Each tool module pins one set of tools; actionlint and goreleaser have
-# their own because their dependencies conflict with golangci-lint's.
+# Each tool module pins one set of tools; actionlint, goreleaser and
+# go-licenses have their own because their dependencies conflict with
+# golangci-lint's.
 TOOL := $(GO) tool -modfile=tools/go.mod
 ACTIONLINT := $(GO) tool -modfile=tools/actionlint/go.mod actionlint
 GORELEASER := $(GO) tool -modfile=tools/goreleaser/go.mod goreleaser
-TOOL_MODULES := tools tools/actionlint tools/goreleaser
+GO_LICENSES := $(GO) tool -modfile=tools/licenses/go.mod go-licenses
+TOOL_MODULES := tools tools/actionlint tools/goreleaser tools/licenses
+
+# Licenses a dependency linked into the binary may carry; anything else,
+# GPL in particular, fails licenses.
+ALLOWED_LICENSES := MIT,BSD-2-Clause,BSD-3-Clause,Apache-2.0,ISC
 
 # Python tools are pinned in tools/requirements.txt, which Dependabot updates.
 pinned = $(shell sed -n 's/^$(1)==//p' tools/requirements.txt)
@@ -35,9 +41,9 @@ E2E_IMAGE := slendmail-setgid-e2e
 # so its dependencies are not scanned.
 VULN_PACKAGES := ./cmd/... ./internal/... ./scripts/...
 
-.PHONY: check lint lint-go lint-yaml lint-actions tidy test fuzz build vuln check-refs check-commits snapshot setgid-e2e
+.PHONY: check lint lint-go lint-yaml lint-actions tidy test fuzz build licenses vuln check-refs check-commits snapshot setgid-e2e
 
-check: lint tidy test fuzz build check-refs check-commits
+check: lint tidy test fuzz build licenses check-refs check-commits
 	-$(MAKE) vuln
 
 lint: lint-go lint-yaml lint-actions
@@ -67,6 +73,9 @@ fuzz:
 build:
 	$(GO) build -o slendmail ./cmd/slendmail
 	$(GO) build -o /dev/null .
+
+licenses:
+	$(GO_LICENSES) check ./cmd/... --allowed_licenses=$(ALLOWED_LICENSES)
 
 vuln:
 	$(TOOL) govulncheck $(VULN_PACKAGES)

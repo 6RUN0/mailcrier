@@ -7,8 +7,8 @@ code in this repository.
 
 ```sh
 make check        # all CI checks of a push; govulncheck only warns here
-make lint         # other targets: tidy test fuzz build vuln check-refs
-                  # check-commits snapshot
+make lint         # other targets: tidy test fuzz build licenses vuln
+                  # check-refs check-commits snapshot
 make fuzz FUZZTIME=10m   # longer fuzzing; check runs each target 10s
 make setgid-e2e   # needs docker: TestSetgidReexec in a root container
 go build -o slendmail ./cmd/slendmail   # new binary; the name is gitignored
@@ -20,8 +20,9 @@ mandoc -T lint docs/slendmail.8         # man page; not part of make check
 
 - Tools are pinned where Dependabot updates them: golangci-lint and
   govulncheck in `tools/go.mod`, actionlint in `tools/actionlint/go.mod`,
-  goreleaser in `tools/goreleaser/go.mod` (run as `go tool -modfile=...`;
-  separate modules because their dependencies conflict with golangci-lint's),
+  goreleaser in `tools/goreleaser/go.mod`, go-licenses in
+  `tools/licenses/go.mod` (run as `go tool -modfile=...`; separate modules
+  because their dependencies conflict with golangci-lint's),
   yamllint and zizmor in `tools/requirements.txt` (run through `uvx`, the
   `Makefile` reads the versions from that file).
 - `go get -tool` records tool modules as `// indirect`, which Dependabot
