@@ -336,11 +336,11 @@ func TestLoadTimeLimits(t *testing.T) {
 func TestLoadStrings(t *testing.T) {
 	const target = "\n[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\n"
 	t.Run("configured", func(t *testing.T) {
-		cfg, err := load(t, "[strings]\nno_subject = \"(ohne Betreff)\"\nempty_body = \"(leer)\"\ntruncated = \"[gekürzt]\"\nmore_attachments = \"und %d weitere\"\n"+target, nil)
+		cfg, err := load(t, "[strings]\nno_subject = \"(ohne Betreff)\"\nempty_body = \"(leer)\"\ntruncated = \"[gekürzt]\"\nmore_attachments = \"und %d weitere\"\nnot_sent = \"[nicht gesendet]\"\n"+target, nil)
 		if err != nil {
 			t.Fatalf("Load() error = %v", err)
 		}
-		if want := (Strings{NoSubject: "(ohne Betreff)", EmptyBody: "(leer)", Truncated: "[gekürzt]", MoreAttachments: "und %d weitere"}); cfg.Strings != want {
+		if want := (Strings{NoSubject: "(ohne Betreff)", EmptyBody: "(leer)", Truncated: "[gekürzt]", MoreAttachments: "und %d weitere", NotSent: "[nicht gesendet]"}); cfg.Strings != want {
 			t.Errorf("Strings = %+v, want %+v", cfg.Strings, want)
 		}
 	})

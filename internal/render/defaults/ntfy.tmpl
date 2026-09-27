@@ -1,6 +1,6 @@
 {{ .Body | default .Strings.EmptyBody | trimEnd }}
 {{- range .Attachments }}
-{{ .Name }} ({{ .ContentType }}, {{ humanizeBytes .Size }})
+{{ .Name }} ({{ .ContentType }}, {{ humanizeBytes .Size }}){{ if .IsSkipped }} {{ $.Strings.NotSent }}{{ end }}
 {{- end }}
 {{- if .MoreAttachments }}
 {{ printf .Strings.MoreAttachments .MoreAttachments }}

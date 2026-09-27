@@ -54,6 +54,7 @@ no_subject = "(no subject)"
 empty_body = "(empty body)"
 truncated = "[truncated]"
 more_attachments = "... and %d more"
+not_sent = "[not sent]"
 
 [target.hook]                   # the table key is the target name: [a-z0-9-]
 type = "http"
@@ -73,7 +74,9 @@ preset = "generic-json"
   a body without visible text, `truncated` at the end of a body cut to the
   length limit of a target, `more_attachments` after a list of
   attachments cut to that limit, with `%d` for the number left out (exactly
-  one `%d` and no other `%`, else exit status 78). Each is optional and
+  one `%d` and no other `%`, else exit status 78), `not_sent` after an
+  attachment listed in the text but not sent because it exceeds a file
+  limit of the target. Each is optional and
   must not be blank; the values above are the defaults. The `http` target
   applies only `empty_body`: its payload carries the subject as it is,
   empty when the message has none, and it has no length limit. The others

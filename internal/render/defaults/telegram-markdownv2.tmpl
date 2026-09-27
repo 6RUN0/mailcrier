@@ -4,7 +4,7 @@ _{{ .Hostname | tgMDv2 }}: {{ .From.String | tgMDv2 }}_
 {{ .Body | default .Strings.EmptyBody | trimEnd | tgMDv2Code }}
 ```
 {{- range .Attachments }}
-{{ .Name | tgMDv2 }} \({{ .ContentType | tgMDv2 }}, {{ humanizeBytes .Size | tgMDv2 }}\)
+{{ .Name | tgMDv2 }} \({{ .ContentType | tgMDv2 }}, {{ humanizeBytes .Size | tgMDv2 }}\){{ if .IsSkipped }} {{ $.Strings.NotSent | tgMDv2 }}{{ end }}
 {{- end }}
 {{- if .MoreAttachments }}
 {{ printf .Strings.MoreAttachments .MoreAttachments | tgMDv2 }}

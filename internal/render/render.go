@@ -33,6 +33,9 @@ type Strings struct {
 	// MoreAttachments follows the attachments Fit has listed when it left
 	// out the rest; its one %d verb is the number left out.
 	MoreAttachments string
+	// NotSent follows an attachment listed in the text but not sent with
+	// it, because it exceeds a file limit of the target.
+	NotSent string
 }
 
 // DefaultStrings returns the English notices.
@@ -42,6 +45,7 @@ func DefaultStrings() Strings {
 		EmptyBody:       "(empty body)",
 		Truncated:       "[truncated]",
 		MoreAttachments: "... and %d more",
+		NotSent:         "[not sent]",
 	}
 }
 
@@ -51,6 +55,9 @@ type Attachment struct {
 	Name        string
 	ContentType string
 	Size        int64
+	// IsSkipped reports an attachment the target sends files but not this
+	// one: it exceeds the size or number of files the target accepts.
+	IsSkipped bool
 }
 
 // Data is what a template sees.

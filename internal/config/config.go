@@ -92,6 +92,9 @@ type Strings struct {
 	// MoreAttachments follows a list of attachments cut to the length
 	// limit of a target; its one %d is the number left out.
 	MoreAttachments string `toml:"more_attachments"`
+	// NotSent follows an attachment listed in the text but not sent,
+	// because it exceeds a file limit of the target.
+	NotSent string `toml:"not_sent"`
 }
 
 // Duration is a time span written as a Go duration string, such as "15s".
@@ -250,7 +253,7 @@ func validate(cfg *Config, keys keyIndex) *Error {
 	}
 	for _, notice := range []struct{ key, value string }{
 		{"no_subject", cfg.Strings.NoSubject}, {"empty_body", cfg.Strings.EmptyBody}, {"truncated", cfg.Strings.Truncated},
-		{"more_attachments", cfg.Strings.MoreAttachments},
+		{"more_attachments", cfg.Strings.MoreAttachments}, {"not_sent", cfg.Strings.NotSent},
 	} {
 		if keys.has("strings", notice.key) && strings.TrimSpace(notice.value) == "" {
 			pos := keys.position("strings", notice.key)

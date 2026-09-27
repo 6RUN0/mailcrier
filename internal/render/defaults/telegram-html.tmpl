@@ -2,7 +2,7 @@
 <i>{{ .Hostname | tgHTML }}: {{ .From.String | tgHTML }}</i>
 <pre>{{ .Body | default .Strings.EmptyBody | trimEnd | tgHTML }}</pre>
 {{- range .Attachments }}
-{{ .Name | tgHTML }} ({{ .ContentType | tgHTML }}, {{ humanizeBytes .Size }})
+{{ .Name | tgHTML }} ({{ .ContentType | tgHTML }}, {{ humanizeBytes .Size }}){{ if .IsSkipped }} {{ $.Strings.NotSent | tgHTML }}{{ end }}
 {{- end }}
 {{- if .MoreAttachments }}
 {{ printf .Strings.MoreAttachments .MoreAttachments | tgHTML }}

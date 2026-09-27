@@ -138,6 +138,26 @@ func TestBuiltinNotices(t *testing.T) {
 	})
 }
 
+// TestBuiltinNotSent pins that every template listing attachments marks
+// one the target does not send, escaped for its markup.
+func TestBuiltinNotSent(t *testing.T) {
+	d := readData(t, "To: root\nSubject: s\n\nbody\n")
+	d.Attachments = []Attachment{{Name: "dump.tar", ContentType: "application/x-tar", Size: 60 << 20, IsSkipped: true}, {Name: "small.log", ContentType: "text/plain", Size: 10}}
+	want := map[text.Format]string{
+		text.FormatPlain: "[not sent]", text.FormatNtfy: "[not sent]", text.FormatDiscord: `\[not sent\]`,
+		text.FormatSlackMrkdwn: "[not sent]", text.FormatTelegramHTML: "[not sent]", text.FormatTelegramMarkdownV2: `\[not sent\]`,
+	}
+	for format, out := range renderAll(t, d) {
+		notice, isListed := want[format]
+		if !isListed {
+			continue
+		}
+		if strings.Count(out, notice) != 1 || !strings.Contains(out, "MiB) "+notice) && !strings.Contains(out, `MiB\) `+notice) {
+			t.Errorf("%s: want %q once after the size of the skipped attachment:\n%s", format, notice, out)
+		}
+	}
+}
+
 func TestToJSON(t *testing.T) {
 	t.Run("T-TPL-07/any-body-gives-valid-json", func(t *testing.T) {
 		d := Data{Subject: "quote \" back \\ tab \t", Body: "nul \x00 esc \x1b bell \x07 invalid \xff\xfe end ", Hostname: "h"}

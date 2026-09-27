@@ -214,7 +214,7 @@ func notices(configured config.Strings) render.Strings {
 		dst   *string
 	}{
 		{configured.NoSubject, &strs.NoSubject}, {configured.EmptyBody, &strs.EmptyBody}, {configured.Truncated, &strs.Truncated},
-		{configured.MoreAttachments, &strs.MoreAttachments},
+		{configured.MoreAttachments, &strs.MoreAttachments}, {configured.NotSent, &strs.NotSent},
 	} {
 		if notice.value != "" {
 			*notice.dst = notice.value

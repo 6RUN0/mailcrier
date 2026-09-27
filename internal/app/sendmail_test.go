@@ -454,8 +454,8 @@ func TestRunCronieCommandLine(t *testing.T) {
 // TestNotices pins that every configured notice replaces its built-in
 // one and an absent one keeps it.
 func TestNotices(t *testing.T) {
-	got := notices(config.Strings{NoSubject: "a", EmptyBody: "b", Truncated: "c", MoreAttachments: "%d d"})
-	if want := (render.Strings{NoSubject: "a", EmptyBody: "b", Truncated: "c", MoreAttachments: "%d d"}); got != want {
+	got := notices(config.Strings{NoSubject: "a", EmptyBody: "b", Truncated: "c", MoreAttachments: "%d d", NotSent: "e"})
+	if want := (render.Strings{NoSubject: "a", EmptyBody: "b", Truncated: "c", MoreAttachments: "%d d", NotSent: "e"}); got != want {
 		t.Errorf("notices = %+v, want %+v", got, want)
 	}
 	if got := notices(config.Strings{}); got != render.DefaultStrings() {

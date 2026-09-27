@@ -4,7 +4,7 @@
 {{ .Body | default .Strings.EmptyBody | trimEnd | discordCode }}
 ```
 {{- range .Attachments }}
-{{ .Name | discordEscape }} ({{ .ContentType | discordEscape }}, {{ humanizeBytes .Size }})
+{{ .Name | discordEscape }} ({{ .ContentType | discordEscape }}, {{ humanizeBytes .Size }}){{ if .IsSkipped }} {{ $.Strings.NotSent | discordEscape }}{{ end }}
 {{- end }}
 {{- if .MoreAttachments }}
 {{ printf .Strings.MoreAttachments .MoreAttachments | discordEscape }}

@@ -2,7 +2,7 @@
 _{{ .Hostname | slackEscape }}: {{ .From.String | slackEscape }}_
 ```{{ .Body | default .Strings.EmptyBody | trimEnd | slackCode }}```
 {{- range .Attachments }}
-{{ .Name | slackEscape }} ({{ .ContentType | slackEscape }}, {{ humanizeBytes .Size }})
+{{ .Name | slackEscape }} ({{ .ContentType | slackEscape }}, {{ humanizeBytes .Size }}){{ if .IsSkipped }} {{ $.Strings.NotSent | slackEscape }}{{ end }}
 {{- end }}
 {{- if .MoreAttachments }}
 {{ printf .Strings.MoreAttachments .MoreAttachments | slackEscape }}
