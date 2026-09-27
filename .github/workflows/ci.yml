@@ -1,0 +1,91 @@
+---
+name: CI
+
+"on":
+  push:
+    branches: ["develop"]
+  pull_request:
+    branches: ["develop"]
+  schedule:
+    - cron: "41 4 * * *"
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: make check
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
+            tools/actionlint/go.sum
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          enable-cache: false
+      - name: Select base revision
+        id: base
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT_NAME" = pull_request ]; then base=$PR_BASE; else base=$PUSH_BEFORE; fi
+          if ! git cat-file -e "${base}^{commit}" 2>/dev/null; then base=$(git rev-parse HEAD^); fi
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+      - name: make check
+        env:
+          BASE: ${{ steps.base.outputs.base }}
+          GH_TOKEN: ${{ github.token }}
+          ZIZMOR_FLAGS: ""
+        run: make check
+
+  snapshot:
+    name: make snapshot
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: tools/goreleaser/go.sum
+      - run: make snapshot
+
+  vuln:
+    name: make vuln
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: tools/go.sum
+      - run: make vuln

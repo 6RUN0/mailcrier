@@ -1,0 +1,22 @@
+---
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - revive
+  exclusions:
+    paths:
+      - ^main\.go$
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/6RUN0/slendmail
+  exclusions:
+    paths:
+      - ^main\.go$
