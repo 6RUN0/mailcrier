@@ -143,6 +143,21 @@ disable_notification = true                # optional, silent messages
   and a document did not, the message counts as delivered and
   `attachments not delivered` is logged.
 
+```toml
+[target.ops-discord]
+type = "discord"
+url_file = "/etc/slendmail.d/discord.url"  # https://discord.com/api/webhooks/<id>/<token>
+```
+
+- `discord`: one webhook execution per message with `wait=true`, so that
+  Discord answers after storing the message, and `allowed_mentions` with an
+  empty `parse` list, so that `@everyone`, `@here` and user or role
+  mentions in the message do not ping. A query of the URL, such as
+  `thread_id`, is kept. The text holds at most 2000 characters (counted in
+  UTF-16 units); up to 10 files of at most 20 MiB and 25 MiB together go
+  in the same request. As for every target, 429, 5xx and any answer with
+  a `Retry-After` header are temporary, any other failure is permanent.
+
 ### Options, privileges and containers
 
 - `--config PATH` or the environment variable `SLENDMAIL_CONFIG` names

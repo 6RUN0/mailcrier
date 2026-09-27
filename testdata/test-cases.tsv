@@ -25,7 +25,7 @@ T-ADJ-23	high	todo	Spool constants and layout: 60 s backoff capped at 24 h, 7 da
 T-ADJ-24	critical	done	Process exit codes: 78 configuration error, 66 unreadable stdin, 73 spool entry not created; a malformed message is delivered as is	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/main.go#L79-L132
 T-ADJ-25	critical	done	A successful delivery exits 0	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L626
 T-ADJ-26	critical	done	A stdin read error exits 66	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L633
-T-ADJ-27	critical	todo	HTTP 429, 500, 502 queue the message and exit 75, or exit 69 without a spool; other 4xx and nothing delivered exit 69	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L650
+T-ADJ-27	critical	done	HTTP 429, 500, 502 queue the message and exit 75, or exit 69 without a spool; other 4xx and nothing delivered exit 69	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L650
 T-ADJ-28	critical	done	A configuration error exits 78 after logging the error	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L1101
 T-ADJ-29	low	todo	stdin attached to a terminal without a mode flag exits with a usage hint on stderr	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L1113
 T-ADJ-30	low	todo	-s SUBJECT adds a Subject only when the message has none, header name case-insensitive	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L728
@@ -144,7 +144,7 @@ T-ESC-05	critical	done	Telegram HTML escaping turns <, > and & into entities; qu
 T-ESC-06	high	done	A body with tags outside the Telegram whitelist arrives as literal text and the API accepts it	https://core.telegram.org/bots/api#html-style
 T-ESC-07	critical	done	Slack escaping replaces only &, < and >, leaves *, _, ~ and non-ASCII alone, and is applied exactly once	https://docs.slack.dev/messaging/formatting-message-text/
 T-ESC-08	critical	todo	<!channel> or <@U123> in a message reaches Slack as text, not as a mention	https://github.com/nicholas-fedor/shoutrrr/blob/c19db02256c2/pkg/services/chat/slack/slack_json.go#L63-L95
-T-ESC-09	critical	todo	Every Discord request carries allowed_mentions with an empty parse list; @everyone, @here and user or role mentions do not ping	https://github.com/discord/discord-api-docs/blob/ce076f0/developers/resources/message.mdx#L712-L727
+T-ESC-09	critical	done	Every Discord request carries allowed_mentions with an empty parse list; @everyone, @here and user or role mentions do not ping	https://github.com/discord/discord-api-docs/blob/ce076f0/developers/resources/message.mdx#L712-L727
 T-ESC-10	high	done	Discord code blocks survive triple backquotes in the body; Discord escaping covers bold, underline, strike, spoiler, backslash, leading # and >, and links	https://github.com/discordjs/discord.js/blob/dbb7490/packages/formatters/src/escapers.ts#L217-L350
 T-ESC-11	high	todo	CR and LF in an ntfy title become spaces so the request stays valid	https://github.com/binwiederhier/ntfy/blob/6560158/docs/publish.md#L353
 T-LIM-01	critical	todo	Telegram: 4096 characters go as is; 4097 go truncated plus a file	https://core.telegram.org/bots/api#sendmessage
@@ -155,8 +155,8 @@ T-LIM-05	critical	todo	Telegram truncation never splits a tag or an entity and t
 T-LIM-06	high	todo	A document caption is at most 1024; longer text goes as sendMessage followed by sendDocument without caption	https://core.telegram.org/bots/api#senddocument
 T-LIM-07	high	done	An attachment over 50 MB is not sent to Telegram and the text notes the skipped file and its size	https://core.telegram.org/bots/api#senddocument
 T-LIM-08	critical	todo	Discord: content over 2000 characters is truncated and the full text goes as message.txt	https://github.com/discord/discord-api-docs/blob/ce076f0/developers/resources/webhook.mdx#L237
-T-LIM-09	high	todo	Discord: a file over 20 MiB or a request over 25 MiB skips the file with a note; at most 10 files per request	https://github.com/discord/discord-api-docs/blob/ce076f0/developers/reference.mdx#L438
-T-LIM-10	critical	todo	Discord webhooks use wait=true; 200 is success, 4xx is permanent (exit 69), 5xx and 429 are temporary	https://github.com/discord/discord-api-docs/blob/ce076f0/developers/resources/webhook.mdx#L228
+T-LIM-09	high	done	Discord: a file over 20 MiB or a request over 25 MiB skips the file with a note; at most 10 files per request	https://github.com/discord/discord-api-docs/blob/ce076f0/developers/reference.mdx#L438
+T-LIM-10	critical	done	Discord webhooks use wait=true; 200 is success, 4xx is permanent (exit 69), 5xx and 429 are temporary	https://github.com/discord/discord-api-docs/blob/ce076f0/developers/resources/webhook.mdx#L228
 T-LIM-11	high	todo	Slack: text over 40000 characters is truncated to the target limit plus a file	https://docs.slack.dev/reference/methods/chat.postMessage/
 T-LIM-12	low	todo	Slack: more than 3000 characters are not put into one section block	https://docs.slack.dev/reference/block-kit/blocks/section-block/
 T-LIM-13	high	todo	ntfy: a body over 4096 UTF-8 bytes goes as an attachment and a title over 1 KB is truncated	https://github.com/binwiederhier/ntfy/blob/6560158/server/config.go#L69
