@@ -54,6 +54,8 @@ func TestDeliver(t *testing.T) {
 	}
 }
 
+// TestExitCode has one subtest per row of the exit status matrix that
+// applies without a spool, named after the situation.
 func TestExitCode(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -61,11 +63,15 @@ func TestExitCode(t *testing.T) {
 		want     int
 	}{
 		{"all-ok", []Status{OK, OK}, 0},
+		{"ok-and-suppressed", []Status{Suppressed, OK}, 0},
+		{"all-suppressed", []Status{Suppressed, Suppressed}, 0},
 		{"ok-and-perm", []Status{OK, Perm}, 0},
 		{"ok-and-temp-without-spool", []Status{Temp, OK}, 0},
 		{"all-perm", []Status{Perm, Perm}, 69},
 		{"perm-and-temp", []Status{Temp, Perm}, 69},
+		{"suppressed-and-perm", []Status{Suppressed, Perm}, 69},
 		{"all-temp-without-spool", []Status{Temp, Temp}, 69},
+		{"no-results", nil, 69},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

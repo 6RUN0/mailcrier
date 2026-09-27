@@ -34,6 +34,8 @@ const (
 	Temp
 	// Perm means the target rejected the payload for good.
 	Perm
+	// Suppressed means a rule kept the payload from the target on purpose.
+	Suppressed
 )
 
 // String returns the lowercase name used in log fields.
@@ -45,6 +47,8 @@ func (s Status) String() string {
 		return "temp"
 	case Perm:
 		return "perm"
+	case Suppressed:
+		return "suppressed"
 	default:
 		return "unknown"
 	}
@@ -89,15 +93,23 @@ func statusOf(err error) Status {
 //
 // One accepted delivery makes the whole call a success: a non-zero status
 // makes cron mail the failure report through this very program, which
-// multiplies the noise without delivering anything. Without a spool a
-// temporary failure is as final as a permanent one, so when nothing was
-// delivered the status is 69 either way; 75 would claim the message was
-// queued.
+// multiplies the noise without delivering anything. A message suppressed
+// for every target is handled as intended and succeeds too. Without a
+// spool a temporary failure is as final as a permanent one, so when
+// nothing was delivered the status is 69 either way; 75 would claim the
+// message was queued.
 func ExitCode(results []Result) int {
+	suppressed := 0
 	for _, r := range results {
-		if r.Status == OK {
+		switch r.Status {
+		case OK:
 			return exitOK
+		case Suppressed:
+			suppressed++
 		}
+	}
+	if suppressed > 0 && suppressed == len(results) {
+		return exitOK
 	}
 	return exitUnavailable
 }
