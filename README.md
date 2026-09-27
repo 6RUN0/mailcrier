@@ -158,6 +158,26 @@ url_file = "/etc/slendmail.d/discord.url"  # https://discord.com/api/webhooks/<i
   in the same request. As for every target, 429, 5xx and any answer with
   a `Retry-After` header are temporary, any other failure is permanent.
 
+```toml
+[target.prod-slack]
+type = "slack"
+token_file = "/etc/slendmail.d/slack.token"  # bot token, xoxb-...
+channel = "#alerts"                          # channel name or ID
+```
+
+- `slack`: `channel` is required and must not be blank; white space
+  around it is dropped. `chat.postMessage` of the Web API with the bot
+  token as a bearer token and link unfurling off, then per attachment
+  `files.getUploadURLExternal` and an upload, and one
+  `files.completeUploadExternal` that shares the files in the thread of
+  the message; the bot needs `chat:write` and `files:write` and must be a
+  member of a private channel. `&`, `<` and `>` of the message are
+  escaped, so `<!channel>` or `<@U123>` stays text. The text holds at most
+  40000 characters; up to 10 files are sent. An answer with `"ok": false`
+  is a failure; `ratelimited`, `internal_error`, `fatal_error`,
+  `service_unavailable` and `request_timeout` are temporary. Several
+  `slack` targets may post with different tokens to different channels.
+
 ### Options, privileges and containers
 
 - `--config PATH` or the environment variable `SLENDMAIL_CONFIG` names

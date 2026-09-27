@@ -96,9 +96,11 @@ it.
 - `internal/config.Load` parses strictly: an unknown key, a key of another
   target type, a bad name or value gives `*config.Error` with
   `path:line:col` and exit 78. URLs must be absolute http(s) (for
-  `shoutrrr`: any URL with a scheme), tokens non-blank. Targets are
-  `[target.<name>]` tables; keys per type are in `allowedKeys`, which for
-  `http` lists only implemented keys. Types other than `http` with
+  `shoutrrr`: any URL with a scheme), tokens non-blank, `chat_id` an
+  integer or a non-blank string, `channel` non-blank (both trimmed).
+  Targets are `[target.<name>]` tables; keys per type are in
+  `allowedKeys`, which for `http` lists only implemented keys. Types
+  other than `http` with
   `preset = "generic-json"` are parsed but rejected by `app` as not
   implemented.
 - `internal/backend`: `Sender`, `Caps`, `Payload`, `*Error` with `Class`,

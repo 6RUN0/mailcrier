@@ -1,10 +1,14 @@
 package app
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 )
@@ -54,4 +58,51 @@ func (tc serviceStatusCase) check(t *testing.T) {
 // discordConfig configures one discord target with a webhook on url.
 func discordConfig(url string) string {
 	return "[target.dc]\ntype = \"discord\"\nurl = \"" + url + "/api/webhooks/1/T0KEN\"\n"
+}
+
+// rewritingClient sends every request to server over plain HTTP, keeping
+// the path and query, so that a target with a fixed service URL reaches a
+// local fake.
+func rewritingClient(server *httptest.Server) *http.Client {
+	return &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		local, err := url.Parse(server.URL)
+		if err != nil {
+			return nil, err
+		}
+		req = req.Clone(req.Context())
+		req.URL.Scheme, req.URL.Host, req.Host = local.Scheme, local.Host, local.Host
+		return http.DefaultTransport.RoundTrip(req)
+	})}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+
+// TestRunSeveralSlackTargets pins a configuration of several Slack
+// targets, each with its own token and channel; " #alerts" reaches the
+// API as "#alerts".
+func TestRunSeveralSlackTargets(t *testing.T) {
+	var mu sync.Mutex
+	posts := map[string]string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var msg struct {
+			Channel string `json:"channel"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&msg)
+		mu.Lock()
+		posts[msg.Channel] = r.Header.Get("Authorization")
+		mu.Unlock()
+		_, _ = io.WriteString(w, `{"ok":true,"channel":"C1","ts":"1.2"}`)
+	}))
+	defer server.Close()
+	config := "[target.prod]\ntype = \"slack\"\ntoken = \"xoxb-prod\"\nchannel = \" #alerts\"\n\n" +
+		"[target.dev]\ntype = \"slack\"\ntoken = \"xoxb-dev\"\nchannel = \"#dev-alerts\"\n"
+	inv := &invocation{config: config, client: rewritingClient(server), stdin: strings.NewReader("Subject: t\n\nb\n")}
+	if code := inv.run(t); code != 0 {
+		t.Fatalf("Run() = %d, want 0; log:\n%s", code, inv.log("slendmail"))
+	}
+	if want := "map[#alerts:Bearer xoxb-prod #dev-alerts:Bearer xoxb-dev]"; fmt.Sprint(posts) != want {
+		t.Errorf("posts = %v, want %s", posts, want)
+	}
 }

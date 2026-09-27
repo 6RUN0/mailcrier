@@ -166,6 +166,7 @@ var allowedKeys = map[string][]string{
 // besides the token or URL pairs.
 var requiredKeys = map[string][]string{
 	TypeTelegram: {"chat_id"},
+	TypeSlack:    {"channel"},
 }
 
 var (
@@ -219,6 +220,13 @@ func Load(fsys fs.FS, path string) (*Config, error) {
 	if err := setChatIDs(&cfg, keys); err != nil {
 		err.Path = path
 		return nil, err
+	}
+	// The channel is checked without surrounding white space, so it is
+	// sent without it: Slack does not find " #alerts".
+	for _, name := range cfg.TargetNames() {
+		target := cfg.Targets[name]
+		target.Channel = strings.TrimSpace(target.Channel)
+		cfg.Targets[name] = target
 	}
 	if err := readSecretFiles(fsys, &cfg, keys); err != nil {
 		err.Path = path
@@ -316,6 +324,9 @@ func validateTarget(name string, target Target, keys keyIndex) *Error {
 		if !keys.has("target", name, key) {
 			return fail("", "key %q is required", key)
 		}
+	}
+	if target.Type == TypeSlack && strings.TrimSpace(target.Channel) == "" {
+		return fail("channel", "value of key %q is empty", "channel")
 	}
 	for _, pair := range [][2]string{{"token", "token_file"}, {"url", "url_file"}} {
 		if !slices.Contains(allowed, pair[0]) {

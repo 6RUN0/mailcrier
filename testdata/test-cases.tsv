@@ -143,7 +143,7 @@ T-ESC-04	low	todo	Inside a MarkdownV2 link URL only ) and the backslash are esca
 T-ESC-05	critical	done	Telegram HTML escaping turns <, > and & into entities; quotes may become numeric entities	https://core.telegram.org/bots/api#html-style
 T-ESC-06	high	done	A body with tags outside the Telegram whitelist arrives as literal text and the API accepts it	https://core.telegram.org/bots/api#html-style
 T-ESC-07	critical	done	Slack escaping replaces only &, < and >, leaves *, _, ~ and non-ASCII alone, and is applied exactly once	https://docs.slack.dev/messaging/formatting-message-text/
-T-ESC-08	critical	todo	<!channel> or <@U123> in a message reaches Slack as text, not as a mention	https://github.com/nicholas-fedor/shoutrrr/blob/c19db02256c2/pkg/services/chat/slack/slack_json.go#L63-L95
+T-ESC-08	critical	done	<!channel> or <@U123> in a message reaches Slack as text, not as a mention	https://github.com/nicholas-fedor/shoutrrr/blob/c19db02256c2/pkg/services/chat/slack/slack_json.go#L63-L95
 T-ESC-09	critical	done	Every Discord request carries allowed_mentions with an empty parse list; @everyone, @here and user or role mentions do not ping	https://github.com/discord/discord-api-docs/blob/ce076f0/developers/resources/message.mdx#L712-L727
 T-ESC-10	high	done	Discord code blocks survive triple backquotes in the body; Discord escaping covers bold, underline, strike, spoiler, backslash, leading # and >, and links	https://github.com/discordjs/discord.js/blob/dbb7490/packages/formatters/src/escapers.ts#L217-L350
 T-ESC-11	high	todo	CR and LF in an ntfy title become spaces so the request stays valid	https://github.com/binwiederhier/ntfy/blob/6560158/docs/publish.md#L353

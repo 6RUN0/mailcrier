@@ -99,6 +99,18 @@ func TestRunKeepsTokenOutOfLogs(t *testing.T) {
 			t.Cleanup(server.Close)
 			return "[target.tg]\ntype = \"telegram\"\ntoken = \"" + secretToken + "\"\nchat_id = \"1\"\n", redirectingClient(server)
 		}, 69, "target failed"},
+		{"slack-error-quotes-token", func(t *testing.T) (string, *http.Client) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = fmt.Fprintf(w, `{"ok":false,"error":"invalid_auth for %s"}`, r.Header.Get("Authorization"))
+			}))
+			t.Cleanup(server.Close)
+			return slackConfig(secretToken), rewritingClient(server)
+		}, 69, "invalid_auth for Bearer ***"},
+		{"slack-connection-refused", func(*testing.T) (string, *http.Client) {
+			server := httptest.NewServer(http.NotFoundHandler())
+			server.Close()
+			return slackConfig(secretToken), rewritingClient(server)
+		}, 69, "target failed"},
 		{"toml-error-after-token", func(*testing.T) (string, *http.Client) {
 			return "[target.tg]\ntype = \"telegram\"\ntoken = \"" + secretToken + "\"\nchat_id = \n", nil
 		}, 78, "configuration rejected"},
@@ -134,6 +146,11 @@ func TestRunKeepsTokenOutOfLogs(t *testing.T) {
 			}
 		})
 	}
+}
+
+// slackConfig configures one slack target with token.
+func slackConfig(token string) string {
+	return "[target.sl]\ntype = \"slack\"\ntoken = \"" + token + "\"\nchannel = \"#ops\"\n"
 }
 
 // TestRunRedactsStandardLog covers the writer Run installs for the log

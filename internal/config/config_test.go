@@ -211,6 +211,16 @@ func TestLoadRejects(t *testing.T) {
 			want: `:4:1: target "tg": value of key "chat_id" must be an integer or a string that is not blank`,
 		},
 		{
+			name: "channel-blank",
+			doc:  "[target.sl]\ntype = \"slack\"\ntoken = \"xoxb-1\"\nchannel = \" \"\n",
+			want: `:4:1: target "sl": value of key "channel" is empty`,
+		},
+		{
+			name: "channel-missing",
+			doc:  "[target.sl]\ntype = \"slack\"\ntoken = \"xoxb-1\"\n",
+			want: `:1:9: target "sl": key "channel" is required`,
+		},
+		{
 			name: "blank-token",
 			doc:  "[target.tg]\ntype = \"telegram\"\ntoken = \"   \"\nchat_id = \"1\"\n",
 			want: `:3:1: target "tg": value of key "token" is empty`,
@@ -311,6 +321,15 @@ func TestLoadChatID(t *testing.T) {
 	}
 }
 
+// TestLoadTrimsChannel pins that the channel goes to Slack as it was
+// checked, without surrounding white space.
+func TestLoadTrimsChannel(t *testing.T) {
+	cfg, err := load(t, "[target.sl]\ntype = \"slack\"\ntoken = \"xoxb-1\"\nchannel = \" #alerts \"\n", nil)
+	if err != nil || cfg.Targets["sl"].Channel != "#alerts" {
+		t.Errorf("err %v, Channel %q", err, cfg.Targets["sl"].Channel)
+	}
+}
+
 func TestReadmeExamplesLoad(t *testing.T) {
 	readme, err := os.ReadFile("../../README.md")
 	if err != nil {
@@ -322,7 +341,7 @@ func TestReadmeExamplesLoad(t *testing.T) {
 		t.Fatalf("README section %q has no toml block", readmeConfigHeading)
 	}
 	secrets := fstest.MapFS{}
-	for _, name := range []string{"etc/slendmail.d/hook.url", "etc/slendmail.d/tg.token", "etc/slendmail.d/discord.url"} {
+	for _, name := range []string{"etc/slendmail.d/hook.url", "etc/slendmail.d/tg.token", "etc/slendmail.d/discord.url", "etc/slendmail.d/slack.token"} {
 		secrets[name] = &fstest.MapFile{Data: []byte("https://hooks.example.org/in/secret\n")}
 	}
 	for i, block := range blocks {
