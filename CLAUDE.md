@@ -11,8 +11,9 @@ make lint         # other targets: tidy test fuzz build licenses vuln
                   # check-refs check-commits snapshot
 make fuzz FUZZTIME=10m   # longer fuzzing; check runs each target 10s
 make setgid-e2e   # needs docker: TestSetgidReexec in a root container
-go build -o slendmail ./cmd/slendmail   # new binary; the name is gitignored
-go build -o /dev/null .                 # legacy root main.go, must still build
+go build -o slendmail ./cmd/slendmail   # the binary; the name is gitignored
+SLENDMAIL_TELEGRAM_ENV=/path/to/telegram.env \
+  go test -run TestLiveTelegram ./internal/backend/telegram   # real Bot API
 go test ./internal/backend/webhook -update   # rewrite golden files
 go test ./internal/app -run TestCallers -update   # caller golden files
 go test ./internal/render -run TestBuiltinGolden -update   # template golden
@@ -50,10 +51,9 @@ before proposing a new version.
 
 ## Architecture
 
-The rewrite lives in `cmd/slendmail` (entry point) and `internal/`. The
-legacy single-file `main.go` in the root is a feature reference, excluded
-from golangci-lint and govulncheck, and stays until native targets replace
-it.
+The program lives in `cmd/slendmail` (entry point) and `internal/`; the
+root package holds only repository-wide tests, so `go build .` there fails
+with "no non-test Go files".
 
 - `internal/app.Run(ctx, Deps, args, stdin) int` handles one invocation;
   `Deps` carries the logger factory, config `fs.FS` rooted at `/`, HTTP
@@ -141,7 +141,7 @@ it.
   carry case IDs calls `t.Run("<ID>/<slug>", row.check)` per row, because
   `TestIDsCovered` reads only literals in the `Run` call.
 - `TestReadmeExamplesLoad` loads the TOML blocks of the README section
-  "Configuration (cmd/slendmail)" with `config.Load`.
+  "Configuration" with `config.Load`.
 
 ## Gotchas
 
@@ -150,7 +150,6 @@ it.
   `git ls-files | git check-ignore --stdin --no-index` and new paths with
   `git check-ignore <path>` (empty output). Dot-files inside allowed
   directories stay ignored, so fixture names must not start with a dot.
-- `go build .` in the root also writes a binary named `slendmail`; use `-o`.
 - `app.Run` sets `http_timeout` on a copy of `Deps.HTTP` and `deadline` on
   the context; a sender must pass the context to its requests, or the call
   deadline does not reach it. Error texts drop the request URL

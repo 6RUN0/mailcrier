@@ -322,7 +322,7 @@ func TestLoadMissingFile(t *testing.T) {
 
 // readmeConfigHeading marks the README section whose TOML blocks use the
 // current configuration schema.
-const readmeConfigHeading = "## Configuration (cmd/slendmail)"
+const readmeConfigHeading = "## Configuration"
 
 var tomlBlock = regexp.MustCompile("(?s)```toml\n(.*?)```")
 

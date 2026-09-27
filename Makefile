@@ -39,10 +39,6 @@ FUZZ_TARGETS := ./internal/app:FuzzSanitize ./internal/sendmail:FuzzParse ./inte
 E2E_DIR := $(CURDIR)/.e2e
 E2E_IMAGE := slendmail-setgid-e2e
 
-# The legacy root package is not shipped and is only a feature reference,
-# so its dependencies are not scanned.
-VULN_PACKAGES := ./cmd/... ./internal/... ./scripts/...
-
 .PHONY: check lint lint-go lint-yaml lint-actions tidy test fuzz build licenses vuln check-refs check-commits snapshot setgid-e2e
 
 check: lint tidy test fuzz build licenses check-refs check-commits
@@ -74,13 +70,12 @@ fuzz:
 
 build:
 	$(GO) build -o slendmail ./cmd/slendmail
-	$(GO) build -o /dev/null .
 
 licenses:
 	$(GO_LICENSES) check ./cmd/... --allowed_licenses=$(ALLOWED_LICENSES)
 
 vuln:
-	$(TOOL) govulncheck $(VULN_PACKAGES)
+	$(TOOL) govulncheck ./...
 
 check-refs:
 	$(GO) run ./scripts/check-refs -base $(BASE)

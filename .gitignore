@@ -19,7 +19,6 @@
 !/go.mod
 !/go.sum
 !/internal/
-!/main.go
 !/packaging/
 !/scripts/
 !/testdata/

@@ -9,9 +9,6 @@ linters:
   default: standard
   enable:
     - revive
-  exclusions:
-    paths:
-      - ^main\.go$
 
 formatters:
   enable:
@@ -21,6 +18,3 @@ formatters:
     goimports:
       local-prefixes:
         - github.com/6RUN0/slendmail
-  exclusions:
-    paths:
-      - ^main\.go$
