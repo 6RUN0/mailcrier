@@ -121,7 +121,7 @@ func TestRunKeepsTokenOutOfLogs(t *testing.T) {
 			return "[target.tg]\ntype = \"telegram\"\ntoken = " + secretToken + "\n", nil
 		}, 78, "configuration rejected"},
 		{"toml-token-in-url-key", func(*testing.T) (string, *http.Client) {
-			return "[target.hook]\ntype = \"http\"\nurl = \"https://example.org/hook/" + secretToken + "\"\n[target.hook]\n", nil
+			return "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org/hook/" + secretToken + "\"\n[target.hook]\n", nil
 		}, 78, "configuration rejected"},
 		{"panic-in-target", func(*testing.T) (string, *http.Client) {
 			return httpTargetConfig("https://hooks.example.org/hook/" + secretToken), &http.Client{Transport: panickingTransport{}}

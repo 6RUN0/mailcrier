@@ -74,7 +74,7 @@ func TestLoadAcceptsServiceURLs(t *testing.T) {
 }
 
 func TestLoadDefaultsSyslogTag(t *testing.T) {
-	cfg, err := load(t, "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\n", nil)
+	cfg, err := load(t, "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\n", nil)
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
@@ -92,32 +92,42 @@ func TestLoadRejects(t *testing.T) {
 	}{
 		{
 			name: "unknown-key",
-			doc:  "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\ncolour = \"red\"\n",
-			want: `:4:1: unknown key "target.hook.colour"`,
+			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\ncolour = \"red\"\n",
+			want: `:5:1: unknown key "target.hook.colour"`,
 		},
 		{
 			name: "unknown-top-level-table",
-			doc:  "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\n\n[spool]\ndir = \"/var/spool/slendmail\"\n",
-			want: `:5:2: unknown key "spool"`,
+			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\n\n[spool]\ndir = \"/var/spool/slendmail\"\n",
+			want: `:6:2: unknown key "spool"`,
 		},
 		{
 			name: "key-of-other-target-type",
-			doc:  "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\nchat_id = \"-100123\"\n",
-			want: `:4:1: target "hook": key "chat_id" is not valid for type "http"`,
+			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\nchat_id = \"-100123\"\n",
+			want: `:5:1: target "hook": key "chat_id" is not valid for type "http"`,
 		},
 		{
-			name: "http-headers-not-supported",
-			doc:  "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\n\n[target.hook.headers]\nAuthorization = \"Bearer SECRET\"\n",
-			want: `:5:2: unknown key "target.hook.headers"`,
+			name: "http-channel-without-mattermost",
+			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\nchannel = \"alerts\"\n",
+			want: `:5:1: target "hook": key "channel" needs preset "mattermost"`,
 		},
 		{
-			name: "http-channel-not-supported",
-			doc:  "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\nchannel = \"alerts\"\n",
-			want: `:4:1: target "hook": key "channel" is not valid for type "http"`,
+			name: "http-header-name-invalid",
+			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\n\n[target.hook.headers]\n\"X Token\" = \"SECRET\"\n",
+			want: `:7:1: target "hook": header name "X Token" is invalid`,
+		},
+		{
+			name: "http-header-value-line-break",
+			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\n\n[target.hook.headers]\nAuthorization = \"Bearer SECRET\\r\\nX-Evil: 1\"\n",
+			want: `:7:1: target "hook": value of header "Authorization" is invalid`,
+		},
+		{
+			name: "http-preset-missing",
+			doc:  "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\n",
+			want: `:1:9: target "hook": key "preset" is required`,
 		},
 		{
 			name: "invalid-name",
-			doc:  "[target.Ops_TG]\ntype = \"http\"\nurl = \"https://example.org\"\n",
+			doc:  "[target.Ops_TG]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\n",
 			want: `:1:9: target "Ops_TG": name must match ^[a-z0-9-]+$`,
 		},
 		{
@@ -127,7 +137,7 @@ func TestLoadRejects(t *testing.T) {
 		},
 		{
 			name: "neither-url-nor-url-file",
-			doc:  "\n[target.hook]\ntype = \"http\"\n",
+			doc:  "\n[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\n",
 			want: `:2:9: target "hook": one of keys "url" and "url_file" is required`,
 		},
 		{
@@ -147,13 +157,13 @@ func TestLoadRejects(t *testing.T) {
 		},
 		{
 			name: "relative-secret-file",
-			doc:  "[target.hook]\ntype = \"http\"\nurl_file = \"hook.url\"\n",
-			want: `:3:1: target "hook": key "url_file" must be an absolute path`,
+			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl_file = \"hook.url\"\n",
+			want: `:4:1: target "hook": key "url_file" must be an absolute path`,
 		},
 		{
 			name: "missing-secret-file",
-			doc:  "[target.hook]\ntype = \"http\"\nurl_file = \"/etc/slendmail.d/hook.url\"\n",
-			want: `:3:1: target "hook": url_file: open etc/slendmail.d/hook.url: file does not exist`,
+			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl_file = \"/etc/slendmail.d/hook.url\"\n",
+			want: `:4:1: target "hook": url_file: open etc/slendmail.d/hook.url: file does not exist`,
 		},
 		{
 			name: "wrong-value-type",
@@ -172,13 +182,13 @@ func TestLoadRejects(t *testing.T) {
 		},
 		{
 			name: "url-without-scheme",
-			doc:  "[target.hook]\ntype = \"http\"\nurl = \"hooks.example.org/in/SECRET\"\n",
-			want: `:3:1: target "hook": value of key "url" is not an absolute http or https URL`,
+			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"hooks.example.org/in/SECRET\"\n",
+			want: `:4:1: target "hook": value of key "url" is not an absolute http or https URL`,
 		},
 		{
 			name: "url-with-other-scheme",
-			doc:  "[target.hook]\ntype = \"http\"\nurl = \"ftp://example.org/in\"\n",
-			want: `:3:1: target "hook": value of key "url" is not an absolute http or https URL`,
+			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"ftp://example.org/in\"\n",
+			want: `:4:1: target "hook": value of key "url" is not an absolute http or https URL`,
 		},
 		{
 			name: "shoutrrr-url-without-scheme",
@@ -216,6 +226,16 @@ func TestLoadRejects(t *testing.T) {
 			want: `:4:1: target "sl": value of key "channel" is empty`,
 		},
 		{
+			name: "channel-blank-mattermost",
+			doc:  "[target.mm]\ntype = \"http\"\npreset = \"mattermost\"\nurl = \"https://mm.example.org/hooks/x\"\nchannel = \"  \"\n",
+			want: `:5:1: target "mm": value of key "channel" is empty`,
+		},
+		{
+			name: "channel-blank-without-mattermost",
+			doc:  "[target.api]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://api.example.org/notify\"\nchannel = \" \"\n",
+			want: `:5:1: target "api": key "channel" needs preset "mattermost"`,
+		},
+		{
 			name: "channel-missing",
 			doc:  "[target.sl]\ntype = \"slack\"\ntoken = \"xoxb-1\"\n",
 			want: `:1:9: target "sl": key "channel" is required`,
@@ -237,7 +257,7 @@ func TestLoadRejects(t *testing.T) {
 		},
 		{
 			name: "zero-deadline",
-			doc:  "[general]\ndeadline = \"0s\"\n\n[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\n",
+			doc:  "[general]\ndeadline = \"0s\"\n\n[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\n",
 			want: `:2:1: value of key "deadline" must be positive`,
 		},
 		{
@@ -282,10 +302,10 @@ func TestLoadErrorOmitsValues(t *testing.T) {
 }
 
 func TestLoadRejectsBadURLFileContent(t *testing.T) {
-	doc := "[target.hook]\ntype = \"http\"\nurl_file = \"/etc/slendmail.d/hook.url\"\n"
+	doc := "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl_file = \"/etc/slendmail.d/hook.url\"\n"
 	for _, content := range []string{"", "\n", "hooks.example.org/SECRET\n"} {
 		_, err := load(t, doc, fstest.MapFS{"etc/slendmail.d/hook.url": {Data: []byte(content)}})
-		want := configPath + `:3:1: target "hook": value of key "url_file" is not an absolute http or https URL`
+		want := configPath + `:4:1: target "hook": value of key "url_file" is not an absolute http or https URL`
 		if err == nil || err.Error() != want {
 			t.Errorf("url_file content %q: error %v, want %s", content, err, want)
 		}
@@ -341,7 +361,7 @@ func TestReadmeExamplesLoad(t *testing.T) {
 		t.Fatalf("README section %q has no toml block", readmeConfigHeading)
 	}
 	secrets := fstest.MapFS{}
-	for _, name := range []string{"etc/slendmail.d/hook.url", "etc/slendmail.d/tg.token", "etc/slendmail.d/discord.url", "etc/slendmail.d/slack.token", "etc/slendmail.d/ntfy.url"} {
+	for _, name := range []string{"etc/slendmail.d/hook.url", "etc/slendmail.d/tg.token", "etc/slendmail.d/discord.url", "etc/slendmail.d/slack.token", "etc/slendmail.d/ntfy.url", "etc/slendmail.d/mm.url"} {
 		secrets[name] = &fstest.MapFile{Data: []byte("https://hooks.example.org/in/secret\n")}
 	}
 	for i, block := range blocks {
@@ -367,7 +387,7 @@ func sectionAfter(doc, heading string) string {
 
 func TestLoadTimeLimits(t *testing.T) {
 	t.Run("T-ADJ-51/defaults", func(t *testing.T) {
-		cfg, err := load(t, "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\n", nil)
+		cfg, err := load(t, "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\n", nil)
 		if err != nil {
 			t.Fatalf("Load() error = %v", err)
 		}
@@ -376,7 +396,7 @@ func TestLoadTimeLimits(t *testing.T) {
 		}
 	})
 	t.Run("configured", func(t *testing.T) {
-		doc := "[general]\nhttp_timeout = \"2s\"\ndeadline = \"1m\"\n\n[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\n"
+		doc := "[general]\nhttp_timeout = \"2s\"\ndeadline = \"1m\"\n\n[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\n"
 		cfg, err := load(t, doc, nil)
 		if err != nil {
 			t.Fatalf("Load() error = %v", err)
@@ -388,7 +408,7 @@ func TestLoadTimeLimits(t *testing.T) {
 }
 
 func TestLoadStrings(t *testing.T) {
-	const target = "\n[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\n"
+	const target = "\n[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\n"
 	t.Run("configured", func(t *testing.T) {
 		cfg, err := load(t, "[strings]\nno_subject = \"(ohne Betreff)\"\nempty_body = \"(leer)\"\ntruncated = \"[gekürzt]\"\nmore_attachments = \"und %d weitere\"\nnot_sent = \"[nicht gesendet]\"\n"+target, nil)
 		if err != nil {

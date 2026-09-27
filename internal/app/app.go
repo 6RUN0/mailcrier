@@ -405,14 +405,39 @@ func logResult(log *slog.Logger, r delivery.Result) {
 	log.Error("target failed", append(attrs, "err", r.Err)...)
 }
 
+// minHeaderSecret is the shortest header value, or credential after an
+// authorization scheme, that registerSecrets masks: masking a value such
+// as "1" would corrupt every number in the log, and a credential is
+// longer.
+const minHeaderSecret = 8
+
 // registerSecrets hands every value that may hold a secret to the redactor:
-// tokens and URLs, including those read from *_file.
+// tokens and URLs, including those read from *_file, and the values of
+// extra HTTP headers, such as Authorization, with the credential after
+// the scheme ("Bearer <token>") on its own as well.
 func registerSecrets(redactor *redact.Redactor, cfg *config.Config) {
 	for _, name := range cfg.TargetNames() {
 		target := cfg.Targets[name]
 		redactor.Add(target.Token)
 		redactor.AddURL(target.URL)
+		for _, value := range target.Headers {
+			secrets := []string{strings.TrimSpace(value)}
+			if fields := strings.Fields(value); len(fields) > 1 {
+				secrets = append(secrets, fields[len(fields)-1])
+			}
+			for _, secret := range secrets {
+				if len(secret) >= minHeaderSecret {
+					redactor.Add(secret)
+				}
+			}
+		}
 	}
+}
+
+// presetFormats maps the presets of the http target to their built-in
+// templates.
+var presetFormats = map[string]text.Format{
+	config.PresetMattermost: text.FormatMattermost, config.PresetSlackWebhook: text.FormatSlackWebhook, config.PresetGenericJSON: text.FormatGenericJSON,
 }
 
 // buildTargets maps configured targets to senders and templates, in name
@@ -424,28 +449,33 @@ func buildTargets(cfg *config.Config, client *http.Client) ([]delivery.Target, e
 		target := cfg.Targets[name]
 		var sender backend.Sender
 		var format text.Format
-		switch {
-		case target.Type == config.TypeTelegram:
+		switch target.Type {
+		case config.TypeTelegram:
 			sender = telegram.New(telegram.Options{
 				Token: target.Token, ChatID: target.ChatID, MessageThreadID: target.MessageThreadID,
 				DisableNotification: target.DisableNotification, Client: client,
 			})
 			format = text.FormatTelegramHTML
-		case target.Type == config.TypeDiscord:
+		case config.TypeDiscord:
 			sender, format = discord.New(discord.Options{URL: target.URL, Client: client}), text.FormatDiscord
-		case target.Type == config.TypeSlack:
+		case config.TypeSlack:
 			sender = slack.New(slack.Options{Token: target.Token, Channel: target.Channel, Client: client})
 			format = text.FormatSlackMrkdwn
-		case target.Type == config.TypeNtfy:
+		case config.TypeNtfy:
 			topic, err := ntfy.New(ntfy.Options{URL: target.URL, Client: client})
 			if err != nil {
 				return nil, fmt.Errorf("target %q: %w", name, err)
 			}
 			sender, format = topic, text.FormatNtfy
-		case target.Type == config.TypeHTTP && target.Preset == config.PresetGenericJSON:
-			sender, format = webhook.New(webhook.Options{URL: target.URL, Client: client}), text.FormatGenericJSON
-		case target.Type == config.TypeHTTP:
-			return nil, fmt.Errorf("target %q: preset %q is not implemented", name, target.Preset)
+		case config.TypeHTTP:
+			fields := map[string]string{}
+			for key, value := range map[string]string{"username": target.Username, "channel": target.Channel} {
+				if value != "" {
+					fields[key] = value
+				}
+			}
+			format = presetFormats[target.Preset]
+			sender = webhook.New(webhook.Options{URL: target.URL, Format: format, Fields: fields, Headers: target.Headers, Client: client})
 		default:
 			return nil, fmt.Errorf("target %q: type %q is not implemented", name, target.Type)
 		}

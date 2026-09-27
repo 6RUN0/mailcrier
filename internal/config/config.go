@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/pelletier/go-toml/v2"
+	"golang.org/x/net/http/httpguts"
 )
 
 // DefaultSyslogTag is the syslog tag used when [general] does not set one.
@@ -139,8 +140,15 @@ type Target struct {
 	MessageThreadID int64 `toml:"message_thread_id"`
 	// DisableNotification sends Telegram messages silently.
 	DisableNotification bool `toml:"disable_notification"`
-	// Channel is the Slack channel.
+	// Channel is the Slack channel, or the channel a Mattermost webhook
+	// posts to instead of its own.
 	Channel string `toml:"channel"`
+	// Username replaces the name a Mattermost webhook posts under.
+	Username string `toml:"username"`
+	// Headers are extra request headers of the http target, set after the
+	// Content-Type of the preset, so that they override it. Values may
+	// hold secrets.
+	Headers map[string]string `toml:"headers"`
 	// Preset selects the built-in payload of the http target.
 	Preset string `toml:"preset"`
 	// OnLong is the policy for text longer than the target accepts.
@@ -157,7 +165,7 @@ var allowedKeys = map[string][]string{
 	TypeDiscord:  {"url", "url_file", "on_long"},
 	TypeSlack:    {"token", "token_file", "channel", "on_long"},
 	TypeNtfy:     {"url", "url_file", "on_long"},
-	TypeHTTP:     {"url", "url_file", "preset"},
+	TypeHTTP:     {"url", "url_file", "preset", "username", "channel", "headers"},
 	TypeExec:     {"argv"},
 	TypeShoutrrr: {"url", "url_file"},
 }
@@ -167,7 +175,11 @@ var allowedKeys = map[string][]string{
 var requiredKeys = map[string][]string{
 	TypeTelegram: {"chat_id"},
 	TypeSlack:    {"channel"},
+	TypeHTTP:     {"preset"},
 }
+
+// mattermostKeys are the http keys only the mattermost preset uses.
+var mattermostKeys = []string{"username", "channel"}
 
 var (
 	presets        = []string{PresetMattermost, PresetSlackWebhook, PresetGenericJSON}
@@ -325,9 +337,6 @@ func validateTarget(name string, target Target, keys keyIndex) *Error {
 			return fail("", "key %q is required", key)
 		}
 	}
-	if target.Type == TypeSlack && strings.TrimSpace(target.Channel) == "" {
-		return fail("channel", "value of key %q is empty", "channel")
-	}
 	for _, pair := range [][2]string{{"token", "token_file"}, {"url", "url_file"}} {
 		if !slices.Contains(allowed, pair[0]) {
 			continue
@@ -347,6 +356,29 @@ func validateTarget(name string, target Target, keys keyIndex) *Error {
 	}
 	if keys.has("target", name, "preset") && !slices.Contains(presets, target.Preset) {
 		return fail("preset", "unknown preset, want one of %s", strings.Join(presets, ", "))
+	}
+	if target.Type == TypeHTTP && target.Preset != PresetMattermost {
+		for _, key := range mattermostKeys {
+			if keys.has("target", name, key) {
+				return fail(key, "key %q needs preset %q", key, PresetMattermost)
+			}
+		}
+	}
+	if keys.has("target", name, "channel") && strings.TrimSpace(target.Channel) == "" {
+		return fail("channel", "value of key %q is empty", "channel")
+	}
+	for _, header := range sortedKeys(target.Headers) {
+		msg := ""
+		switch {
+		case !httpguts.ValidHeaderFieldName(header):
+			msg = fmt.Sprintf("header name %q is invalid", header)
+		case !httpguts.ValidHeaderFieldValue(target.Headers[header]):
+			msg = fmt.Sprintf("value of header %q is invalid", header)
+		default:
+			continue
+		}
+		pos := keys.position("target", name, "headers", header)
+		return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("target %q: %s", name, msg)}
 	}
 	if keys.has("target", name, "on_long") && !slices.Contains(onLongPolicies, target.OnLong) {
 		return fail("on_long", "unknown policy, want one of %s", strings.Join(onLongPolicies, ", "))
@@ -449,6 +481,15 @@ func (c *Config) TargetNames() []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+func sortedKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func sortedTypes() []string {

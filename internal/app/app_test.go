@@ -223,7 +223,7 @@ func TestRunRejectsConfiguration(t *testing.T) {
 		{"no-targets", "", "no targets configured"},
 		{"ntfy-without-topic", "[target.nt]\ntype = \"ntfy\"\nurl = \"https://ntfy.example.org/\"\n", `target \"nt\": URL has no topic`},
 		{"type-not-implemented", "[target.run]\ntype = \"exec\"\nargv = [\"/bin/true\"]\n", `type \"exec\" is not implemented`},
-		{"preset-not-implemented", "[target.mm]\ntype = \"http\"\nurl = \"http://127.0.0.1:1\"\npreset = \"mattermost\"\n", `preset \"mattermost\" is not implemented`},
+		{"preset-missing", "[target.mm]\ntype = \"http\"\nurl = \"http://127.0.0.1:1\"\n", `key \"preset\" is required`},
 	}
 	for _, tc := range cases {
 		t.Run("T-ADJ-28/"+tc.name, func(t *testing.T) {

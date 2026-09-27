@@ -65,11 +65,9 @@ preset = "generic-json"
 - Exactly one of `url` and `url_file` is set; likewise `token` and
   `token_file`. A `*_file` key takes an absolute path; the file content, with
   surrounding whitespace removed, is used as the value.
-- The `http` target with `preset = "generic-json"` posts
-  `{"subject": ..., "body": ..., "hostname": ...}` with
-  `Content-Type: application/json`. Target types and presets not described
-  under "Targets" are recognized by the parser but rejected with exit
-  status 78 until implemented.
+- The types `exec` and `shoutrrr` are recognized by the parser but
+  rejected with exit status 78 until implemented; the other types are
+  described under "Targets".
 - `[strings]` replaces the English notices that stand in for missing
   content: `no_subject` for a message without a subject, `empty_body` for
   a body without visible text, `truncated` at the end of a body cut to the
@@ -191,6 +189,41 @@ url_file = "/etc/slendmail.d/ntfy.url"  # https://ntfy.sh/<topic>, user:password
   defaults of an ntfy server. The URL must end with the topic, otherwise
   exit status 78; user information and a query such as `auth` are sent
   with every request.
+
+```toml
+[target.mm]
+type = "http"
+preset = "mattermost"           # mattermost | slack-webhook | generic-json
+url_file = "/etc/slendmail.d/mm.url"
+username = "slendmail"          # optional, mattermost only
+channel = "alerts"              # optional, mattermost only
+
+[target.api]
+type = "http"
+preset = "generic-json"
+url = "https://api.example.org/notify"
+
+[target.api.headers]            # optional, any preset
+Authorization = "Bearer api-token"
+```
+
+- `http`: one POST of the JSON document of its preset with
+  `Content-Type: application/json` and no files. `preset` is required.
+  `slack-webhook` is cut to 40000 characters, the length Slack keeps;
+  `mattermost` has no limit, since Mattermost splits a long text into
+  several posts, nor has `generic-json`. `mattermost` posts
+  `{"text": ...}` with subject, host, sender and body in Markdown,
+  `@channel`, `@all` and `@here` disarmed, and `username` and `channel`
+  added when set; a set `channel` must not be blank, white space around
+  it is dropped. `slack-webhook` posts `{"text": ...}` in Slack mrkdwn
+  with `&`, `<` and `>` escaped; `generic-json` posts
+  `{"subject": ..., "body": ..., "hostname": ...}`.
+  `[target.<name>.headers]` adds request headers after the Content-Type of
+  the preset, so a `Content-Type` there replaces it; a header name that is
+  not an HTTP token or a value with a line break exits 78. Header values of
+  8 characters or more, and the credential after a scheme such as
+  `Bearer`, are masked in the log like tokens. A redirect is not followed
+  and counts as a permanent failure.
 
 ### Options, privileges and containers
 

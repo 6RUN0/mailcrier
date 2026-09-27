@@ -99,15 +99,21 @@ it.
   `shoutrrr`: any URL with a scheme), tokens non-blank, `chat_id` an
   integer or a non-blank string, `channel` non-blank (both trimmed).
   Targets are `[target.<name>]` tables; keys per type are in
-  `allowedKeys`, which for `http` lists only implemented keys. Types
-  other than `http` with
-  `preset = "generic-json"` are parsed but rejected by `app` as not
-  implemented.
+  `allowedKeys`, which lists only implemented keys (`on_long` excepted),
+  required ones in `requiredKeys`. Types `exec` and `shoutrrr` are parsed
+  but rejected by `app` as not implemented.
 - `internal/backend`: `Sender`, `Caps`, `Payload`, `*Error` with `Class`,
-  `Classify`. Targets live in `internal/backend/<name>` (`webhook` is type
-  `http`) and are mapped from config only in `internal/app`.
+  `IsPartial` (text arrived, files did not: counts as delivered),
+  `Classify`, and the HTTP guards every target uses (`WithoutRedirects`,
+  `TransportError`, `StatusError`, `Drain`). Targets live in
+  `internal/backend/<name>` (`webhook` is type `http`; Slack is plain Web
+  API calls, no client library) and are mapped from config only in
+  `internal/app.buildTargets`, each with its built-in template.
+  `TestLiveTelegram` sends to the real Bot API only with
+  `SLENDMAIL_TELEGRAM_ENV` naming a file with `TELEGRAM_BOT_TOKEN` and
+  `TELEGRAM_CHAT_ID`.
 - `internal/redact`: `app.Run` wraps every logger and the standard `log`
-  output with one `Redactor` and registers tokens and URLs right after
+  output with one `Redactor` and registers tokens, URLs and header values after
   `config.Load`; a new secret-bearing config key must be registered in
   `app.registerSecrets`.
 - `internal/delivery`: `Deliver` runs one goroutine per target that picks
@@ -148,7 +154,7 @@ it.
 - `app.Run` sets `http_timeout` on a copy of `Deps.HTTP` and `deadline` on
   the context; a sender must pass the context to its requests, or the call
   deadline does not reach it. Error texts drop the request URL
-  (`backend.WithoutURL`) because webhook URLs carry tokens.
-- `webhook.New` copies the client with `backend.WithoutRedirects`:
+  (`backend.WithoutURL`) because webhook and Bot API URLs carry tokens.
+- Every target's `New` copies the client with `backend.WithoutRedirects`:
   net/http would turn a redirected POST into a bodiless GET and report
   success. A 3xx is a permanent failure.

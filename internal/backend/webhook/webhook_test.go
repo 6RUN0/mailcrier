@@ -44,6 +44,54 @@ func TestBuildRequestGenericJSON(t *testing.T) {
 	})
 }
 
+// TestBuildRequestHeaders pins that configured headers are set after the
+// Content-Type of the preset and override it.
+func TestBuildRequestHeaders(t *testing.T) {
+	opts := Options{URL: "https://hooks.example.org/in", Headers: map[string]string{"Content-Type": "text/plain", "Authorization": "Bearer t0ken"}}
+	req, err := buildRequest(context.Background(), opts, backend.Payload{Text: "{}"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := req.Header.Values("Content-Type"); len(got) != 1 || got[0] != "text/plain" {
+		t.Errorf("Content-Type = %q, want only the configured one", got)
+	}
+	if got := req.Header.Get("Authorization"); got != "Bearer t0ken" {
+		t.Errorf("Authorization = %q", got)
+	}
+}
+
+// TestBuildRequestFields pins the members added to the document of the
+// mattermost preset: username and channel, without escaping the text
+// again.
+func TestBuildRequestFields(t *testing.T) {
+	tmpl, err := render.Builtin(text.FormatMattermost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document, err := tmpl.Execute(render.Data{Subject: "disk <md0> & more", Hostname: "h", Body: "b\n", Strings: render.DefaultStrings()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := Options{URL: "https://mm.example.org/hooks/x", Fields: map[string]string{"username": "slendmail", "channel": "town-square"}}
+	req, err := buildRequest(context.Background(), opts, backend.Payload{Text: document})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	golden.Check(t, "testdata/mattermost-fields.txtar", golden.Archive{
+		Comment:  "Request of the http target with the mattermost preset, username and channel.\n",
+		Sections: []golden.Section{{Name: "body", Data: body}},
+	})
+	for _, document := range []string{"[1]", "null", "\"text\""} {
+		if _, err := buildRequest(context.Background(), opts, backend.Payload{Text: document}); err == nil || !strings.Contains(err.Error(), "not a JSON object") {
+			t.Errorf("buildRequest(%s) error = %v, want not a JSON object", document, err)
+		}
+	}
+}
+
 func TestBuildRequestHidesURLInError(t *testing.T) {
 	_, err := buildRequest(context.Background(), Options{URL: "https://example.org/hook/SECRET\x7f"}, backend.Payload{})
 	if err == nil {
@@ -196,3 +244,14 @@ func TestSendBoundsBody(t *testing.T) {
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+
+// TestCapsPerPreset pins the length limit of each preset: 40000 UTF-16
+// units for slack-webhook, none for mattermost and generic-json.
+func TestCapsPerPreset(t *testing.T) {
+	for format, want := range map[text.Format]int{text.FormatSlackWebhook: 40000, text.FormatMattermost: 0, text.FormatGenericJSON: 0} {
+		caps := New(Options{Format: format, Client: &http.Client{}}).Caps()
+		if caps.MaxText != want || caps.MaxFiles != 0 || (want > 0) != (caps.Measure != nil) {
+			t.Errorf("%s: Caps = %+v, want MaxText %d", format, caps, want)
+		}
+	}
+}

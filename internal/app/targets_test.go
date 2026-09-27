@@ -11,6 +11,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/6RUN0/slendmail/internal/config"
+	"github.com/6RUN0/slendmail/internal/redact"
 )
 
 // statusServer answers every request with status and counts the requests.
@@ -104,5 +107,94 @@ func TestRunSeveralSlackTargets(t *testing.T) {
 	}
 	if want := "map[#alerts:Bearer xoxb-prod #dev-alerts:Bearer xoxb-dev]"; fmt.Sprint(posts) != want {
 		t.Errorf("posts = %v, want %s", posts, want)
+	}
+}
+
+// TestRunWebhookPresets pins the http target presets with the options
+// the payload formats of a webhook need: username and channel for
+// Mattermost, extra headers for any receiver.
+func TestRunWebhookPresets(t *testing.T) {
+	var mu sync.Mutex
+	requests := map[string]*http.Request{}
+	bodies := map[string]map[string]any{}
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("%s: %v", r.URL.Path, err)
+		}
+		mu.Lock()
+		requests[r.URL.Path], bodies[r.URL.Path] = r, body
+		mu.Unlock()
+	}))
+	defer server.Close()
+	config := "[target.mm]\ntype = \"http\"\npreset = \"mattermost\"\nurl = \"" + server.URL + "/mm\"\nusername = \"slendmail\"\nchannel = \"alerts\"\n\n" +
+		"[target.sw]\ntype = \"http\"\npreset = \"slack-webhook\"\nurl = \"" + server.URL + "/sw\"\n\n" +
+		"[target.api]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"" + server.URL + "/api\"\n" +
+		"[target.api.headers]\nAuthorization = \"Bearer api-token-123\"\n\"Content-Type\" = \"application/vnd.example+json\"\n"
+	inv := &invocation{config: config, stdin: strings.NewReader("Subject: disk @channel\n\nsda <failed> & gone\n")}
+	if code := inv.run(t); code != 0 {
+		t.Fatalf("Run() = %d, want 0; log:\n%s", code, inv.log("slendmail"))
+	}
+	t.Run("mattermost-username-and-channel", func(t *testing.T) {
+		body := bodies["/mm"]
+		text, _ := body["text"].(string)
+		if body["username"] != "slendmail" || body["channel"] != "alerts" || !strings.HasPrefix(text, "#### disk @\u200bchannel") {
+			t.Errorf("body = %v", body)
+		}
+	})
+	t.Run("slack-webhook-escapes-markup", func(t *testing.T) {
+		text, _ := bodies["/sw"]["text"].(string)
+		if !strings.Contains(text, "sda &lt;failed&gt; &amp; gone") || len(bodies["/sw"]) != 1 {
+			t.Errorf("body = %v", bodies["/sw"])
+		}
+	})
+	t.Run("generic-json-with-headers", func(t *testing.T) {
+		req := requests["/api"]
+		if req == nil || req.Header.Get("Authorization") != "Bearer api-token-123" || req.Header.Get("Content-Type") != "application/vnd.example+json" {
+			t.Fatalf("request = %v", req)
+		}
+		if body := bodies["/api"]; body["subject"] != "disk @channel" || body["body"] != "sda <failed> & gone\n" {
+			t.Errorf("body = %v", body)
+		}
+	})
+}
+
+// TestRunSlackWebhookLimit pins that the slack-webhook preset is cut to
+// the 40000 characters Slack keeps, with the notice, and stays valid JSON.
+// The limit counts the JSON document, where a line break takes two units,
+// so a text of short lines keeps somewhat less.
+func TestRunSlackWebhookLimit(t *testing.T) {
+	var body map[string]string
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("receiver: %v", err)
+		}
+	}))
+	defer server.Close()
+	config := "[target.sw]\ntype = \"http\"\npreset = \"slack-webhook\"\nurl = \"" + server.URL + "/sw\"\n"
+	inv := &invocation{config: config, stdin: strings.NewReader("Subject: big\n\n" + strings.Repeat("log line\n", 6000))}
+	if code := inv.run(t); code != 0 {
+		t.Fatalf("Run() = %d, want 0", code)
+	}
+	if n := len([]rune(body["text"])); n > 40000 || n < 30000 || !strings.HasSuffix(body["text"], "[truncated]```") {
+		t.Errorf("text of %d characters, ends %q", n, body["text"][max(0, len(body["text"])-30):])
+	}
+	if !strings.Contains(inv.log("slendmail"), `msg="text truncated for target" target=sw`) {
+		t.Errorf("log lacks the truncation record:\n%s", inv.log("slendmail"))
+	}
+}
+
+// TestRegisterHeaderSecrets pins which header values the redactor masks:
+// the whole value and the credential after a scheme, but not a value too
+// short to be a credential, which would mask parts of every record.
+func TestRegisterHeaderSecrets(t *testing.T) {
+	cfg := &config.Config{Targets: map[string]config.Target{"api": {Type: config.TypeHTTP, Headers: map[string]string{
+		"Authorization": "Bearer api-token-123", "X-Api-Key": "k3y-v4lue-long", "X-Retry": "1",
+	}}}}
+	redactor := &redact.Redactor{}
+	registerSecrets(redactor, cfg)
+	got := redactor.String("auth Bearer api-token-123, token api-token-123, key k3y-v4lue-long, status 401")
+	if want := "auth ***, token ***, key ***, status 401"; got != want {
+		t.Errorf("redacted = %q, want %q", got, want)
 	}
 }
