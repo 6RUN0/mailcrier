@@ -47,7 +47,10 @@ func checkFitOutput(t *testing.T, tmpl *Template, d Data, limit int, m measureFu
 		short.Body = withNotice("", d.Strings.Truncated)
 		short.Attachments, short.MoreAttachments = nil, len(d.Attachments)
 		for _, kept := range []int{0, 1} {
-			short.Subject = text.CutAtWord(d.Subject, kept)
+			short.Subject = ""
+			if kept > 0 {
+				short.Subject = cutSubject(d.Subject, kept)
+			}
 			shortest, execErr := tmpl.Execute(short)
 			if !strictFormats[tmpl.format] || execErr != nil || m.measure(shortest) <= limit {
 				t.Errorf("%s/%s/%d: ErrLimitTooSmall, but the rendering with %d subject characters measures %d: %q", tmpl.format, m.name, limit, kept, m.measure(shortest), shortest)
@@ -185,10 +188,10 @@ func TestFit(t *testing.T) {
 			t.Fatal(err)
 		}
 		d := fitData(strings.Repeat("b", 100))
-		d.Subject = "xy"
+		d.Subject = "xyz12345"
 		d.Hostname = "h"
 		shortest := d
-		shortest.Subject, shortest.Body = "x", withNotice("", d.Strings.Truncated)
+		shortest.Subject, shortest.Body = "x...", withNotice("", d.Strings.Truncated)
 		want, err := tmpl.Execute(shortest)
 		if err != nil {
 			t.Fatal(err)
@@ -198,6 +201,97 @@ func TestFit(t *testing.T) {
 		checkFitOutput(t, tmpl, d, limit, measures[0], out, truncated, err)
 		if err != nil || out != want {
 			t.Errorf("limit %d: out = %q, err = %v, want %q", limit, out, err, want)
+		}
+	})
+	t.Run("subject-share-at-least-64", func(t *testing.T) {
+		tmpl, err := Builtin(text.FormatPlain)
+		if err != nil {
+			t.Fatal(err)
+		}
+		d := fitData("b")
+		d.Subject = strings.Repeat("word ", 100)
+		out, truncated, err := Fit(tmpl, d, 100, text.RuneCount)
+		checkFitOutput(t, tmpl, d, 100, measures[2], out, truncated, err)
+		subject, _, _ := strings.Cut(out, "\n")
+		if n := text.RuneCount(subject); err != nil || n <= 100/4 || n > minSubjectShare || !strings.HasSuffix(subject, subjectCutMark) {
+			t.Errorf("subject %q of %d characters, want more than %d and at most %d, marked", subject, n, 100/4, minSubjectShare)
+		}
+	})
+	t.Run("subject-share-in-target-unit", func(t *testing.T) {
+		tmpl, err := Builtin(text.FormatPlain)
+		if err != nil {
+			t.Fatal(err)
+		}
+		d := fitData(strings.Repeat("body line\n", 100))
+		d.Subject = strings.Repeat("ёжик ", 40)
+		out, truncated, err := Fit(tmpl, d, 400, text.ByteLen)
+		checkFitOutput(t, tmpl, d, 400, measures[3], out, truncated, err)
+		subject, _, _ := strings.Cut(out, "\n")
+		if n := len(subject); err != nil || n > 400/4 || n < 400/4-len("ёжик ") {
+			t.Errorf("subject %q of %d bytes, want close to %d", subject, n, 400/4)
+		}
+	})
+	t.Run("subject-share-after-escaping", func(t *testing.T) {
+		tmpl, err := Builtin(text.FormatTelegramHTML)
+		if err != nil {
+			t.Fatal(err)
+		}
+		d := fitData(strings.Repeat("word ", 600))
+		d.Subject = strings.Repeat("<x> ", 300)
+		out, truncated, err := Fit(tmpl, d, 4096, text.MeasureTelegramHTML)
+		checkFitOutput(t, tmpl, d, 4096, measures[0], out, truncated, err)
+		subject, _, _ := strings.Cut(out, "\n")
+		if n := text.MeasureTelegramHTML(subject); err != nil || n > 4096/4 || strings.Count(out, "word") != 600 {
+			t.Errorf("subject of %d units, %d body words; want at most %d and all 600", n, strings.Count(out, "word"), 4096/4)
+		}
+	})
+	t.Run("cut-subject-marked", func(t *testing.T) {
+		tmpl, err := Builtin(text.FormatTelegramHTML)
+		if err != nil {
+			t.Fatal(err)
+		}
+		d := fitData("short body\n")
+		d.Subject = strings.Repeat("word ", 1000)
+		out, _, err := Fit(tmpl, d, 4096, text.MeasureTelegramHTML)
+		if err != nil || !strings.HasPrefix(out, "<b>word") || !strings.Contains(out, "word...</b>") {
+			t.Errorf("err = %v, subject line %q", err, out[:min(len(out), 60)])
+		}
+	})
+	t.Run("empty-subject-last", func(t *testing.T) {
+		tmpl, err := Builtin(text.FormatGenericJSON)
+		if err != nil {
+			t.Fatal(err)
+		}
+		d := fitData(strings.Repeat("b", 100))
+		d.Subject = "xyz"
+		shortest := d
+		shortest.Subject, shortest.Body = "", withNotice("", d.Strings.Truncated)
+		want, err := tmpl.Execute(shortest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		limit := text.RuneCount(want)
+		out, truncated, err := Fit(tmpl, d, limit, text.RuneCount)
+		checkFitOutput(t, tmpl, d, limit, measures[2], out, truncated, err)
+		if err != nil || out != want {
+			t.Errorf("limit %d: out = %q, err = %v, want %q", limit, out, err, want)
+		}
+	})
+	t.Run("strict-by-target-format", func(t *testing.T) {
+		source := `{"subject": {{ toJson .Subject }}, "pad": "` + strings.Repeat("x", 200) + `"}`
+		strict, err := parse("custom", source, text.FormatGenericJSON)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := Fit(strict, fitData("b"), 50, text.RuneCount); !errors.Is(err, ErrLimitTooSmall) {
+			t.Errorf("template for generic-json: err = %v, want ErrLimitTooSmall", err)
+		}
+		lenient, err := parse("custom", source, text.FormatPlain)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if out, _, err := Fit(lenient, fitData("b"), 50, text.RuneCount); err != nil || text.RuneCount(out) != 50 {
+			t.Errorf("template for plain: out = %q, err = %v, want a prefix of 50 characters", out, err)
 		}
 	})
 	t.Run("attachment-list-cut", func(t *testing.T) {
@@ -255,7 +349,7 @@ func TestFit(t *testing.T) {
 		}
 	})
 	t.Run("wrapper-longer-than-limit", func(t *testing.T) {
-		tmpl, err := parse("wrapper", strings.Repeat("header ", 100)+"{{ .Body }}")
+		tmpl, err := parse("wrapper", strings.Repeat("header ", 100)+"{{ .Body }}", text.FormatPlain)
 		if err != nil {
 			t.Fatal(err)
 		}

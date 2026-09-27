@@ -23,10 +23,13 @@ var strictFormats = map[text.Format]bool{
 // Fit renders d with t so that measure of the result is at most limit, in
 // the unit of the target; a limit of 0 or less means no limit.
 //
-// When the full text is too long, Fit first cuts a subject longer than a
-// quarter of the limit, and at least minSubjectShare characters, to that
-// length by text.CutAtWord: for a notification the body matters more than
-// the subject. Then it tries, in this order, until a rendering fits:
+// When the full text is too long, Fit first cuts a subject that measures
+// more than a quarter of the limit, and more than minSubjectShare, to that
+// share by text.CutAtWord: for a notification the body matters more than
+// the subject. The subject is escaped as the template's format escapes it
+// and then measured with measure, which counts it in the unit of the
+// target. A cut subject ends with
+// subjectCutMark. Then Fit tries, in this order, until a rendering fits:
 //
 //   - the full body with the first attachments only, followed by the
 //     MoreAttachments notice with the number left out;
@@ -34,8 +37,8 @@ var strictFormats = map[text.Format]bool{
 //     notice, with every attachment;
 //   - the same with no attachment but the MoreAttachments notice;
 //   - the Truncated notice as the body and the longest subject of one
-//     character or more, then the empty subject, which the built-in
-//     templates replace by the NoSubject notice.
+//     character or more, cut and marked, then the empty subject, which
+//     the built-in templates replace by the NoSubject notice.
 //
 // Each step is a binary search over the number of attachments or
 // characters kept: at most about log2 of that number renderings. The body
@@ -46,8 +49,8 @@ var strictFormats = map[text.Format]bool{
 // holds for every template that writes them once or more.
 //
 // When nothing fits, because the rest of the template is too long or
-// ignores the body, the subject and the attachments, a template of a
-// format in strictFormats gives ErrLimitTooSmall, and any other the
+// ignores the body, the subject and the attachments, a template parsed for
+// a format in strictFormats gives ErrLimitTooSmall, and any other the
 // longest prefix of the rendering with the cut subject, the Truncated
 // notice and no attachment that fits, cut at a character boundary.
 func Fit(t *Template, d Data, limit int, measure func(string) int) (out string, truncated bool, err error) {
@@ -60,9 +63,14 @@ func Fit(t *Template, d Data, limit int, measure func(string) int) (out string, 
 		return out, err == nil && measure(out) <= limit, err
 	}
 	body, subject, attachments := d.Body, d.Subject, d.Attachments
-	if share := max(limit/4, minSubjectShare); utf8.RuneCountInString(subject) > share {
-		subject = text.CutAtWord(subject, share)
-		d.Subject = subject
+	subjectLength := utf8.RuneCountInString(subject)
+	measureSubject := measure
+	if escape, ok := subjectEscapers[t.format]; ok {
+		measureSubject = func(s string) int { return measure(escape(s)) }
+	}
+	if share := max(limit/4, minSubjectShare); measureSubject(subject) > share {
+		subjectLength = longestSubject(subject, share, measureSubject)
+		d.Subject = cutSubject(subject, subjectLength)
 		if out, fits, err := render(); err != nil || fits {
 			return out, true, err
 		}
@@ -95,10 +103,10 @@ func Fit(t *Template, d Data, limit int, measure func(string) int) (out string, 
 	}
 	d.Body = withNotice("", d.Strings.Truncated)
 	renderSubject := func(kept int) (string, bool, error) {
-		d.Subject = text.CutAtWord(subject, kept+1)
+		d.Subject = cutSubject(subject, kept+1)
 		return render()
 	}
-	if best, found, err := longestFit(utf8.RuneCountInString(subject)-1, renderSubject); err != nil || found {
+	if best, found, err := longestFit(subjectLength-1, renderSubject); err != nil || found {
 		return best, true, err
 	}
 	d.Subject = ""
@@ -108,7 +116,7 @@ func Fit(t *Template, d Data, limit int, measure func(string) int) (out string, 
 	if strictFormats[t.format] {
 		return "", false, ErrLimitTooSmall
 	}
-	d.Subject = subject
+	d.Subject = cutSubject(subject, subjectLength)
 	shortest, err := t.Execute(d)
 	if err != nil {
 		return "", false, err
@@ -116,10 +124,57 @@ func Fit(t *Template, d Data, limit int, measure func(string) int) (out string, 
 	return longestPrefix(shortest, limit, measure), true, nil
 }
 
-// minSubjectShare is the length in characters to which Fit cuts a long
-// subject at least, however small the limit: a few words that still name
-// the event.
+// subjectEscapers escape a subject the way the built-in template of each
+// format does before Fit measures it for its share: a measure that parses
+// markup, as text.MeasureTelegramHTML does, would take "<root@host>" in a
+// raw subject for a tag and count it as nothing. A format without an entry
+// writes the subject as it is. The JSON quoting of mattermost,
+// slack-webhook and generic-json is not measured here: a subject of
+// quotes, backslashes or control characters grows up to six times in JSON,
+// takes more than its share and leaves the body less room, while the limit
+// still holds.
+var subjectEscapers = map[text.Format]func(string) string{
+	text.FormatTelegramHTML:       text.EscapeTelegramHTML,
+	text.FormatTelegramMarkdownV2: text.EscapeTelegramMarkdownV2,
+	text.FormatSlackMrkdwn:        text.EscapeSlack,
+	text.FormatSlackWebhook:       text.EscapeSlack,
+	text.FormatDiscord:            text.EscapeDiscord,
+	text.FormatMattermost:         text.EscapeMattermostMarkdown,
+}
+
+// minSubjectShare is the length, in the unit of the target, to which Fit
+// cuts a long subject at least, however small the limit: a few words that
+// still name the event.
 const minSubjectShare = 64
+
+// subjectCutMark ends a subject that Fit has cut, so that the reader does
+// not take the rest for the whole subject.
+const subjectCutMark = "..."
+
+// cutSubject returns subject cut to at most n characters by
+// text.CutAtWord, followed by subjectCutMark when anything was cut.
+func cutSubject(subject string, n int) string {
+	cut := text.CutAtWord(subject, n)
+	if cut == subject {
+		return subject
+	}
+	return cut + subjectCutMark
+}
+
+// longestSubject returns the largest number of characters, one at least,
+// that cutSubject keeps of subject within share by measure.
+func longestSubject(subject string, share int, measure func(string) int) int {
+	low, high := 1, utf8.RuneCountInString(subject)
+	for low < high {
+		middle := low + (high-low+1)/2
+		if measure(cutSubject(subject, middle)) <= share {
+			low = middle
+		} else {
+			high = middle - 1
+		}
+	}
+	return low
+}
 
 // longestFit returns the rendering of the largest number of items kept,
 // below total, for which render reports a fit, and whether there is one.

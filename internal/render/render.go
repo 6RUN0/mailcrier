@@ -150,7 +150,8 @@ func NewData(msg *message.Message, env message.Envelope, blind message.BlindCopi
 // Template is a parsed template with the functions of this package.
 type Template struct {
 	tmpl *template.Template
-	// format is the markup of a built-in template; empty for others.
+	// format is the markup of the target the template writes for; Fit
+	// takes its strictness from it, whoever wrote the template.
 	format text.Format
 }
 
@@ -163,21 +164,17 @@ func Builtin(format text.Format) (*Template, error) {
 	if err != nil {
 		return nil, fmt.Errorf("no built-in template for format %q", format)
 	}
-	t, err := parse(string(format), strings.TrimSuffix(string(source), "\n"))
-	if err != nil {
-		return nil, err
-	}
-	t.format = format
-	return t, nil
+	return parse(string(format), strings.TrimSuffix(string(source), "\n"), format)
 }
 
-// parse parses source with the functions of this package.
-func parse(name, source string) (*Template, error) {
+// parse parses source with the functions of this package, for a target
+// whose markup is format.
+func parse(name, source string, format text.Format) (*Template, error) {
 	tmpl, err := template.New(name).Funcs(funcs()).Parse(source)
 	if err != nil {
 		return nil, err
 	}
-	return &Template{tmpl: tmpl}, nil
+	return &Template{tmpl: tmpl, format: format}, nil
 }
 
 // Execute renders d.

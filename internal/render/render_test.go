@@ -62,7 +62,7 @@ func TestNewDataHidesBcc(t *testing.T) {
 		for _, out := range renderAll(t, d) {
 			dump += out
 		}
-		custom, err := parse("custom", `{{ range .Headers.Names }}{{ . }}{{ end }}{{ .Headers.Get "Bcc" }}{{ .Recipients }}`)
+		custom, err := parse("custom", `{{ range .Headers.Names }}{{ . }}{{ end }}{{ .Headers.Get "Bcc" }}{{ .Recipients }}`, text.FormatPlain)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -80,7 +80,7 @@ func TestNewDataHidesBcc(t *testing.T) {
 		if want := []string{"fwd@example.org"}; !slices.Equal(d.Recipients, want) {
 			t.Errorf("Recipients = %q, want %q", d.Recipients, want)
 		}
-		custom, err := parse("custom", `{{ range .Headers.Names }}{{ . }}{{ end }}{{ .Headers.Get "Resent-Bcc" }}`)
+		custom, err := parse("custom", `{{ range .Headers.Names }}{{ . }}{{ end }}{{ .Headers.Get "Resent-Bcc" }}`, text.FormatPlain)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -256,7 +256,7 @@ func TestHeadersInTemplates(t *testing.T) {
 				t.Errorf("%s shows X-Cron-Env:\n%s", format, out)
 			}
 		}
-		tmpl, err := parse("custom", `{{ .Headers.Get "x-cron-env" }}|{{ range .Headers.Values "X-Cron-Env" }}{{ . }};{{ end }}|{{ .Headers.Has "X-CRON-ENV" }}`)
+		tmpl, err := parse("custom", `{{ .Headers.Get "x-cron-env" }}|{{ range .Headers.Values "X-Cron-Env" }}{{ . }};{{ end }}|{{ .Headers.Has "X-CRON-ENV" }}`, text.FormatPlain)
 		if err != nil {
 			t.Fatal(err)
 		}
