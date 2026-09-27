@@ -60,6 +60,20 @@ and
 .Pa .forward
 are not read.
 .Pp
+The envelope sender is the value of
+.Fl f
+or
+.Fl r ,
+else the first Resent-From address, else the From address, else
+.Ev EMAIL ,
+else
+.Ev USER
+or
+.Ev LOGNAME
+at the host name, else the login name of the real user id at the host name.
+When the setgid bit applies, the environment is skipped; a user id without an
+entry in the user database gives an empty sender.
+.Pp
 The text of a notification is the text/plain part of the message, else its
 text/html part converted to text; other parts are attachments.
 The conversion collapses white space outside pre elements and reduces several
@@ -80,6 +94,46 @@ with
 then the list of attachments and then the body, which ends with a notice.
 An attachment the target sends files but not this one, over its size or number
 of files, stays in the list with a notice.
+.Sh TARGETS
+Each
+.Li "[target.NAME]"
+table of the configuration is one target; its
+.Ic type
+selects the service:
+.Bl -tag -width Ds
+.It Cm telegram
+Bot API
+.Cm sendMessage
+in the HTML parse mode, text of at most 4096 characters counted in UTF-16
+units after entities, and one
+.Cm sendDocument
+per attachment, up to 10 files of 50 MB.
+.It Cm discord
+One webhook execution with wait=true and no mention allowed, text of at most
+2000 characters, up to 10 files of 20 MiB and 25 MiB together.
+.It Cm slack
+Web API
+.Cm chat.postMessage
+with the bot token, text of at most 40000 characters, and up to 10 files
+shared in the thread of the message.
+.It Cm ntfy
+A JSON publish with the subject as title, text of at most 4096 bytes, and one
+more message per attachment, up to 10 files of 15 MiB.
+.It Cm http
+One POST of the JSON document of its preset:
+.Cm mattermost ,
+.Cm slack-webhook
+or
+.Cm generic-json ;
+extra headers override the Content-Type of the preset.
+Only
+.Cm slack-webhook
+is cut, to 40000 characters.
+.El
+.Pp
+429 and 5xx answers, and any answer with a Retry-After header, are temporary
+failures; other rejections are permanent.
+A target that took the text but not all files counts as delivered.
 .Sh OPTIONS
 .Bl -tag -width Ds
 .It Fl f Ar sender , Fl r Ar sender
@@ -145,7 +199,8 @@ Another configuration file, like
 .It Ev EMAIL , Ev USER , Ev LOGNAME
 Sender of a message without
 .Fl f
-and without a From header; ignored when the setgid bit applies.
+and without a Resent-From or From header; ignored when the setgid bit
+applies.
 .El
 .Sh FILES
 .Bl -tag -width Ds
