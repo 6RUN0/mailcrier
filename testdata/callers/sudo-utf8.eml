@@ -1,0 +1,9 @@
+To: root
+From: alice
+Auto-Submitted: auto-generated
+Subject: *** SECURITY information for host1 ***
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: 8bit
+
+host1 : 27 сен 10:00:00 : alice : пользователь НЕ в sudoers ; TTY=pts/0 ; COMMAND=/usr/bin/id
+

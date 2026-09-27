@@ -1,0 +1,5 @@
+/usr/sbin/sendmail
+-i
+-B
+8BITMIME
+root

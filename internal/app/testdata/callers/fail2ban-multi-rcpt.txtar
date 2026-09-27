@@ -1,0 +1,15 @@
+-- exit --
+0
+-- envelope --
+sender: "root@host1.example.org"
+sender-name: ""
+recipients: ["a@example.org" "b@example.org"]
+-- payloads --
+2
+-- title --
+[Fail2Ban] sshd: started on host1.example.org
+-- text --
+Hi,
+
+The jail sshd has been started successfully.
+-- warnings --

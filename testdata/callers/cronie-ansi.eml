@@ -1,0 +1,12 @@
+From: "(Cron Daemon)" <alice>
+To: alice
+Subject: Cron <alice@host1> df -h /home
+MIME-Version: 1.0
+Content-Type: text/plain; charset=ANSI_X3.4-1968
+Content-Transfer-Encoding: 8bit
+Precedence: bulk
+Auto-Submitted: auto-generated
+X-Cron-Env: <LOGNAME=alice>
+
+Файловая система  Размер  Использовано
+/dev/sda2         50G     47G

@@ -1,0 +1,4 @@
+To: ops@example.org
+Subject: cron: /etc/periodic/15min/check
+
+check: load 4.2

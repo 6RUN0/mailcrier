@@ -1,0 +1,8 @@
+From: root (Cron Daemon)
+To: root
+Subject: Cron <root@host1> /usr/local/bin/sync (failed)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: quoted-printable
+
+sync: connection refused

@@ -1,0 +1,16 @@
+From: "(Cron Daemon)" <root>
+To: root
+Subject: Cron <root@host1> /usr/local/bin/backup.sh
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+Precedence: bulk
+Auto-Submitted: auto-generated
+X-Cron-Env: <SHELL=/bin/sh>
+X-Cron-Env: <HOME=/root>
+X-Cron-Env: <PATH=/usr/bin:/bin>
+X-Cron-Env: <LOGNAME=root>
+X-Cron-Env: <USER=root>
+
+backup: 3 files copied to /srv/backup
+backup: done in 12 s

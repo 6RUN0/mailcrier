@@ -1,0 +1,13 @@
+-- exit --
+0
+-- envelope --
+sender: "root@host1.example.org"
+sender-name: ""
+recipients: ["ops@example.org"]
+-- payloads --
+2
+-- title --
+cron: /etc/periodic/15min/check
+-- text --
+check: load 4.2
+-- warnings --

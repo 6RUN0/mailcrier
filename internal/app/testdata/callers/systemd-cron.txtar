@@ -1,0 +1,14 @@
+-- exit --
+0
+-- envelope --
+sender: "root"
+sender-name: ""
+recipients: ["root"]
+-- payloads --
+2
+-- title --
+[host1] Failure: /etc/cron.daily/backup
+-- text --
+x cron-daily-backup.service - [Cron] "/etc/cron.daily/backup"
+     Active: failed (Result: exit-code)
+-- warnings --

@@ -24,7 +24,7 @@ BASE ?= $(shell git rev-parse -q --verify origin/develop >/dev/null && echo orig
 # FUZZTIME=10m. Inputs that fail are saved under testdata/fuzz and belong
 # in the commit that fixes them.
 FUZZTIME ?= 10s
-FUZZ_TARGETS := ./internal/app:FuzzSanitize
+FUZZ_TARGETS := ./internal/app:FuzzSanitize ./internal/sendmail:FuzzParse ./internal/message:FuzzRead
 
 # setgid-e2e installs the binary setgid inside a throwaway container and
 # needs docker; the image is testdata/setgid-e2e/Dockerfile.

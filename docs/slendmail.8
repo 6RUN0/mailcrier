@@ -1,0 +1,152 @@
+.Dd September 27, 2026
+.Dt SLENDMAIL 8
+.Os
+.Sh NAME
+.Nm slendmail ,
+.Nm sendmail ,
+.Nm newaliases ,
+.Nm mailq
+.Nd deliver the mail of system tools to chat and webhook services
+.Sh SYNOPSIS
+.Nm
+.Op Fl tiIv
+.Op Fl f Ar sender
+.Op Fl F Ar name
+.Op Fl o Ar option
+.Op Fl b Ar mode
+.Op Fl q Ns Op Ar interval
+.Op Fl -config Ar path
+.Op Fl -
+.Op Ar recipient ...
+.Nm
+.Fl -version | -help
+.Nm newaliases
+.Nm mailq
+.Sh DESCRIPTION
+.Nm
+reads one message on standard input and delivers it to the targets of
+.Pa /etc/slendmail.conf .
+It is installed as
+.Pa /usr/sbin/sendmail
+and accepts the command lines of cron, at, sudo, mdadm, mailx and similar
+callers.
+.Pp
+Flags follow
+.Xr getopt 3 :
+a value is glued
+.Pq Fl froot
+or the next argument
+.Pq Fl f Ar root ,
+flags without a value group
+.Pq Fl ti ,
+and
+.Fl -
+ends the options.
+Options and recipients may come in any order before
+.Fl - .
+The value of a flag is never read as an option.
+An unknown flag is logged and ignored.
+.Pp
+Recipients are the arguments, split at commas, and with
+.Fl t
+the addresses of the To, Cc and Bcc headers, without duplicates.
+Bcc headers are removed from the message.
+.Pa /etc/aliases
+and
+.Pa .forward
+are not read.
+.Sh OPTIONS
+.Bl -tag -width Ds
+.It Fl f Ar sender , Fl r Ar sender
+Envelope sender, angle brackets around it removed; an empty value or
+.Li <>
+is the null sender.
+Without a value or with a line break the call exits 64.
+.It Fl F Ar name
+Full name of the sender; a line break exits 64.
+.It Fl t
+Take recipients from the To, Cc and Bcc headers as well.
+.It Fl i , Fl oi
+A line with a single dot is ordinary text.
+Without it such a line ends the message, and the first dot of a line
+starting with two dots is removed.
+.It Fl o Ar option
+Ignored, except
+.Fl oi .
+.It Fl b Ar mode
+The first letter decides:
+.Cm m
+delivers, the default;
+.Cm i
+does nothing;
+.Cm p
+lists the queue;
+.Cm s
+is refused with exit status 64; other modes are ignored with a warning.
+.It Fl q Ns Op Ar interval
+Runs the queue once; the interval is ignored.
+.It Fl I
+Does nothing, like
+.Fl bi .
+.It Fl C Ar file
+Ignored with a warning.
+.It Fl B , Fl h , Fl L , Fl N , Fl O , Fl R , Fl V , Fl X , Fl p , Fl A
+Take a value and are ignored.
+.It Fl d , Fl e
+Ignored; the value is glued or the next argument unless it starts with a
+dash.
+.It Fl v , Fl m , Fl n , Fl U , Fl G
+Ignored.
+.It Fl -config Ar path
+Read another configuration file; ignored with a warning when the setgid
+bit of the binary applies to a caller other than root.
+.It Fl -version
+Print the version.
+.It Fl -help
+Print a usage summary.
+.El
+.Pp
+Called as
+.Nm newaliases
+the program does nothing; called as
+.Nm mailq
+it lists the queue.
+.Sh ENVIRONMENT
+.Bl -tag -width Ds
+.It Ev SLENDMAIL_CONFIG
+Another configuration file, like
+.Fl -config .
+.It Ev EMAIL , Ev USER , Ev LOGNAME
+Sender of a message without
+.Fl f
+and without a From header; ignored when the setgid bit applies.
+.El
+.Sh FILES
+.Bl -tag -width Ds
+.It Pa /etc/slendmail.conf
+The configuration.
+.El
+.Sh EXIT STATUS
+.Bl -tag -width Ds
+.It 0
+At least one target accepted the message, or a mode without a message
+succeeded.
+.It 64
+Usage error: a sender flag without a value, a line break in an address
+or in the full name,
+.Fl bs ,
+or a mode that does not exist yet.
+.It 66
+Standard input cannot be read.
+.It 69
+No target accepted the message.
+.It 70
+Internal error.
+.It 77
+A service mode requested by a caller without the right to it.
+.It 78
+The configuration cannot be read or is invalid.
+.El
+.Sh SEE ALSO
+.Xr syslog 3 ,
+.Xr cron 8

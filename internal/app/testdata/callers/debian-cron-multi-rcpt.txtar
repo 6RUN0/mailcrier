@@ -1,0 +1,13 @@
+-- exit --
+0
+-- envelope --
+sender: "root"
+sender-name: "CronDaemon"
+recipients: ["a@example.org" "b@example.org"]
+-- payloads --
+2
+-- title --
+Cron <root@host1> date
+-- text --
+Sat Sep 27 10:00:00 UTC 2026
+-- warnings --

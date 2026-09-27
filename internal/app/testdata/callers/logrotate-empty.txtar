@@ -1,0 +1,13 @@
+-- exit --
+0
+-- envelope --
+sender: "root@host1.example.org"
+sender-name: ""
+recipients: ["admin@example.org"]
+-- payloads --
+2
+-- title --
+/var/log/empty.log.1
+-- text --
+(empty body)
+-- warnings --

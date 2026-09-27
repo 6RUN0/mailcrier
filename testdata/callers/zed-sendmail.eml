@@ -1,0 +1,10 @@
+Subject: ZFS scrub_finish event for tank on host1
+
+ZFS has finished a scrub:
+
+   eid: 42
+ class: scrub_finish
+  host: host1
+  time: 2026-09-27 10:00:00+0000
+  pool: tank
+ state: ONLINE

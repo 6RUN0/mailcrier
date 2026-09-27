@@ -1,0 +1,10 @@
+From: "(Cron Daemon)" <root>
+To: ops@example.org
+Subject: Cron <root@host1> /usr/local/bin/report
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+Content-Transfer-Encoding: 8bit
+Precedence: bulk
+Auto-Submitted: auto-generated
+
+<html><body><p>Report: <a href="https://example.org/r/1">details</a></p></body></html>

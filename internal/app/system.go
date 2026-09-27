@@ -54,15 +54,27 @@ func SystemDeps() Deps {
 		NewLogger: func(tag string) *slog.Logger {
 			return newFallbackLogger(tag, dialSyslog, os.Stderr, creds.isElevated())
 		},
-		ConfigFS:     os.DirFS("/"),
-		ConfigPath:   SystemConfigPath,
-		HTTP:         &http.Client{Transport: newTransport(creds.isElevated())},
-		Hostname:     hostname,
-		Stderr:       os.Stderr,
-		SetLogOutput: log.SetOutput,
-		Credentials:  creds,
-		Environ:      os.Environ(),
+		ConfigFS:       os.DirFS("/"),
+		ConfigPath:     SystemConfigPath,
+		HTTP:           &http.Client{Transport: newTransport(creds.isElevated())},
+		Hostname:       hostname,
+		Program:        os.Args[0],
+		Stdout:         os.Stdout,
+		Stderr:         os.Stderr,
+		SetLogOutput:   log.SetOutput,
+		Credentials:    creds,
+		Environ:        os.Environ(),
+		LookupUserName: lookupUserName,
 	}
+}
+
+// lookupUserName returns the login name of uid from the user database.
+func lookupUserName(uid int) (string, bool) {
+	account, err := user.LookupId(strconv.Itoa(uid))
+	if err != nil {
+		return "", false
+	}
+	return account.Username, true
 }
 
 // newTransport returns the HTTP transport of a real invocation. Without

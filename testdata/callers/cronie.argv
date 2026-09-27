@@ -1,0 +1,9 @@
+/usr/sbin/sendmail
+-FCronDaemon
+-i
+-odi
+-oem
+-oi
+-t
+-f
+root

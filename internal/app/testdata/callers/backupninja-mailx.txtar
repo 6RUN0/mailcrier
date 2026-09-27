@@ -1,0 +1,14 @@
+-- exit --
+0
+-- envelope --
+sender: "root@host1.example.org"
+sender-name: ""
+recipients: ["root"]
+-- payloads --
+2
+-- title --
+backupninja: host1
+-- text --
+success -- /etc/backup.d/10.sys
+success -- /etc/backup.d/20.rdiff
+-- warnings --

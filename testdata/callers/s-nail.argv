@@ -1,0 +1,5 @@
+sendmail
+-i
+--
+ops@example.org
+-alias@example.org

@@ -1,0 +1,6 @@
+/usr/sbin/sendmail
+-FCronDaemon
+-i
+-B8BITMIME
+-oem
+root

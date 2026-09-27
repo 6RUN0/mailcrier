@@ -14,6 +14,8 @@ make setgid-e2e   # needs docker: TestSetgidReexec in a root container
 go build -o slendmail ./cmd/slendmail   # new binary; the name is gitignored
 go build -o /dev/null .                 # legacy root main.go, must still build
 go test ./internal/backend/webhook -update   # rewrite golden files
+go test ./internal/app -run TestCallers -update   # caller golden files
+mandoc -T lint docs/slendmail.8         # man page; not part of make check
 ```
 
 - Tools are pinned where Dependabot updates them: golangci-lint and
@@ -53,9 +55,11 @@ it.
 
 - `internal/app.Run(ctx, Deps, args, stdin) int` handles one invocation;
   `Deps` carries the logger factory, config `fs.FS` rooted at `/`, HTTP
-  client, host name, stderr, uid/gid/egid, environment and the error of a
-  failed re-exec. `app.SystemDeps` builds the real ones (syslog `LOG_MAIL`,
-  `/etc/slendmail.conf`, environment proxies only without elevation).
+  client, host name, argv[0] (`Program`), stdout, stderr, uid/gid/egid,
+  environment, the error of a failed re-exec and a uid-to-login lookup; the
+  unexported `deliver` field lets tests replace delivery. `app.SystemDeps`
+  builds the real ones (syslog `LOG_MAIL`, `/etc/slendmail.conf`,
+  environment proxies only without elevation).
 - Elevated means `egid != gid` and `uid != 0` (`internal/app/privilege.go`).
   `main` sets the umask, then calls `app.Harden` before `SystemDeps`, any
   logger or any time formatting (the time package opens a `TZ` path): an
@@ -63,7 +67,16 @@ it.
   the environment is already sanitized. Nothing may move ahead of `Harden`.
   `sanitizeEnv` must stay idempotent (`FuzzSanitize`), or the re-exec loops.
   `SLENDMAIL_CONFIG` dropped by the re-exec is reported after it through
-  the argv marker `--ignored-env-config`.
+  the argv marker `--ignored-env-config`, which `sendmail.Parse` accepts
+  only as the first argument.
+- `internal/sendmail.Parse(argv0, args)` is the only command line parser:
+  getopt-style short flags from the `shortFlags` table, long options before
+  `--` only, usage errors exit 64 before stdin is read.
+  `Invocation.Envelope` builds sender and recipients. The flag table is
+  repeated in README and `docs/slendmail.8`; change all three together.
+- `internal/message.Read` returns the message without Bcc, the Bcc
+  addresses separately (routing only, never rendered), and constant
+  warning texts that `app` logs as they are.
 - `internal/config.Load` parses strictly: an unknown key, a key of another
   target type, a bad name or value gives `*config.Error` with
   `path:line:col` and exit 78. URLs must be absolute http(s) (for
@@ -80,7 +93,7 @@ it.
   `config.Load`; a new secret-bearing config key must be registered in
   `app.registerSecrets`.
 - `internal/delivery`: sequential `Deliver`; `ExitCode` is 0 when any target
-  accepted the message, else 69.
+  accepted the message or every target was suppressed, else 69.
 - `TestImportGraph` (`import_graph_test.go`) enforces the package graph: a
   new package needs an entry in `allowedImports`.
 
@@ -93,6 +106,12 @@ it.
 - Comments, docs and commit messages carry no references to plan stages or
   review and decision IDs; `scripts/check-refs` enforces it.
 - Golden files: `internal/golden`, one txtar per fixture, `-update` rewrites.
+- Caller fixtures: `testdata/callers/<name>.eml` and `<name>.argv` (argv[0]
+  first, one argument per line), hand-written with `example.org` and
+  `example.com` only; `TestCallers` compares each with
+  `internal/app/testdata/callers/<name>.txtar`. A table test whose rows
+  carry case IDs calls `t.Run("<ID>/<slug>", row.check)` per row, because
+  `TestIDsCovered` reads only literals in the `Run` call.
 - `TestReadmeExamplesLoad` loads the TOML blocks of the README section
   "Configuration (cmd/slendmail)" with `config.Load`.
 

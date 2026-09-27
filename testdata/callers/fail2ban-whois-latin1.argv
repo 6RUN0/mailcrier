@@ -1,0 +1,4 @@
+/usr/sbin/sendmail
+-f
+root@host1.example.org
+root@localhost

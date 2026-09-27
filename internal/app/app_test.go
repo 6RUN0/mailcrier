@@ -16,6 +16,10 @@ import (
 	"testing/fstest"
 	"testing/iotest"
 	"time"
+
+	"github.com/6RUN0/slendmail/internal/backend"
+	"github.com/6RUN0/slendmail/internal/delivery"
+	"github.com/6RUN0/slendmail/internal/message"
 )
 
 // invocation is one Run call against an in-memory configuration with the
@@ -40,6 +44,12 @@ type invocation struct {
 	// environment passed to ReplaceEnv.
 	execs       []execCall
 	replacedEnv []string
+	// program is argv[0], "/usr/sbin/sendmail" when empty; stdout collects
+	// the output of the modes that print.
+	program string
+	stdout  bytes.Buffer
+	// deliver replaces the delivery to the configured targets.
+	deliver func(ctx context.Context, targets []delivery.Target, env message.Envelope, p backend.Payload) []delivery.Result
 }
 
 // execCall is one attempt to replace the process image.
@@ -63,10 +73,14 @@ func (inv *invocation) run(t *testing.T) int {
 	if args == nil {
 		args = []string{"-ti"}
 	}
+	program := inv.program
+	if program == "" {
+		program = "/usr/sbin/sendmail"
+	}
 	// As main does: Harden first, with an Exec that always fails.
 	environ := inv.environ
 	args, reexecErr := Harden(Process{
-		Argv:        append([]string{"/usr/sbin/sendmail"}, args...),
+		Argv:        append([]string{program}, args...),
 		Environ:     inv.environ,
 		Credentials: inv.creds,
 		Exec: func(path string, argv, env []string) error {
@@ -88,14 +102,24 @@ func (inv *invocation) run(t *testing.T) int {
 		ConfigPath:   SystemConfigPath,
 		HTTP:         client,
 		Hostname:     "host1.example.org",
+		Program:      program,
+		Stdout:       &inv.stdout,
 		Stderr:       &inv.stderr,
 		SetLogOutput: func(w io.Writer) { inv.logOutput = w },
 		Credentials:  inv.creds,
 		Environ:      environ,
 		ReexecErr:    reexecErr,
+		LookupUserName: func(uid int) (string, bool) {
+			name, ok := testUsers[uid]
+			return name, ok
+		},
+		deliver: inv.deliver,
 	}
 	return Run(context.Background(), deps, args, inv.stdin)
 }
+
+// testUsers is the user database of the invocations.
+var testUsers = map[int]string{0: "root", 990: "slendmail", 1000: "alice"}
 
 // callField is the random call id on every record; log and output drop it
 // so that tests can match the fields after it.

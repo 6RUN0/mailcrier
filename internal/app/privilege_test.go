@@ -19,6 +19,8 @@ import (
 	"testing"
 	"testing/fstest"
 	"testing/iotest"
+
+	"github.com/6RUN0/slendmail/internal/sendmail"
 )
 
 // Credentials of the cases below. The slendmail user and group are 990; a
@@ -437,15 +439,16 @@ func runHTTP2DebugHelper(mode string) {
 		NewLogger: func(string) *slog.Logger {
 			return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 		},
-		ConfigFS:     fstest.MapFS{SystemConfigPath: {Data: []byte(httpTargetConfig(targetURL))}},
-		ConfigPath:   SystemConfigPath,
-		HTTP:         &http.Client{Transport: transport},
-		Hostname:     "host1.example.org",
-		Stderr:       os.Stderr,
-		SetLogOutput: log.SetOutput,
-		Credentials:  creds,
-		Environ:      os.Environ(),
-		ReexecErr:    reexecErr,
+		ConfigFS:       fstest.MapFS{SystemConfigPath: {Data: []byte(httpTargetConfig(targetURL))}},
+		ConfigPath:     SystemConfigPath,
+		HTTP:           &http.Client{Transport: transport},
+		Hostname:       "host1.example.org",
+		Stderr:         os.Stderr,
+		SetLogOutput:   log.SetOutput,
+		Credentials:    creds,
+		Environ:        os.Environ(),
+		ReexecErr:      reexecErr,
+		LookupUserName: lookupUserName,
 	}
 	code := Run(context.Background(), deps, args, strings.NewReader("Subject: t\n\nb\n"))
 	fmt.Printf("exit=%d\n", code)
@@ -455,7 +458,7 @@ func runHTTP2DebugHelper(mode string) {
 // only yields a warning in an elevated process; elsewhere it is ignored.
 func TestRunIgnoresForgedEnvConfigMarker(t *testing.T) {
 	server := newCountingServer(t, false)
-	inv := &invocation{config: httpTargetConfig(server.URL), args: []string{markerEnvConfig, "-ti"}, creds: plainUser, stdin: strings.NewReader("Subject: t\n\nb\n")}
+	inv := &invocation{config: httpTargetConfig(server.URL), args: []string{sendmail.MarkerEnvConfig, "-ti"}, creds: plainUser, stdin: strings.NewReader("Subject: t\n\nb\n")}
 	if code := inv.run(t); code != 0 {
 		t.Fatalf("Run() = %d, want 0", code)
 	}

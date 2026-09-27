@@ -1,0 +1,13 @@
+-- exit --
+0
+-- envelope --
+sender: "root@host1.example.org"
+sender-name: ""
+recipients: ["alice"]
+-- payloads --
+2
+-- title --
+Output from your job        7
+-- text --
+build finished
+-- warnings --

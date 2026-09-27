@@ -1,0 +1,14 @@
+-- exit --
+0
+-- envelope --
+sender: "alice"
+sender-name: "CronDaemon"
+recipients: ["alice"]
+-- payloads --
+2
+-- title --
+Cron <alice@host1> df -h /home
+-- text --
+Файловая система  Размер  Использовано
+/dev/sda2         50G     47G
+-- warnings --

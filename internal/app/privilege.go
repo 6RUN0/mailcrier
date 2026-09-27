@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/6RUN0/slendmail/internal/sendmail"
 )
 
 // selfExe is the running binary. Executing it starts the same inode even
@@ -112,10 +114,10 @@ type Process struct {
 // exec attempts fail, Harden replaces the environment in place and
 // returns the error; Run then works in a restricted mode.
 //
-// The returned arguments, argv[0] excluded, go to Run. They carry
-// markerEnvConfig when SLENDMAIL_CONFIG was set, so that the process after
-// the exec can warn about the variable it no longer sees. A forged marker
-// yields one extra warning, nothing else.
+// The returned arguments, argv[0] excluded, go to Run. They start with
+// sendmail.MarkerEnvConfig when SLENDMAIL_CONFIG was set, so that the
+// process after the exec can warn about the variable it no longer sees. A
+// forged marker yields one extra warning, nothing else.
 func Harden(p Process) (args []string, reexecErr error) {
 	args = p.Argv[1:]
 	if !p.Credentials.isElevated() {
@@ -126,7 +128,7 @@ func Harden(p Process) (args []string, reexecErr error) {
 		return args, nil
 	}
 	if _, ok := lookupEnv(p.Environ, envConfig); ok {
-		args = append([]string{markerEnvConfig}, args...)
+		args = append([]string{sendmail.MarkerEnvConfig}, args...)
 	}
 	argv := append([]string{p.Argv[0]}, args...)
 	var errs []error
@@ -167,67 +169,6 @@ func withoutHTTP2(rt http.RoundTripper) http.RoundTripper {
 	}
 	transport.TLSClientConfig.NextProtos = []string{"http/1.1"}
 	return transport
-}
-
-// Long options of slendmail itself. Everything else on the command line
-// belongs to the sendmail interface.
-const (
-	optionConfig      = "--config"
-	optionProbe       = "--probe"
-	optionCheckConfig = "--check-config"
-	// optionAltConfig is sendmail's -C, which names another configuration
-	// file; slendmail never honours it.
-	optionAltConfig = "-C"
-	// markerEnvConfig is added by Harden before a re-exec that drops
-	// SLENDMAIL_CONFIG.
-	markerEnvConfig = "--ignored-env-config"
-)
-
-// options are the command line arguments slendmail acts on.
-type options struct {
-	// configPath is the value of --config; empty when absent.
-	configPath string
-	// mode is --probe or --check-config; empty for a normal delivery.
-	mode string
-	// hasAltConfig records a -C option.
-	hasAltConfig bool
-	// hasEnvConfigMarker records markerEnvConfig.
-	hasEnvConfigMarker bool
-}
-
-// parseOptions picks the slendmail options out of args. A -C option takes
-// its value attached or as the next argument, as in sendmail.
-func parseOptions(args []string) (options, error) {
-	var opts options
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		switch {
-		case arg == optionConfig:
-			if i+1 == len(args) {
-				return opts, fmt.Errorf("option %s requires a value", optionConfig)
-			}
-			i++
-			opts.configPath = args[i]
-			if opts.configPath == "" {
-				return opts, fmt.Errorf("option %s requires a value", optionConfig)
-			}
-		case strings.HasPrefix(arg, optionConfig+"="):
-			opts.configPath = strings.TrimPrefix(arg, optionConfig+"=")
-			if opts.configPath == "" {
-				return opts, fmt.Errorf("option %s requires a value", optionConfig)
-			}
-		case arg == markerEnvConfig:
-			opts.hasEnvConfigMarker = true
-		case arg == optionProbe, arg == optionCheckConfig:
-			opts.mode = arg
-		case arg == optionAltConfig:
-			opts.hasAltConfig = true
-			i++
-		case strings.HasPrefix(arg, optionAltConfig):
-			opts.hasAltConfig = true
-		}
-	}
-	return opts, nil
 }
 
 // lookupEnv returns the value of the first entry for key, as getenv does.

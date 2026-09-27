@@ -1,0 +1,14 @@
+Subject: [Fail2Ban] sshd: banned 198.51.100.7 from host1.example.org
+Date: Sat, 27 Sep 2026 10:00:00 +0000
+From: Fail2Ban <root@host1.example.org>
+To: root@localhost
+
+Hi,
+
+Here is more information about 198.51.100.7 :
+
+netname:        EXAMPLE-NET
+descr:          Société Exemple
+.
+Lines containing failures of 198.51.100.7
+sshd[42]: Failed password for root

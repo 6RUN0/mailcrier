@@ -1,0 +1,13 @@
+-- exit --
+0
+-- envelope --
+sender: "root@host1.example.org"
+sender-name: ""
+recipients: ["ops@example.org" "-alias@example.org"]
+-- payloads --
+2
+-- title --
+s-nail test
+-- text --
+hello
+-- warnings --

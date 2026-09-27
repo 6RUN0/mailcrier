@@ -1,0 +1,8 @@
+To: root
+Subject: backupninja: host1 
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: 8bit
+
+success -- /etc/backup.d/10.sys
+success -- /etc/backup.d/20.rdiff

@@ -1,0 +1,13 @@
+-- exit --
+0
+-- envelope --
+sender: "root"
+sender-name: "CronDaemon"
+recipients: ["ops@example.org"]
+-- payloads --
+2
+-- title --
+Cron <root@host1> /usr/local/bin/report
+-- text --
+<html><body><p>Report: <a href="https://example.org/r/1">details</a></p></body></html>
+-- warnings --

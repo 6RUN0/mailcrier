@@ -1,0 +1,14 @@
+-- exit --
+0
+-- envelope --
+sender: "root"
+sender-name: "Anacron"
+recipients: ["root"]
+-- payloads --
+2
+-- title --
+Anacron job 'cron.daily' on host1
+-- text --
+/etc/cron.daily/man-db:
+mandb: can't update index cache
+-- warnings --

@@ -1,0 +1,11 @@
+From: root (Cron Daemon)
+To: root
+Subject: Cron <root@host1> test -x /usr/sbin/anacron || run-parts /etc/cron.daily
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: quoted-printable
+X-Cron-Env: <SHELL=/bin/sh>
+X-Cron-Env: <HOME=/root>
+
+/etc/cron.daily/logrotate: =C3=BCberpr=C3=BCft, 12 Dateien rotiert, eine sehr lange Zeile die =
+weicht umgebrochen wird

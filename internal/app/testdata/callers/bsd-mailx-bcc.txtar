@@ -1,0 +1,13 @@
+-- exit --
+0
+-- envelope --
+sender: "alice@example.org"
+sender-name: ""
+recipients: ["ops@example.org" "dev@example.org" "audit@example.org" "archive@example.org"]
+-- payloads --
+2
+-- title --
+nightly report
+-- text --
+all green
+-- warnings --

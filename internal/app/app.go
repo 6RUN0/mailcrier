@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"net/http"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 
 	"github.com/6RUN0/slendmail/internal/backend"
@@ -23,10 +24,12 @@ import (
 	"github.com/6RUN0/slendmail/internal/delivery"
 	"github.com/6RUN0/slendmail/internal/message"
 	"github.com/6RUN0/slendmail/internal/redact"
+	"github.com/6RUN0/slendmail/internal/sendmail"
 )
 
 // Exit statuses from sysexits.h that Run produces itself.
 const (
+	exitOK       = 0
 	exitUsage    = 64
 	exitNoInput  = 66
 	exitSoftware = 70
@@ -53,6 +56,11 @@ type Deps struct {
 	HTTP *http.Client
 	// Hostname is the name of the machine, sent along with each message.
 	Hostname string
+	// Program is argv[0]; its base name selects the newaliases and mailq
+	// modes.
+	Program string
+	// Stdout receives the output of mailq, --version and --help.
+	Stdout io.Writer
 	// Stderr receives what the standard log package writes: net/http and
 	// its HTTP/2 transport print their debug output there.
 	Stderr io.Writer
@@ -67,11 +75,17 @@ type Deps struct {
 	// ReexecErr is the error Harden returned: an elevated process that
 	// could not execute itself with a clean environment.
 	ReexecErr error
+	// LookupUserName returns the login name of a uid from the user
+	// database; false when there is none.
+	LookupUserName func(uid int) (string, bool)
+
+	// deliver sends p to the targets; nil means delivery.Deliver. Tests
+	// set it to observe the envelope and payload and to choose outcomes.
+	deliver func(ctx context.Context, targets []delivery.Target, env message.Envelope, p backend.Payload) []delivery.Result
 }
 
-// Run handles one invocation and returns the process exit status. Of the
-// command line it acts on --config, --probe, --check-config and -C; other
-// arguments are accepted and ignored.
+// Run handles one invocation and returns the process exit status; args
+// are the arguments after argv[0].
 //
 // Every log record and everything the standard log package prints passes
 // through one redactor, which learns the secrets of the configuration
@@ -106,37 +120,45 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 		client.Transport = withoutHTTP2(client.Transport)
 		log.Error("reexec failed", "err", d.ReexecErr)
 	}
-	opts, err := parseOptions(args)
+	inv, warnings, err := sendmail.Parse(d.Program, args)
 	if err != nil {
 		_, _ = fmt.Fprintf(d.Stderr, "slendmail: %v\n", err)
 		log.Error("command line rejected", "err", err)
 		return exitUsage
 	}
-	if opts.hasAltConfig {
-		log.Warn("option ignored", "option", optionAltConfig)
+	for _, w := range warnings {
+		if w.Message == sendmail.WarningSuppressed {
+			log.Warn(w.Message, "count", w.Count)
+			continue
+		}
+		log.Warn(w.Message, "option", w.Option)
 	}
-	if opts.hasEnvConfigMarker && d.Credentials.isElevated() {
+	if inv.HasEnvConfigMarker && d.Credentials.isElevated() {
 		log.Warn("configuration override ignored", "source", envConfig)
 	}
-	if opts.mode != "" {
-		return refuseMode(d, log, opts.mode)
+	if inv.Mode != sendmail.Deliver {
+		return runMode(d, log, inv.Mode)
 	}
-	configPath, err := selectConfigPath(d, opts, log)
+	configPath, err := selectConfigPath(d, inv, log)
 	if err != nil {
 		log.Error("configuration rejected, message not delivered", "err", err)
 		return exitConfig
 	}
-	msg, err := message.Read(stdin)
+	msg, bcc, readWarnings, err := message.Read(stdin, message.ReadOptions{IgnoreDots: inv.IgnoreDots, MaxSize: message.MaxSize})
 	if err != nil {
 		log.Error("message not read, giving up", "err", err)
 		return exitNoInput
 	}
-	// Headers and body stay out of the log: they may carry anything the
-	// calling job printed. The Message-ID, when present, links the records
-	// to the message.
+	env := inv.Envelope(msg, bcc, func() string { return defaultSender(d) })
+	// Headers, body and addresses stay out of the log: they may carry
+	// anything the calling job printed. The Message-ID, when present,
+	// links the records to the message.
 	msgAttrs := messageAttrs(msg)
 	log = log.With(msgAttrs...)
-	log.Info("message received", "size", len(msg.Raw))
+	for _, w := range readWarnings {
+		log.Warn(w)
+	}
+	log.Info("message received", "size", msg.Size, "recipients", len(env.Recipients))
 	cfg, err := config.Load(d.ConfigFS, configPath)
 	if err != nil {
 		log.Error("configuration rejected, message not delivered", "err", err)
@@ -154,12 +176,120 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 	}
 	ctx, cancel := context.WithTimeout(ctx, cfg.General.Deadline.Duration)
 	defer cancel()
-	payload := backend.Payload{Title: msg.Subject, Text: msg.Body}
-	results := delivery.Deliver(ctx, targets, payload)
+	deliver := d.deliver
+	if deliver == nil {
+		deliver = func(ctx context.Context, targets []delivery.Target, _ message.Envelope, p backend.Payload) []delivery.Result {
+			return delivery.Deliver(ctx, targets, p)
+		}
+	}
+	results := deliver(ctx, targets, env, buildPayload(msg))
 	for _, r := range results {
 		logResult(log, r)
 	}
+	logOutcome(log, results)
 	return delivery.ExitCode(results)
+}
+
+// emptyBodyText stands in for a body without visible text: at -m
+// and logrotate send such mail, and services reject an empty message.
+const emptyBodyText = "(empty body)"
+
+// buildPayload returns the text of msg for the targets.
+func buildPayload(msg *message.Message) backend.Payload {
+	text := msg.Body
+	if strings.TrimSpace(text) == "" {
+		text = emptyBodyText
+	}
+	return backend.Payload{Title: msg.Subject, Text: text}
+}
+
+// defaultSender returns the sender of a message without -f and From. An
+// elevated process takes the login name of its real uid from the user
+// database, because USER, LOGNAME and EMAIL are the caller's to set;
+// otherwise EMAIL wins, then USER or LOGNAME at the host name. Empty when
+// nothing is known.
+func defaultSender(d Deps) string {
+	if !d.Credentials.isElevated() {
+		if email, ok := lookupEnv(d.Environ, "EMAIL"); ok && email != "" {
+			return email
+		}
+		for _, key := range []string{"USER", "LOGNAME"} {
+			if name, ok := lookupEnv(d.Environ, key); ok && name != "" {
+				return name + "@" + d.Hostname
+			}
+		}
+	}
+	if name, ok := d.LookupUserName(d.Credentials.UID); ok {
+		return name + "@" + d.Hostname
+	}
+	return ""
+}
+
+// logOutcome adds the records for the message as a whole. Without a spool
+// a temporary failure loses the message for that target.
+func logOutcome(log *slog.Logger, results []delivery.Result) {
+	var delivered, temporary []delivery.Result
+	for _, r := range results {
+		switch r.Status {
+		case delivery.OK:
+			delivered = append(delivered, r)
+		case delivery.Temp:
+			temporary = append(temporary, r)
+		}
+	}
+	switch {
+	case len(delivered) > 0:
+		for _, r := range temporary {
+			log.Error("message lost for target", "target", r.TargetID)
+		}
+	case len(temporary) > 0 && len(temporary) == len(results):
+		log.Error("message lost")
+	case delivery.ExitCode(results) != exitOK:
+		log.Error("message not delivered")
+	}
+}
+
+// runMode answers the modes that read no message.
+func runMode(d Deps, log *slog.Logger, mode sendmail.Mode) int {
+	switch mode {
+	case sendmail.NewAliases:
+		return exitOK
+	case sendmail.ListQueue:
+		_, _ = fmt.Fprintln(d.Stdout, "queue is empty")
+		return exitOK
+	case sendmail.RunQueue:
+		log.Debug("queue is empty")
+		return exitOK
+	case sendmail.Version:
+		_, _ = fmt.Fprintln(d.Stdout, "slendmail", buildVersion())
+		return exitOK
+	case sendmail.Help:
+		_, _ = io.WriteString(d.Stdout, usage)
+		return exitOK
+	case sendmail.Probe:
+		return refuseMode(d, log, sendmail.OptionProbe, true)
+	case sendmail.CheckConfig:
+		return refuseMode(d, log, sendmail.OptionCheckConfig, true)
+	default:
+		return refuseMode(d, log, sendmail.OptionStatus, false)
+	}
+}
+
+// usage is the text of --help.
+const usage = `usage: slendmail [flags] [--] [recipient ...]
+       slendmail --version | --help | --config PATH
+Reads a message on stdin and delivers it to the targets of
+/etc/slendmail.conf. sendmail flags: -t -i -oi -f ADDR -r ADDR -F NAME;
+-bi, -I and newaliases do nothing; -bp and mailq list the queue; -q runs it.
+Other sendmail flags are accepted and ignored. See slendmail(8).
+`
+
+// buildVersion returns the module version stamped into the binary.
+func buildVersion() string {
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" {
+		return info.Main.Version
+	}
+	return "(devel)"
 }
 
 // maxMessageIDLength bounds the msgid field: the header comes from the
@@ -186,12 +316,12 @@ func newCallID() string {
 	return hex.EncodeToString(id)
 }
 
-// refuseMode answers --probe and --check-config. Both read the whole
-// configuration or send to every target, so an elevated caller other than
-// root and the slendmail user gets 77. The modes themselves do not exist
-// yet; everyone else gets a usage error.
-func refuseMode(d Deps, log *slog.Logger, mode string) int {
-	if !d.Credentials.isPrivilegedCaller() {
+// refuseMode answers --probe, --check-config and --status, which do not
+// exist yet. The first two read the whole configuration or send to every
+// target, so with isRestricted an elevated caller other than root and the
+// slendmail user gets 77; everyone else gets a usage error.
+func refuseMode(d Deps, log *slog.Logger, mode string, isRestricted bool) int {
+	if isRestricted && !d.Credentials.isPrivilegedCaller() {
 		_, _ = fmt.Fprintf(d.Stderr, "slendmail: %s: permission denied\n", mode)
 		log.Error("mode refused, caller not privileged", "option", mode, "uid", d.Credentials.UID)
 		return exitNoPerm
@@ -206,13 +336,13 @@ func refuseMode(d Deps, log *slog.Logger, mode string) int {
 // elevated process ignores both, with a warning: they would let any user
 // read an arbitrary file, or send the message to a receiver of their own,
 // with the group privilege.
-func selectConfigPath(d Deps, opts options, log *slog.Logger) (string, error) {
+func selectConfigPath(d Deps, inv sendmail.Invocation, log *slog.Logger) (string, error) {
 	source, path := "", ""
 	if value, ok := lookupEnv(d.Environ, envConfig); ok && value != "" {
 		source, path = envConfig, value
 	}
-	if opts.configPath != "" {
-		source, path = optionConfig, opts.configPath
+	if inv.ConfigPath != "" {
+		source, path = sendmail.OptionConfig, inv.ConfigPath
 	}
 	switch {
 	case source == "":
@@ -228,11 +358,15 @@ func selectConfigPath(d Deps, opts options, log *slog.Logger) (string, error) {
 	return strings.TrimPrefix(absolute, "/"), nil
 }
 
-// logResult records the outcome of one target: class is temp or perm,
-// status the HTTP status when the service answered.
+// logResult records the outcome of one target. For a failure class is
+// temp or perm, status the HTTP status when the service answered.
 func logResult(log *slog.Logger, r delivery.Result) {
-	if r.Status == delivery.OK {
+	switch r.Status {
+	case delivery.OK:
 		log.Debug("target delivered", "target", r.TargetID)
+		return
+	case delivery.Suppressed:
+		log.Info("target suppressed", "target", r.TargetID)
 		return
 	}
 	attrs := []any{"target", r.TargetID, "class", r.Status}

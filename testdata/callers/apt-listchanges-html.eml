@@ -1,0 +1,11 @@
+Auto-Submitted: auto-generated
+Subject: apt-listchanges: Changelogs
+To: root
+MIME-Version: 1.0
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+<html><head><title>apt-listchanges output</title></head><body>
+<pre>example-tool (2.0-1)
+  * Fix <a href="https://example.org/bugs/1">bug 1</a>.</pre>
+</body></html>

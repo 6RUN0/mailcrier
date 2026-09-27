@@ -1,0 +1,8 @@
+To: root
+Subject: ZFS device fault for pool tank on host1
+MIME-Version: 1.0
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: 8bit
+
+The number of I/O errors associated with a ZFS device exceeded
+acceptable levels. ZFS has marked the device as faulted.

@@ -1,0 +1,13 @@
+-- exit --
+0
+-- envelope --
+sender: "root"
+sender-name: "CronDaemon"
+recipients: ["root"]
+-- payloads --
+2
+-- title --
+Cron <root@host1> /usr/local/bin/sync (failed)
+-- text --
+sync: connection refused
+-- warnings --

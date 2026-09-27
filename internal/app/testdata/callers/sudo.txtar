@@ -1,0 +1,14 @@
+-- exit --
+0
+-- envelope --
+sender: "alice"
+sender-name: ""
+recipients: ["root"]
+-- payloads --
+2
+-- title --
+*** SECURITY information for host1 ***
+-- text --
+host1 : Sep 27 10:00:00 : alice : user NOT in sudoers ; TTY=pts/0 ; PWD=/home/alice ; USER=root ; COMMAND=/usr/bin/id
+
+-- warnings --

@@ -1,0 +1,13 @@
+-- exit --
+0
+-- envelope --
+sender: "root"
+sender-name: "CronDaemon"
+recipients: ["root"]
+-- payloads --
+2
+-- title --
+Cron <root@host1> printf done
+-- text --
+done
+-- warnings --

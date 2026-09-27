@@ -1,0 +1,8 @@
+From: root (Cron Daemon)
+To: a@example.org, b@example.org
+Subject: Cron <root@host1> date
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: quoted-printable
+
+Sat Sep 27 10:00:00 UTC 2026

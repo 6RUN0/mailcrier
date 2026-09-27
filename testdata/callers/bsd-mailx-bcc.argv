@@ -1,0 +1,5 @@
+sendmail
+-i
+-t
+-f
+alice@example.org

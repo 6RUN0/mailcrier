@@ -1,0 +1,15 @@
+-- exit --
+0
+-- envelope --
+sender: "root@host1.example.org"
+sender-name: ""
+recipients: ["root"]
+-- payloads --
+2
+-- title --
+apt-listchanges: news for host1
+-- text --
+example-tool (2.0-1) unstable; urgency=medium
+
+  * The configuration moved to /etc/example-tool.d.
+-- warnings --

@@ -1,0 +1,14 @@
+-- exit --
+0
+-- envelope --
+sender: "root"
+sender-name: "CronDaemon"
+recipients: ["root"]
+-- payloads --
+2
+-- title --
+Cron <root@host1> /usr/local/bin/backup.sh
+-- text --
+backup: 3 files copied to /srv/backup
+backup: done in 12 s
+-- warnings --

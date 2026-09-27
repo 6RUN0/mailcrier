@@ -1,0 +1,17 @@
+Subject: unattended-upgrades result for host1: SUCCESS
+From: root
+To: root
+Auto-Submitted: auto-generated
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Unattended upgrade result: All upgrades installed
+
+Packages that were upgraded:
+ example-lib example-tool=
+ 
+
+Package installation log:
+Log started: 2026-09-27  06:25:01
+Preparing to unpack .../example-lib_2.0-1_amd64.deb ...

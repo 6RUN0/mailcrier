@@ -1,0 +1,14 @@
+-- exit --
+0
+-- envelope --
+sender: "root@host1.example.org"
+sender-name: ""
+recipients: ["root"]
+-- payloads --
+2
+-- title --
+ZFS device fault for pool tank on host1
+-- text --
+The number of I/O errors associated with a ZFS device exceeded
+acceptable levels. ZFS has marked the device as faulted.
+-- warnings --

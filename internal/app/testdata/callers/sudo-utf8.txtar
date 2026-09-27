@@ -1,0 +1,14 @@
+-- exit --
+0
+-- envelope --
+sender: "alice"
+sender-name: ""
+recipients: ["root"]
+-- payloads --
+2
+-- title --
+*** SECURITY information for host1 ***
+-- text --
+host1 : 27 сен 10:00:00 : alice : пользователь НЕ в sudoers ; TTY=pts/0 ; COMMAND=/usr/bin/id
+
+-- warnings --

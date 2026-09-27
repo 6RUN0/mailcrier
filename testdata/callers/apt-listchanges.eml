@@ -1,0 +1,10 @@
+Auto-Submitted: auto-generated
+Subject: apt-listchanges: news for host1
+To: root
+MIME-Version: 1.0
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 8bit
+
+example-tool (2.0-1) unstable; urgency=medium
+
+  * The configuration moved to /etc/example-tool.d.

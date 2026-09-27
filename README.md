@@ -62,11 +62,7 @@ preset = "generic-json"
   `{"subject": ..., "body": ..., "hostname": ...}` with
   `Content-Type: application/json`. Other target types and presets are
   recognized by the parser but rejected with exit status 78 until implemented.
-- Exit status: 0 when at least one target accepted the message, 69 when none
-  did, 66 when stdin cannot be read, 70 on a panic in the main goroutine (a
-  bug; the redacted record in the log carries the details). A panic in any
-  other goroutine ends the process with the Go runtime's own report on
-  stderr and status 2; that report is not redacted.
+- Exit status: see "Exit status" below.
 - Logging goes to syslog, facility `mail`. Where no syslog socket exists (a
   container without `/dev/log`) the records go to stderr, with time and
   level, after one `syslog unavailable` warning; PHP-FPM passes the stderr
@@ -98,9 +94,9 @@ preset = "generic-json"
 
 - `--config PATH` or the environment variable `SLENDMAIL_CONFIG` names
   another configuration file; `--config` wins. sendmail's `-C` is always
-  ignored with a warning. Other arguments are accepted and ignored.
-- `--probe` and `--check-config` are reserved and exit 64 (not
-  implemented).
+  ignored with a warning.
+- `--probe`, `--check-config` and `--status` are reserved and exit 64
+  (not implemented).
 - The intended install is setgid: binary `root:slendmail 2755`,
   configuration and `*_file` files `root:slendmail 0640`, so that cron jobs
   of any user can send while only root and the binary read the secrets.
@@ -132,6 +128,91 @@ preset = "generic-json"
 - On a host with the setgid install, a caller running under
   `NoNewPrivileges=yes` or `RestrictSUIDSGID=yes` does not get the group:
   the configuration is unreadable and the call exits 78.
+
+### sendmail command line
+
+The binary is meant to be installed as `/usr/sbin/sendmail` and understands
+the command lines of cron, anacron, at, sudo, mdadm, mailx, apt-listchanges,
+unattended-upgrades, fail2ban and similar callers. Flags follow getopt: a
+value is glued (`-froot`) or the next argument (`-f root`), flags without a
+value group (`-ti`), `--` ends the options, and options and recipients may
+come in any order before it. The value of a flag is never read as an
+option: `-f --probe` names a sender.
+
+| Flags | Value | Effect |
+|---|---|---|
+| `-f`, `-r` | required | envelope sender; `''` or `<>` is the null sender |
+| `-F` | required | sender's full name |
+| `-t` | none | the `To`, `Cc` and `Bcc` headers add recipients |
+| `-i`, `-oi` | none | a line with a single dot is ordinary text |
+| `-o` | required | `-oi` as above, any other `-o` option ignored |
+| `-b` | required | by the first letter: `m` delivers (the default), `i` does nothing, `p` lists the queue, `s` is refused with 64, other letters are ignored with a warning |
+| `-q` | optional, glued only | runs the queue once; an interval (`-q30m`) is ignored |
+| `-I` | none | does nothing, like `-bi` |
+| `-C` | required | ignored with a warning; `--config` names another configuration |
+| `-B`, `-h`, `-L`, `-N`, `-O`, `-R`, `-V`, `-X`, `-p`, `-A` | required | ignored |
+| `-d`, `-e` | glued, or the next argument unless it starts with `-` | ignored |
+| `-v`, `-m`, `-n`, `-U`, `-G` | none | ignored |
+| any other letter | none | ignored with an `unknown option` warning naming the flag |
+
+- Long options are `--config PATH` (or `--config=PATH`), `--version`,
+  `--help`, `--probe`, `--check-config` and `--status`; an unknown one is
+  logged by name, without its value, and ignored. A group of unknown
+  letters yields one warning, and a command line at most 16 plus one
+  `warnings suppressed` record with the count. A flag sendmail knows but
+  slendmail does not never stops the call: refusing it would lose the
+  message of a cron job.
+- Called as `newaliases` the binary does nothing and exits 0; called as
+  `mailq` it lists the queue. No message is queued: `mailq` and `-bp` print
+  `queue is empty`, and `-q` exits 0 at once. `/etc/aliases` and
+  `.forward` are not read, and `-bv` and `-bt` are ignored like other
+  unsupported `-b` modes; choosing targets by recipient is left to routes in
+  the configuration.
+- Recipients are the arguments, split at commas
+  (`a@example.org, b@example.org` in one argument, or `a@example.org,` and
+  `b@example.org` as Debian cron passes them), and with `-t` the addresses
+  of the `To`, `Cc` and `Bcc` headers; duplicates are dropped. `Bcc`
+  headers are removed from the message and never reach a notification. A
+  message without any recipient is delivered to every target.
+- The sender is the value of `-f` or `-r` without surrounding angle
+  brackets, else the `From` address, else `EMAIL`, else `USER` or `LOGNAME`
+  at the host name, else the login name of the caller's uid at the host
+  name. A setgid-elevated process skips the environment and uses the login
+  name of the uid. When the uid has no entry in the user database, as in a
+  container started with a numeric user, the sender is empty.
+- A line break in `-f`, `-r`, `-F` or a recipient argument exits 64. An
+  address of a `From`, `To`, `Cc` or `Bcc` header that holds a control
+  character is dropped with a warning.
+- The message: CRLF line ends become LF; a leading mbox envelope line
+  (`From` and a space) is dropped; without `-i` a line with a single dot
+  ends the message and the first dot of a line starting with two dots is
+  removed, as in sendmail 8 (fail2ban passes no `-i`); input whose
+  first line is no header field, a continuation line included, is all body;
+  a later line with a space before the colon or without a colon starts the
+  body and logs a warning. Input beyond 10 MiB is read and discarded with
+  a warning. A body without visible text is sent as `(empty body)`.
+- The log records the size of the message and the number of recipients,
+  never the addresses.
+
+### Exit status
+
+| Situation | Status |
+|---|---|
+| at least one target accepted the message, or a rule suppressed it for every target | 0 |
+| `newaliases`, `-bi`, `-I`, `mailq`, `-bp`, `-q`, `--version`, `--help` | 0 |
+| no target accepted it: rejected, or a temporary failure with no queue to keep it | 69 |
+| usage error: `-f` or `-r` without a value, a line break in the sender, the full name or a recipient, `-bs`, `--config` without a value; stdin is not read | 64 |
+| `--probe`, `--check-config`, `--status`: not implemented | 64 |
+| stdin cannot be read | 66 |
+| panic in the main goroutine (a bug; the redacted record in the log carries the details) | 70 |
+| `--probe` or `--check-config` from an elevated caller other than root and the `slendmail` user | 77 |
+| the configuration cannot be read, parsed or validated, or defines no targets | 78 |
+
+A panic in any other goroutine ends the process with the Go runtime's own
+report on stderr and status 2; that report is not redacted. A target that
+failed is logged as `target failed`; without a queue a temporary failure is
+also logged as `message lost for target` when another target accepted the
+message, and as `message lost` when every target failed temporarily.
 
 The sections below describe the legacy `main.go` in the repository root.
 

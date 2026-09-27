@@ -1,0 +1,10 @@
+Date: Sat, 27 Sep 2026 10:00:00 +0000
+To: ops@example.org, -alias@example.org
+Subject: s-nail test
+Message-ID: <20260927100000.abcd@host1.example.org>
+User-Agent: s-nail v14.9.25
+MIME-Version: 1.0
+Content-Type: text/plain; charset=us-ascii
+Content-Transfer-Encoding: 7bit
+
+hello

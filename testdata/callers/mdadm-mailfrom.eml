@@ -1,0 +1,7 @@
+From: raid@example.org
+To: ops@example.org
+Subject: Fail event on /dev/md0:host1
+
+This is an automatically generated mail message.
+
+A Fail event had been detected on md device /dev/md0.

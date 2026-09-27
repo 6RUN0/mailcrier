@@ -1,0 +1,13 @@
+-- exit --
+0
+-- envelope --
+sender: "root@host1.example.org"
+sender-name: ""
+recipients: ["root"]
+-- payloads --
+2
+-- title --
+=?utf-8?q?apt-listchanges=3A_news_for_h=C3=B4st?=
+-- text --
+example-tool (2.0-1) unstable; urgency=medium
+-- warnings --

@@ -2,41 +2,203 @@ package message
 
 import (
 	"errors"
+	"io"
+	"reflect"
+	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"testing/iotest"
 )
 
 func TestRead(t *testing.T) {
+	t.Run("headers-and-body", readCase{"Subject: disk full\nTo: root\nMessage-ID: <1@db1>\n\n/dev/sda1 99%\n", false, "disk full", "<1@db1>", "/dev/sda1 99%\n"}.check)
+	t.Run("no-subject", readCase{"To: root\n\nbody\n", false, "", "", "body\n"}.check)
+	t.Run("T-MTA-39/not-a-header-block", readCase{"just text\nmore text\n", false, "", "", "just text\nmore text\n"}.check)
+	t.Run("T-ADJ-10/empty-input", readCase{"", false, "", "", ""}.check)
+	t.Run("T-MTA-07/empty-input-with-i", readCase{"", true, "", "", ""}.check)
+	t.Run("T-ADJ-01/crlf-headers", readCase{"From: bob@example.com\r\nTo: alice@example.com\r\nSubject: Test\r\n\r\nHello, world.\n", false, "Test", "", "Hello, world.\n"}.check)
+	t.Run("T-MTA-11/crlf-everywhere", readCase{"Subject: s\r\n\r\nline 1\r\nline 2\r\n", false, "s", "", "line 1\nline 2\n"}.check)
+	t.Run("T-MTA-08/headers-only", readCase{"To: root\nSubject: Output from your job 7\n", false, "Output from your job 7", "", ""}.check)
+	t.Run("T-MTA-08/headers-only-no-final-newline", readCase{"Subject: s", false, "s", "", ""}.check)
+	t.Run("T-MTA-09/last-line-without-newline", readCase{"Subject: s\n\nline 1\nlast", false, "s", "", "line 1\nlast"}.check)
+	t.Run("T-ADJ-55/no-space-after-colon", readCase{"Subject:joined\nAgain:joined\n\nbody\n", false, "joined", "", "body\n"}.check)
+	t.Run("T-ADJ-55/no-headers", readCase{"no header here\n\nbody\n", false, "", "", "no header here\n\nbody\n"}.check)
+	t.Run("T-MTA-10/mbox-envelope-line", readCase{"From root@example.org Sat Sep 27 10:00:00 2026\nSubject: s\n\nbody\n", false, "s", "", "body\n"}.check)
+	t.Run("T-MTA-01/dot-ends-input", readCase{"Subject: s\n\nbefore\n.\nafter\n", false, "s", "", "before\n"}.check)
+	t.Run("T-MTA-02/dot-crlf-ends-input", readCase{"Subject: s\r\n\r\nbefore\r\n.\r\nafter\r\n", false, "s", "", "before\n"}.check)
+	t.Run("T-MTA-03/dot-with-i", readCase{"Subject: s\n\nbefore\n.\nafter\n", true, "s", "", "before\n.\nafter\n"}.check)
+	t.Run("T-MTA-04/leading-dot-removed", readCase{"Subject: s\n\n..foo\n...\n", false, "s", "", ".foo\n..\n"}.check)
+	t.Run("T-MTA-04/leading-dot-kept-with-i", readCase{"Subject: s\n\n..foo\n", true, "s", "", "..foo\n"}.check)
+	t.Run("T-MTA-05/dot-text-kept", readCase{"Subject: s\n\n.foo\n", false, "s", "", ".foo\n"}.check)
+	t.Run("dot-in-header-block-ends-input", readCase{"Subject: s\n.\n\nbody\n", false, "s", "", ""}.check)
+	t.Run("folded-subject", readCase{"Subject: first\n  second\n\tthird\n\nb\n", false, "first second third", "", "b\n"}.check)
+	t.Run("empty-header-block", readCase{"\nbody\n", false, "", "", "body\n"}.check)
+	t.Run("leading-continuation-is-body", readCase{" indented\nSubject: s\n\nb\n", false, "", "", " indented\nSubject: s\n\nb\n"}.check)
+}
+
+type readCase struct {
+	input       string
+	ignoreDots  bool
+	wantSubject string
+	wantID      string
+	wantBody    string
+}
+
+func (tc readCase) check(t *testing.T) {
+	t.Helper()
+	msg, _, warnings, err := Read(strings.NewReader(tc.input), ReadOptions{IgnoreDots: tc.ignoreDots, MaxSize: MaxSize})
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if msg.Subject != tc.wantSubject {
+		t.Errorf("Subject = %q, want %q", msg.Subject, tc.wantSubject)
+	}
+	if msg.MessageID != tc.wantID {
+		t.Errorf("MessageID = %q, want %q", msg.MessageID, tc.wantID)
+	}
+	if msg.Body != tc.wantBody {
+		t.Errorf("Body = %q, want %q", msg.Body, tc.wantBody)
+	}
+	if msg.Size != int64(len(tc.input)) {
+		t.Errorf("Size = %d, want %d", msg.Size, len(tc.input))
+	}
+	if len(warnings) != 0 {
+		t.Errorf("warnings = %q, want none", warnings)
+	}
+}
+
+// TestReadMalformedHeaders pins that a broken header line after at least
+// one field starts the body: the message is delivered as it came, with a
+// warning.
+func TestReadMalformedHeaders(t *testing.T) {
 	cases := []struct {
-		name        string
-		input       string
-		wantSubject string
-		wantID      string
-		wantBody    string
+		name     string
+		input    string
+		wantBody string
 	}{
-		{"headers-and-body", "Subject: disk full\nTo: root\nMessage-ID: <1@db1>\n\n/dev/sda1 99%\n", "disk full", "<1@db1>", "/dev/sda1 99%\n"},
-		{"no-subject", "To: root\n\nbody\n", "", "", "body\n"},
-		{"not-a-header-block", "just text\nmore text\n", "", "", "just text\nmore text\n"},
-		{"empty-input", "", "", "", ""},
+		{"space-before-colon", "Subject: s\nfoo : bar\nmore\n", "foo : bar\nmore\n"},
+		{"empty-name", "Subject: s\n:foo bar\n\nx\n", ":foo bar\n\nx\n"},
+		{"no-colon", "Subject: s\nno colon here\n\nx\n", "no colon here\n\nx\n"},
+		{"non-ascii-name", "Subject: s\nThéme: x\n\nx\n", "Théme: x\n\nx\n"},
+	}
+	for _, tc := range cases {
+		t.Run("T-MTA-38/"+tc.name, func(t *testing.T) {
+			msg, _, warnings, err := Read(strings.NewReader(tc.input), ReadOptions{MaxSize: MaxSize})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if msg.Subject != "s" || msg.Body != tc.wantBody {
+				t.Errorf("Subject, Body = %q, %q, want %q, %q", msg.Subject, msg.Body, "s", tc.wantBody)
+			}
+			if !slices.Equal(warnings, []string{WarningMalformedHeader}) {
+				t.Errorf("warnings = %q, want the malformed header warning", warnings)
+			}
+		})
+	}
+}
+
+func TestReadAddresses(t *testing.T) {
+	input := "From: \"(Cron Daemon)\" <root>\n" +
+		"To: root, ops@example.org\n" +
+		"Cc: Dev Team <dev@example.org>\n" +
+		"Bcc: audit@example.org,\n" +
+		" Archive <archive@example.org>\n" +
+		"Subject: s\n\nb\n"
+	msg, bcc, _, err := Read(strings.NewReader(input), ReadOptions{MaxSize: MaxSize})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (Address{Name: "(Cron Daemon)", Addr: "root"}); msg.From != want {
+		t.Errorf("From = %+v, want %+v", msg.From, want)
+	}
+	if want := []Address{{Addr: "root"}, {Addr: "ops@example.org"}}; !reflect.DeepEqual(msg.To, want) {
+		t.Errorf("To = %+v, want %+v", msg.To, want)
+	}
+	if want := []Address{{Name: "Dev Team", Addr: "dev@example.org"}}; !reflect.DeepEqual(msg.Cc, want) {
+		t.Errorf("Cc = %+v, want %+v", msg.Cc, want)
+	}
+	t.Run("T-MTA-15/bcc-removed-with-continuation", func(t *testing.T) {
+		if want := []Address{{Addr: "audit@example.org"}, {Name: "Archive", Addr: "archive@example.org"}}; !reflect.DeepEqual(bcc, want) {
+			t.Errorf("bcc = %+v, want %+v", bcc, want)
+		}
+		if _, ok := msg.Header["Bcc"]; ok {
+			t.Errorf("Header keeps Bcc: %v", msg.Header)
+		}
+		for key, values := range msg.Header {
+			if strings.Contains(strings.Join(values, ","), "archive") {
+				t.Errorf("Header %s keeps the Bcc continuation: %q", key, values)
+			}
+		}
+		if msg.Body != "b\n" {
+			t.Errorf("Body = %q", msg.Body)
+		}
+	})
+}
+
+func TestParseAddressList(t *testing.T) {
+	t.Run("T-CALL-30/quoted-name-without-domain", parseAddressListCase{`"(Cron Daemon)" <root>`, []Address{{Name: "(Cron Daemon)", Addr: "root"}}}.check)
+	t.Run("T-CALL-30/comment-name-without-domain", parseAddressListCase{"root (Cron Daemon)", []Address{{Name: "Cron Daemon", Addr: "root"}}}.check)
+	t.Run("bare-local-part", parseAddressListCase{"root", []Address{{Addr: "root"}}}.check)
+	t.Run("name-and-address", parseAddressListCase{"mdadm monitoring <root>", []Address{{Name: "mdadm monitoring", Addr: "root"}}}.check)
+	t.Run("full-address", parseAddressListCase{"Fail2Ban <fail2ban@example.org>", []Address{{Name: "Fail2Ban", Addr: "fail2ban@example.org"}}}.check)
+	t.Run("mixed-list", parseAddressListCase{`root, "Doe, Jane" <jane@example.org>, bob (Bob B)`, []Address{{Addr: "root"}, {Name: "Doe, Jane", Addr: "jane@example.org"}, {Name: "Bob B", Addr: "bob"}}}.check)
+	t.Run("group", parseAddressListCase{"Team: a@example.org, b@example.org;", []Address{{Addr: "a@example.org"}, {Addr: "b@example.org"}}}.check)
+	t.Run("empty-group", parseAddressListCase{"undisclosed-recipients:;", []Address{}}.check)
+	t.Run("empty", parseAddressListCase{"  ", nil}.check)
+	t.Run("trailing-comma", parseAddressListCase{"a@example.org,", []Address{{Addr: "a@example.org"}}}.check)
+	t.Run("unclosed-angle", parseAddressListCase{"Name <root", []Address{{Name: "Name", Addr: "root"}}}.check)
+}
+
+type parseAddressListCase struct {
+	value string
+	want  []Address
+}
+
+func (tc parseAddressListCase) check(t *testing.T) {
+	t.Helper()
+	got := ParseAddressList(tc.value)
+	if len(got) == 0 && len(tc.want) == 0 {
+		return
+	}
+	if !reflect.DeepEqual(got, tc.want) {
+		t.Errorf("ParseAddressList(%q) = %+v, want %+v", tc.value, got, tc.want)
+	}
+}
+
+// TestReadSizeLimit pins the input limit: exactly MaxSize bytes pass
+// unchanged; beyond it the rest is read and discarded, with a warning.
+func TestReadSizeLimit(t *testing.T) {
+	const limit = 64
+	header := "Subject: s\n\n"
+	exact := header + strings.Repeat("x", limit-len(header))
+	cases := []struct {
+		name         string
+		input        string
+		wantBody     string
+		wantWarnings []string
+	}{
+		{"T-ADJ-32/exactly-the-limit", exact, exact[len(header):], nil},
+		{"T-ADJ-32/over-the-limit", exact + "tail that goes", exact[len(header):], []string{WarningTruncated}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			msg, err := Read(strings.NewReader(tc.input))
+			reader := strings.NewReader(tc.input)
+			msg, _, warnings, err := Read(reader, ReadOptions{IgnoreDots: true, MaxSize: limit})
 			if err != nil {
-				t.Fatalf("Read() error = %v", err)
-			}
-			if msg.Subject != tc.wantSubject {
-				t.Errorf("Subject = %q, want %q", msg.Subject, tc.wantSubject)
-			}
-			if msg.MessageID != tc.wantID {
-				t.Errorf("MessageID = %q, want %q", msg.MessageID, tc.wantID)
+				t.Fatal(err)
 			}
 			if msg.Body != tc.wantBody {
 				t.Errorf("Body = %q, want %q", msg.Body, tc.wantBody)
 			}
-			if string(msg.Raw) != tc.input {
-				t.Errorf("Raw = %q, want %q", msg.Raw, tc.input)
+			if !slices.Equal(warnings, tc.wantWarnings) {
+				t.Errorf("warnings = %q, want %q", warnings, tc.wantWarnings)
+			}
+			if reader.Len() != 0 {
+				t.Errorf("%d bytes left unread", reader.Len())
+			}
+			if msg.Size != int64(len(tc.input)) {
+				t.Errorf("Size = %d, want %d", msg.Size, len(tc.input))
 			}
 		})
 	}
@@ -44,7 +206,146 @@ func TestRead(t *testing.T) {
 
 func TestReadReportsInputError(t *testing.T) {
 	cause := errors.New("broken pipe")
-	if _, err := Read(iotest.ErrReader(cause)); !errors.Is(err, cause) {
-		t.Fatalf("Read() error = %v, want %v", err, cause)
+	cases := []struct {
+		name   string
+		reader io.Reader
+	}{
+		{"before-the-limit", iotest.ErrReader(cause)},
+		{"while-discarding", io.MultiReader(strings.NewReader(strings.Repeat("x", 10)), iotest.ErrReader(cause))},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, _, _, err := Read(tc.reader, ReadOptions{MaxSize: 4}); !errors.Is(err, cause) {
+				t.Fatalf("Read() error = %v, want %v", err, cause)
+			}
+		})
+	}
+}
+
+// FuzzRead checks that no input panics Read and that the result keeps its
+// promises: LF line ends only, no Bcc header, the input size counted.
+func FuzzRead(f *testing.F) {
+	for _, seed := range []string{
+		"Subject: s\n\nb\n", "From x\nTo: a\n.\n", "Bcc: a,\n b\n\n", " x\n", "\r\n\r\n", "a:b\n\n..x\n.\r\n",
+	} {
+		f.Add(seed, false)
+		f.Add(seed, true)
+	}
+	f.Fuzz(func(t *testing.T, input string, ignoreDots bool) {
+		msg, _, _, err := Read(strings.NewReader(input), ReadOptions{IgnoreDots: ignoreDots, MaxSize: 1 << 16})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(msg.Body, "\r\n") {
+			t.Errorf("Body keeps CRLF: %q", msg.Body)
+		}
+		if _, ok := msg.Header["Bcc"]; ok {
+			t.Errorf("Header keeps Bcc")
+		}
+		if msg.Size != int64(len(input)) {
+			t.Errorf("Size = %d, want %d", msg.Size, len(input))
+		}
+	})
+}
+
+// allocatedBytes returns the bytes Read allocates for input.
+func allocatedBytes(t *testing.T, input string) uint64 {
+	t.Helper()
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	if _, _, _, err := Read(strings.NewReader(input), ReadOptions{MaxSize: MaxSize}); err != nil {
+		t.Fatal(err)
+	}
+	runtime.ReadMemStats(&after)
+	return after.TotalAlloc - before.TotalAlloc
+}
+
+// TestReadIsLinear pins that the work of Read grows linearly with inputs
+// that stress each part of the reader: a folded header, many fields, a
+// long address list and many body lines, the header blocks of the larger
+// inputs over 1 MiB. Four times the input may cost
+// about four times the allocations; a quadratic step would cost sixteen.
+func TestReadIsLinear(t *testing.T) {
+	cases := []struct {
+		name  string
+		input func(n int) string
+	}{
+		{"folded-header", func(n int) string { return "Subject: a\n" + strings.Repeat(" bbbbbbbb\n", n) + "\nbody\n" }},
+		{"many-fields", func(n int) string { return strings.Repeat("X-A: b\n", n) + "\nbody\n" }},
+		{"long-address-list", func(n int) string { return "To: " + strings.Repeat("a@example.org, ", n) + "b\n\nbody\n" }},
+		{"loose-address-list", func(n int) string { return "To: " + strings.Repeat("root (x), ", n) + "b\n\nbody\n" }},
+		{"many-bcc-lines", func(n int) string {
+			return "Bcc: a@example.org,\n" + strings.Repeat(" c@example.org,\n", n) + " d\n\nbody\n"
+		}},
+		{"body-lines", func(n int) string { return "Subject: a\n\n" + strings.Repeat(".x\n", n) }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			small := allocatedBytes(t, tc.input(50000))
+			large := allocatedBytes(t, tc.input(200000))
+			if large > 8*small {
+				t.Errorf("allocations grow from %d to %d bytes for 4 times the input", small, large)
+			}
+		})
+	}
+}
+
+// TestReadLargeHeaderKeepsBcc pins that a header block of several MiB is
+// read whole: a Bcc field or continuation line far into it is still taken
+// out of the message and routes it.
+func TestReadLargeHeaderKeepsBcc(t *testing.T) {
+	filler := "X-Filler: " + strings.Repeat("a", 1<<20) + "\n"
+	cases := []struct {
+		name    string
+		input   string
+		wantBcc []Address
+	}{
+		{"bcc-field-after-limit", "Subject: s\n" + filler + "Bcc: secret@example.org\n\nbody\n", []Address{{Addr: "secret@example.org"}}},
+		{"bcc-continuation-over-limit", "Subject: s\nBcc: first@example.org,\n" + strings.Repeat(" x@example.org,\n", 70000) + " secret@example.org\n\nbody\n", nil},
+		{"bcc-filler-cont", "Subject: s\nBcc: first@example.org\n " + strings.Repeat("x", 1<<20) + "\n secret@example.org\n\nbody\n", nil},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			msg, bcc, warnings, err := Read(strings.NewReader(tc.input), ReadOptions{MaxSize: MaxSize})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if msg.Body != "body\n" || msg.Subject != "s" {
+				t.Errorf("Subject %q, body starts %q", msg.Subject, msg.Body[:min(len(msg.Body), 40)])
+			}
+			if _, ok := msg.Header["Bcc"]; ok {
+				t.Error("Header keeps Bcc")
+			}
+			if len(warnings) != 0 {
+				t.Errorf("warnings = %q", warnings)
+			}
+			if tc.wantBcc != nil && !reflect.DeepEqual(bcc, tc.wantBcc) {
+				t.Errorf("bcc = %+v, want %+v", bcc, tc.wantBcc)
+			}
+			var addresses strings.Builder
+			for _, a := range bcc {
+				addresses.WriteString(a.Addr + " ")
+			}
+			if !strings.Contains(addresses.String(), "secret@example.org") {
+				t.Errorf("Bcc addresses lack secret@example.org: %d addresses", len(bcc))
+			}
+		})
+	}
+}
+
+// TestReadDropsControlAddresses pins that an address carrying a control
+// character, such as a bare CR that would split a header later, is
+// dropped with a warning; the other addresses stay.
+func TestReadDropsControlAddresses(t *testing.T) {
+	input := "From: <evil\rX-Injected: 1>\nTo: <a\rb@example.org>, ok@example.org\nCc: \"Na\x01me\" <c@example.org>\nBcc: d\x7f@example.org, e@example.org\n\nbody\n"
+	msg, bcc, warnings, err := Read(strings.NewReader(input), ReadOptions{MaxSize: MaxSize})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msg.From != (Address{}) || !reflect.DeepEqual(msg.To, []Address{{Addr: "ok@example.org"}}) || len(msg.Cc) != 0 || !reflect.DeepEqual(bcc, []Address{{Addr: "e@example.org"}}) {
+		t.Errorf("From %+v, To %+v, Cc %+v, bcc %+v", msg.From, msg.To, msg.Cc, bcc)
+	}
+	if !slices.Equal(warnings, []string{WarningControlAddress}) {
+		t.Errorf("warnings = %q", warnings)
 	}
 }
