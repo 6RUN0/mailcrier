@@ -146,7 +146,7 @@ it.
 - `app.Run` sets `http_timeout` on a copy of `Deps.HTTP` and `deadline` on
   the context; a sender must pass the context to its requests, or the call
   deadline does not reach it. Error texts drop the request URL
-  (`webhook.withoutURL`) because webhook URLs carry tokens.
-- `webhook.New` copies the client and disables redirects: net/http would turn
-  a redirected POST into a bodiless GET and report success. A 3xx is a
-  permanent failure.
+  (`backend.WithoutURL`) because webhook URLs carry tokens.
+- `webhook.New` copies the client with `backend.WithoutRedirects`:
+  net/http would turn a redirected POST into a bodiless GET and report
+  success. A 3xx is a permanent failure.

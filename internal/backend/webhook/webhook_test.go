@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/6RUN0/slendmail/internal/backend"
 	"github.com/6RUN0/slendmail/internal/golden"
@@ -69,7 +70,7 @@ func TestParseResponse(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			resp := &http.Response{StatusCode: tc.status, Body: io.NopCloser(strings.NewReader("echo of the request"))}
+			resp := &http.Response{StatusCode: tc.status, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("echo of the request"))}
 			err := parseResponse(resp)
 			if !tc.wantErr {
 				if err != nil {
@@ -88,6 +89,14 @@ func TestParseResponse(t *testing.T) {
 				t.Errorf("error text contains the response body: %v", err)
 			}
 		})
+	}
+}
+
+func TestParseResponseRetryAfter(t *testing.T) {
+	resp := &http.Response{StatusCode: http.StatusServiceUnavailable, Header: http.Header{"Retry-After": {"120"}}, Body: http.NoBody}
+	var deliveryErr *backend.Error
+	if err := parseResponse(resp); !errors.As(err, &deliveryErr) || deliveryErr.Class != backend.Temporary || deliveryErr.RetryAfter != 2*time.Minute {
+		t.Errorf("parseResponse() error = %+v, want temporary with RetryAfter 2m", err)
 	}
 }
 
@@ -164,18 +173,26 @@ func (b *endlessBody) Read(p []byte) (int, error) {
 
 func (*endlessBody) Close() error { return nil }
 
-func TestParseResponseBoundsBody(t *testing.T) {
+func TestSendBoundsBody(t *testing.T) {
 	t.Run("T-ADJ-50/error-body-bounded", func(t *testing.T) {
 		body := &endlessBody{}
-		err := parseResponse(&http.Response{StatusCode: http.StatusInternalServerError, Body: body})
+		client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusInternalServerError, Body: body, Header: http.Header{}}, nil
+		})}
+		err := New(Options{URL: "https://hooks.example.org/in", Client: client}).Send(context.Background(), backend.Payload{Text: "{}"})
 		if err == nil {
-			t.Fatal("parseResponse() accepted status 500")
+			t.Fatal("Send() accepted status 500")
 		}
-		if body.read > maxDrainBytes {
-			t.Errorf("read %d bytes of the body, want at most %d", body.read, maxDrainBytes)
+		if body.read > backend.MaxDrainBytes {
+			t.Errorf("read %d bytes of the body, want at most %d", body.read, backend.MaxDrainBytes)
 		}
 		if strings.Contains(err.Error(), "xxxx") {
 			t.Errorf("error text quotes the body: %v", err)
 		}
 	})
 }
+
+// roundTripFunc answers requests without a network.
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
