@@ -21,6 +21,7 @@ import (
 
 	"github.com/6RUN0/slendmail/internal/backend"
 	"github.com/6RUN0/slendmail/internal/backend/discord"
+	"github.com/6RUN0/slendmail/internal/backend/ntfy"
 	"github.com/6RUN0/slendmail/internal/backend/slack"
 	"github.com/6RUN0/slendmail/internal/backend/telegram"
 	"github.com/6RUN0/slendmail/internal/backend/webhook"
@@ -435,6 +436,12 @@ func buildTargets(cfg *config.Config, client *http.Client) ([]delivery.Target, e
 		case target.Type == config.TypeSlack:
 			sender = slack.New(slack.Options{Token: target.Token, Channel: target.Channel, Client: client})
 			format = text.FormatSlackMrkdwn
+		case target.Type == config.TypeNtfy:
+			topic, err := ntfy.New(ntfy.Options{URL: target.URL, Client: client})
+			if err != nil {
+				return nil, fmt.Errorf("target %q: %w", name, err)
+			}
+			sender, format = topic, text.FormatNtfy
 		case target.Type == config.TypeHTTP && target.Preset == config.PresetGenericJSON:
 			sender, format = webhook.New(webhook.Options{URL: target.URL, Client: client}), text.FormatGenericJSON
 		case target.Type == config.TypeHTTP:

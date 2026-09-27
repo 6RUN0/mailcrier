@@ -178,6 +178,20 @@ channel = "#alerts"                          # channel name or ID
   `service_unavailable` and `request_timeout` are temporary. Several
   `slack` targets may post with different tokens to different channels.
 
+```toml
+[target.phone]
+type = "ntfy"
+url_file = "/etc/slendmail.d/ntfy.url"  # https://ntfy.sh/<topic>, user:password@ allowed
+```
+
+- `ntfy`: a JSON publish to the server root with the topic, the subject
+  as title (line breaks as spaces, at most 1 KB) and the text of at most
+  4096 bytes, then one PUT per attachment to the topic with `filename` and
+  `title` in the query; up to 10 files of at most 15 MiB each, the
+  defaults of an ntfy server. The URL must end with the topic, otherwise
+  exit status 78; user information and a query such as `auth` are sent
+  with every request.
+
 ### Options, privileges and containers
 
 - `--config PATH` or the environment variable `SLENDMAIL_CONFIG` names
