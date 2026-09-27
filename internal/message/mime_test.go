@@ -2,6 +2,7 @@ package message
 
 import (
 	"encoding/base64"
+	"os"
 	"reflect"
 	"slices"
 	"strings"
@@ -434,4 +435,20 @@ func (tc subjectCase) check(t *testing.T) {
 	if msg.Subject != tc.want {
 		t.Errorf("Subject = %q, want %q", msg.Subject, tc.want)
 	}
+}
+
+// TestReadCronieANSIFixture pins that the cronie fixture declaring
+// ANSI_X3.4-1968 for a Cyrillic UTF-8 body loses no character.
+func TestReadCronieANSIFixture(t *testing.T) {
+	t.Run("T-CALL-12/cronie-ansi-fixture", func(t *testing.T) {
+		input, err := os.ReadFile("../../testdata/callers/cronie-ansi.eml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		msg, _ := readMessage(t, string(input))
+		_, raw, _ := strings.Cut(string(input), "\n\n")
+		if msg.Body != raw || !strings.Contains(msg.Body, "Файловая система  Размер  Использовано") {
+			t.Errorf("Body = %q, want %q", msg.Body, raw)
+		}
+	})
 }
