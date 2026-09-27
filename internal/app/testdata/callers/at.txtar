@@ -7,7 +7,7 @@ recipients: ["alice"]
 -- payloads --
 2
 -- title --
-Output from your job        7
+Output from your job 7
 -- text --
 build finished
 -- warnings --

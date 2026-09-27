@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 )
 
 // SystemConfigPath is the configuration file, relative to the root of
@@ -58,6 +59,7 @@ func SystemDeps() Deps {
 		ConfigPath:     SystemConfigPath,
 		HTTP:           &http.Client{Transport: newTransport(creds.isElevated())},
 		Hostname:       hostname,
+		Now:            time.Now,
 		Program:        os.Args[0],
 		Stdout:         os.Stdout,
 		Stderr:         os.Stderr,

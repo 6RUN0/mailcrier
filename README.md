@@ -191,6 +191,27 @@ option: `-f --probe` names a sender.
   a later line with a space before the colon or without a colon starts the
   body and logs a warning. Input beyond 10 MiB is read and discarded with
   a warning. A body without visible text is sent as `(empty body)`.
+- MIME: `Content-Type` and `Content-Transfer-Encoding` are honoured with or
+  without `MIME-Version`. The text is the `text/plain` parts, named or not,
+  unless `Content-Disposition: attachment` marks them, else the first
+  `text/html` part, also one inside `multipart/related`, converted to text
+  (scripts, styles and embedded objects dropped, link targets in
+  parentheses after the link text, links other than `http`, `https`,
+  `mailto` and `ftp` reduced to their text, white space collapsed outside
+  `pre`, and several empty lines in a row reduced to one everywhere, `pre`
+  included); every other part is an attachment. Multipart nesting deeper
+  than 8 levels is kept as one attachment; a broken multipart structure
+  keeps the parts before the damage and logs a warning.
+- Charsets: encoded words (RFC 2047), quoted-printable and base64 are
+  decoded, and text is converted to UTF-8. A body declared `US-ASCII`
+  (cron under the C locale says `ANSI_X3.4-1968`) or in an unknown charset
+  is taken as UTF-8 when it is valid UTF-8. Text without a charset or
+  declared `US-ASCII` that is not valid UTF-8, and text declared
+  `ISO-8859-1`, is read as windows-1252, as browsers do: bytes 0x80-0x9F
+  are the quotes, dashes and euro sign of that charset. A charset that
+  browsers refuse to decode, such as ISO-2022-KR, counts as unknown.
+  Encoded words follow the same rules. Bytes that stay invalid become
+  U+FFFD. The subject has its white space collapsed.
 - The log records the size of the message and the number of recipients,
   never the addresses.
 

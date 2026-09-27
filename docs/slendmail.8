@@ -55,6 +55,17 @@ Bcc headers are removed from the message.
 and
 .Pa .forward
 are not read.
+.Pp
+The text of a notification is the text/plain part of the message, else its
+text/html part converted to text; other parts are attachments.
+The conversion collapses white space outside pre elements and reduces several
+empty lines in a row to one everywhere, pre elements included.
+Encoded words, quoted-printable and base64 are decoded and every charset is
+converted to UTF-8.
+A body declared US-ASCII, or in an unknown charset, that is valid UTF-8 is
+taken as UTF-8.
+Text without a charset or declared US-ASCII that is not valid UTF-8, and text
+declared ISO-8859-1, is read as windows-1252.
 .Sh OPTIONS
 .Bl -tag -width Ds
 .It Fl f Ar sender , Fl r Ar sender

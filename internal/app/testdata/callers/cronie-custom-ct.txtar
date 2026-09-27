@@ -9,5 +9,5 @@ recipients: ["ops@example.org"]
 -- title --
 Cron <root@host1> /usr/local/bin/report
 -- text --
-<html><body><p>Report: <a href="https://example.org/r/1">details</a></p></body></html>
+Report: details (https://example.org/r/1)
 -- warnings --

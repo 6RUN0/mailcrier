@@ -7,7 +7,7 @@ recipients: ["root"]
 -- payloads --
 2
 -- title --
-=?utf-8?q?=5Breboot_required=5D_Ergebnis_von_unattended-upgrades_f=C3=BCr_host1=3A_ERFOLG?=
+[reboot required] Ergebnis von unattended-upgrades für host1: ERFOLG
 -- text --
 Ergebnis des unbeaufsichtigten Upgrades: Alle Upgrades installiert
 -- warnings --

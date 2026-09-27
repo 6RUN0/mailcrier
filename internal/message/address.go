@@ -23,15 +23,37 @@ func ParseAddressList(value string) []Address {
 	if len(value) > maxStrictListLength {
 		return parseLooseList(value)
 	}
-	if list, err := mail.ParseAddressList(value); err == nil {
-		addresses := make([]Address, 0, len(list))
-		for _, a := range list {
-			addresses = append(addresses, Address{Name: a.Name, Addr: a.Address})
-		}
-		return addresses
+	list, err := addressParser.ParseList(value)
+	if err != nil {
+		return parseLooseList(value)
 	}
-	return parseLooseList(value)
+	var aliased []*mail.Address
+	if value != aliasWordCharsets(value) {
+		if names, err := addressParser.ParseList(aliasWordCharsets(value)); err == nil && len(names) == len(list) {
+			aliased = names
+		}
+	}
+	addresses := make([]Address, 0, len(list))
+	for i, a := range list {
+		name := a.Name
+		if aliased != nil && aliased[i].Name != aliasWordCharsets(name) {
+			name = aliased[i].Name
+		}
+		addresses = append(addresses, Address{Name: name, Addr: a.Address})
+	}
+	return addresses
 }
+
+// addressParser decodes encoded display names in every charset decodeText
+// knows; net/mail alone knows only UTF-8, US-ASCII and Latin-1.
+//
+// For an encoded word in US-ASCII or Latin-1 to follow the charset rule of
+// the body, ParseAddressList parses the list a second time with the words
+// passed through aliasWordCharsets and takes the names from there, but
+// only those that net/mail decoded: an encoded word in a quoted string or
+// an address is text, and the alias would change it. The addresses always
+// come from the list as written.
+var addressParser = &mail.AddressParser{WordDecoder: wordDecoder}
 
 // maxStrictListLength bounds the header values given to net/mail; a list
 // of a thousand addresses stays far below it.
@@ -98,11 +120,11 @@ func parseLooseAddress(part string) (Address, bool) {
 		if name == "" && len(comments) > 0 {
 			name = comments[0]
 		}
-		return Address{Name: name, Addr: strings.TrimSpace(outside[open+1 : open+end])}, true
+		return Address{Name: decodeHeader(name), Addr: validText(strings.TrimSpace(outside[open+1 : open+end]))}, true
 	}
-	a := Address{Addr: withoutSpace(outside)}
+	a := Address{Addr: validText(withoutSpace(outside))}
 	if len(comments) > 0 {
-		a.Name = comments[0]
+		a.Name = decodeHeader(comments[0])
 	}
 	return a, a.Addr != "" || a.Name != ""
 }

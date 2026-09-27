@@ -35,9 +35,9 @@ T-ADJ-33	high	todo	Suppression by case-insensitive glob on subject and sender; a
 T-ADJ-34	low	todo	A spool failure does not prevent the direct delivery attempt	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L512-L545
 T-ADJ-35	high	done	The bot token is redacted in logs, including values passed as format arguments	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L364-L413
 T-ADJ-36	high	done	Whitespace-only input is delivered with an empty-body marker instead of being rejected	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_parser.py#L344
-T-ADJ-37	critical	todo	A folded Subject with repeated spaces collapses into one trimmed line	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_parser.py#L317-L340
-T-ADJ-38	high	todo	multipart/mixed with an attachment takes the body from the text/plain part and reports the attachment	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_parser.py#L377
-T-ADJ-39	high	todo	A multipart message with only an attachment yields an empty body without error	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_parser.py#L426-L440
+T-ADJ-37	critical	done	A folded Subject with repeated spaces collapses into one trimmed line	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_parser.py#L317-L340
+T-ADJ-38	high	done	multipart/mixed with an attachment takes the body from the text/plain part and reports the attachment	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_parser.py#L377
+T-ADJ-39	high	done	A multipart message with only an attachment yields an empty body without error	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_parser.py#L426-L440
 T-ADJ-40	high	todo	HTML to text drops script, style, iframe, object, embed, svg, math and noscript with their content, drops javascript: links but keeps their text, keeps safe formatting tags	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_parser.py#L103-L305
 T-ADJ-41	critical	todo	<, > and & in the plain body, sender and subject are escaped before sending with the HTML parse mode	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_parser.py#L408
 T-ADJ-42	high	todo	Truncation: text at the limit is kept, one more character truncates at the last space within 100 characters or hard, adds a truncation note and respects the Telegram ceiling including the wrapper	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_parser.py#L455-L561
@@ -50,7 +50,7 @@ T-ADJ-48	critical	todo	Byte truncation never splits a UTF-8 rune and a zero or n
 T-ADJ-49	high	todo	A 400 answer to sendMessage is retried once as a document	https://github.com/lucasew/telegram-sendmail/blob/a09038a8b57f/internal/telegram/client_test.go#L75-L108
 T-ADJ-50	low	done	An error response body is read at most 4 KiB and is not quoted in the error, so it cannot leak into the log	https://github.com/lucasew/telegram-sendmail/blob/a09038a8b57f/internal/telegram/client_test.go#L156-L200
 T-ADJ-51	critical	done	HTTP requests have a default timeout (15 s) and the whole call has a deadline (30 s)	https://github.com/lucasew/telegram-sendmail/blob/a09038a8b57f/internal/telegram/client_test.go#L202
-T-ADJ-52	critical	todo	Subject header matched in any case, a default subject when missing, input without headers becomes the body, RFC 2047 B and Q decoded to UTF-8	https://github.com/lucasew/telegram-sendmail/blob/a09038a8b57f/cmd/telegram-sendmail/serve_test.go#L43-L118
+T-ADJ-52	critical	done	Subject header matched in any case, a default subject when missing, input without headers becomes the body, RFC 2047 B and Q decoded to UTF-8	https://github.com/lucasew/telegram-sendmail/blob/a09038a8b57f/cmd/telegram-sendmail/serve_test.go#L43-L118
 T-ADJ-53	high	todo	A queue run continues after one entry fails to send	https://github.com/lucasew/telegram-sendmail/blob/a09038a8b57f/cmd/telegram-sendmail/serve_test.go#L121
 T-ADJ-54	high	todo	Package tests: sendmail shim installed, newaliases is a no-op, postinstall keeps secrets and starts nothing, preremove does nothing on upgrade; the goreleaser package section is checked by a test	https://github.com/lucasew/telegram-sendmail/blob/a09038a8b57f/cmd/telegram-sendmail/packaging_test.go#L63-L171
 T-ADJ-55	critical	done	A header without a space after the colon is parsed; input without headers becomes the body	https://github.com/marionauta/imsendmail/blob/ac7f0f0e2c87/src/root.zig#L125-L202
@@ -59,6 +59,7 @@ T-ADJ-57	low	todo	Recipient 1234@telegram maps to chat 1234, @name@telegram to @
 T-ADJ-58	high	todo	A template producing an empty string falls back to the built-in template with a warning	https://github.com/nadiamoe/sendmail-telegram/blob/b76fa85b4572/sendmail-telegram.go#L115-L117
 T-ADJ-59	high	todo	Discord: an empty message is an error, a multipart request with files is one request, a failed first batch is reported	https://github.com/nicholas-fedor/shoutrrr/blob/c19db02256c2/pkg/services/chat/discord/discord_service_test.go#L72-L136
 T-ADJ-60	high	todo	Telegram: text over the limit is handled before sending rather than rejected by the API	https://github.com/nicholas-fedor/shoutrrr/blob/c19db02256c2/pkg/services/chat/telegram/telegram_test.go#L47-L64
+T-ADJ-61	high	done	HTML to text drops script, style, iframe, object, embed, svg, math, noscript and title with their content, also after a self-closing tag, drops javascript: links but keeps their text, and keeps the text of formatting tags	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_parser.py#L103-L305
 T-MTA-01	critical	done	Without -i or -oi a line with a single dot ends the input and the rest is dropped	https://ftp.sendmail.org/sendmail.8.18.2.tar.gz#sendmail/collect.c:542-544
 T-MTA-02	high	done	A dot line ending in CRLF also ends the input	https://ftp.sendmail.org/sendmail.8.18.2.tar.gz#sendmail/collect.c:545-548
 T-MTA-03	critical	done	With -i or -oi a single dot line is ordinary body text and input runs to EOF	https://ftp.sendmail.org/sendmail.8.18.2.tar.gz#sendmail/sendmail.8:229-234
@@ -75,10 +76,10 @@ T-MTA-13	critical	done	-t together with argv recipients uses the union without d
 T-MTA-14	low	todo	With -t, Resent-To/Cc/Bcc headers, when present, replace the ordinary recipient headers	https://github.com/vdukhovni/postfix/blob/8e965decf941/postfix/src/sendmail/sendmail.c#L659-L670
 T-MTA-15	critical	done	Bcc is removed from the forwarded headers, including its continuation lines	https://github.com/corecode/dma/blob/f4e1d913e6f3/mail.c#L407-L422
 T-MTA-16	critical	done	Bcc addresses route the message but never appear in the notification text	https://github.com/marlam/msmtp/blob/755df9f0d3ac/tests/test-header-handling.sh#L35-L55
-T-MTA-17	high	todo	RFC 5322 address lists parse: groups, empty groups, comments, quoted strings, encoded display names, folded and repeated To headers	https://github.com/marlam/msmtp/blob/755df9f0d3ac/tests/test-header-handling.sh#L20-L55
+T-MTA-17	high	done	RFC 5322 address lists parse: groups, empty groups, comments, quoted strings, encoded display names, folded and repeated To headers	https://github.com/marlam/msmtp/blob/755df9f0d3ac/tests/test-header-handling.sh#L20-L55
 T-MTA-18	critical	done	No -t and no argv recipient: delivered by catch-all routing, otherwise exit 64	https://github.com/vdukhovni/postfix/blob/8e965decf941/postfix/src/sendmail/sendmail.c#L1008-L1012
 T-MTA-19	critical	done	-t with no recipient headers follows the same no-recipient policy	https://github.com/corecode/dma/blob/f4e1d913e6f3/dma.c#L653-L654
-T-MTA-20	high	todo	A missing Date header is replaced by the receive time in the message model; an existing one is kept	https://github.com/corecode/dma/blob/f4e1d913e6f3/mail.c#L445-L448
+T-MTA-20	high	done	A missing Date header is replaced by the receive time in the message model; an existing one is kept	https://github.com/corecode/dma/blob/f4e1d913e6f3/mail.c#L445-L448
 T-MTA-21	low	todo	A missing Message-ID is generated; an existing one is kept	https://github.com/corecode/dma/blob/f4e1d913e6f3/mail.c#L449-L456
 T-MTA-22	high	todo	A missing From is built from -f/-r and -F, otherwise from the process user and host name	https://github.com/marlam/msmtp/blob/755df9f0d3ac/tests/test-header-handling.sh#L57-L67
 T-MTA-23	high	todo	An existing From header is not replaced by -f, which sets only the envelope sender	https://github.com/bruceg/nullmailer/blob/79a8a45c4bd2/test/tests/inject/from#L14-L18
@@ -114,14 +115,14 @@ T-CALL-08	high	done	fail2ban -f sender dest without -i: a dot line ends the inpu
 T-CALL-09	high	done	Comma-separated recipients inside argv values split into separate addresses	https://salsa.debian.org/debian/cron/-/blob/f2b6a0b/popen.c#L79-L80
 T-CALL-10	critical	done	With -t the recipients are To, Cc and Bcc and Bcc is not shown	https://salsa.debian.org/debian/bsd-mailx/-/blob/47b10d7/send.c#L386
 T-CALL-11	high	done	-t without recipient headers follows the no-recipient policy	https://salsa.debian.org/debian/bsd-mailx/-/blob/47b10d7/send.c#L614
-T-CALL-12	critical	todo	charset ANSI_X3.4-1968 with a body that is valid UTF-8 keeps the text as UTF-8	https://github.com/cronie-crond/cronie/blob/59a3d15/src/cron.c#L268-L271
-T-CALL-13	critical	todo	A quoted-printable body with soft line breaks decodes to the original UTF-8	https://salsa.debian.org/debian/cron/-/blob/f2b6a0b/config.h#L88
-T-CALL-14	critical	todo	A Q-encoded Subject longer than one 76-character encoded word decodes	https://github.com/mvo5/unattended-upgrades/blob/221b1a6/unattended-upgrade#L1666
-T-CALL-15	critical	todo	A Subject with raw 8-bit UTF-8 and no RFC 2047 is taken as UTF-8	https://github.com/cronie-crond/cronie/blob/59a3d15/src/do_command.c#L494
-T-CALL-16	critical	todo	A message without MIME headers and with an 8-bit body is text/plain with the charset guessed as UTF-8, else Latin-1	https://salsa.debian.org/debian/at/-/blob/282d01d/atd.c#L445
-T-CALL-17	high	todo	Content-Type and Content-Transfer-Encoding without MIME-Version are honoured	https://github.com/sudo-project/sudo/blob/2802bb3/lib/eventlog/eventlog.c#L588
-T-CALL-18	high	todo	Content-Transfer-Encoding binary and a quoted charset parameter are accepted	https://github.com/systemd-cron/systemd-cron/blob/b952d94d095a/src/bin/mail_for_job.sh#L97-L99
-T-CALL-19	high	todo	A text/html body is converted to text and keeps its links	https://salsa.debian.org/debian/apt-listchanges/-/blob/75cc40f/apt_listchanges/frontends.py#L700-L710
+T-CALL-12	critical	done	charset ANSI_X3.4-1968 with a body that is valid UTF-8 keeps the text as UTF-8	https://github.com/cronie-crond/cronie/blob/59a3d15/src/cron.c#L268-L271
+T-CALL-13	critical	done	A quoted-printable body with soft line breaks decodes to the original UTF-8	https://salsa.debian.org/debian/cron/-/blob/f2b6a0b/config.h#L88
+T-CALL-14	critical	done	A Q-encoded Subject longer than one 76-character encoded word decodes	https://github.com/mvo5/unattended-upgrades/blob/221b1a6/unattended-upgrade#L1666
+T-CALL-15	critical	done	A Subject with raw 8-bit UTF-8 and no RFC 2047 is taken as UTF-8	https://github.com/cronie-crond/cronie/blob/59a3d15/src/do_command.c#L494
+T-CALL-16	critical	done	A message without MIME headers and with an 8-bit body is text/plain with the charset guessed as UTF-8, else Latin-1	https://salsa.debian.org/debian/at/-/blob/282d01d/atd.c#L445
+T-CALL-17	high	done	Content-Type and Content-Transfer-Encoding without MIME-Version are honoured	https://github.com/sudo-project/sudo/blob/2802bb3/lib/eventlog/eventlog.c#L588
+T-CALL-18	high	done	Content-Transfer-Encoding binary and a quoted charset parameter are accepted	https://github.com/systemd-cron/systemd-cron/blob/b952d94d095a/src/bin/mail_for_job.sh#L97-L99
+T-CALL-19	high	done	A text/html body is converted to text and keeps its links	https://salsa.debian.org/debian/apt-listchanges/-/blob/75cc40f/apt_listchanges/frontends.py#L700-L710
 T-CALL-20	high	todo	X-Cron-Env headers stay out of the default text but are available to templates	https://github.com/cronie-crond/cronie/blob/59a3d15/src/do_command.c#L539-L540
 T-CALL-21	critical	done	An empty body is delivered with an empty-body marker	https://salsa.debian.org/debian/at/-/blob/282d01d/atd.c#L570
 T-CALL-22	high	todo	A message of headers only without a separator line is not lost	https://github.com/openzfs/zfs/blob/1f380a4/cmd/zed/zed.d/zed-functions.sh#L283-L291
@@ -178,4 +179,4 @@ T-TPL-10	low	todo	date and tz format the message date in a zone; an unknown zone
 T-TPL-11	critical	todo	Bcc never reaches template data, even with -t	https://github.com/marlam/msmtp/blob/755df9f0d3ac/tests/test-header-handling.sh#L35-L55
 T-TPL-12	critical	done	A bot token or webhook URL never appears in logs or exit messages; it is replaced by ***	https://github.com/KostyaEsmukov/smtp_to_telegram/blob/279f5fc/smtp_to_telegram.go#L644-L646
 T-TPL-13	critical	todo	The default MarkdownV2 template escapes the body, so dots and dashes do not cause an API error	https://github.com/nadiamoe/sendmail-telegram/blob/b76fa85b4572/sendmail-telegram.go
-T-TPL-14	critical	todo	An ISO-8859-1 base64 body and a Q-encoded ISO-8859-1 Subject reach the template as UTF-8	https://github.com/KostyaEsmukov/smtp_to_telegram/blob/279f5fc/smtp_to_telegram_test.go#L641
+T-TPL-14	critical	done	An ISO-8859-1 base64 body and a Q-encoded ISO-8859-1 Subject reach the template as UTF-8	https://github.com/KostyaEsmukov/smtp_to_telegram/blob/279f5fc/smtp_to_telegram_test.go#L641

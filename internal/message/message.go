@@ -1,5 +1,6 @@
 // Package message reads the mail a caller pipes into sendmail and exposes
-// the parts a notification needs. It is a leaf of the package graph.
+// the parts a notification needs: decoded headers, the text of the body in
+// UTF-8 and the attachments. It is a leaf of the package graph.
 package message
 
 import (
@@ -10,6 +11,7 @@ import (
 	"net/mail"
 	"net/textproto"
 	"strings"
+	"time"
 )
 
 // MaxSize is the input limit Read is given in a real invocation: large
@@ -23,6 +25,7 @@ const (
 	WarningTruncated       = "message over the size limit, rest discarded"
 	WarningMalformedHeader = "malformed header line, taken as the start of the body"
 	WarningControlAddress  = "address with a control character dropped"
+	WarningMalformedMIME   = "malformed multipart structure, parts after the damage dropped"
 )
 
 // Address is one mailbox of an address header.
@@ -34,21 +37,58 @@ type Address struct {
 	Addr string
 }
 
+// String returns the mailbox for display: "Name <addr>", or whichever of
+// the two is present. Nothing is quoted or encoded.
+func (a Address) String() string {
+	switch {
+	case a.Name == "":
+		return a.Addr
+	case a.Addr == "":
+		return a.Name
+	default:
+		return a.Name + " <" + a.Addr + ">"
+	}
+}
+
+// Attachment is a MIME part that is not the text of the message.
+type Attachment struct {
+	// Name is the file name without directories; empty when the part has
+	// none.
+	Name string
+	// ContentType is the lowercase media type, without parameters.
+	ContentType string
+	// Size is the length of Data.
+	Size int64
+	// Data is the content with its transfer encoding undone.
+	Data []byte
+}
+
 // Message is one mail read from standard input. It holds no Bcc: those
 // addresses route the message and never reach its text.
 type Message struct {
-	// Header holds the header fields in canonical form, continuation lines
-	// joined, Bcc removed.
-	Header mail.Header
-	// Subject and MessageID are the raw header values; empty when absent.
-	Subject   string
+	// Header holds the header fields, Bcc removed.
+	Header Header
+	// Subject is the decoded Subject header with white space collapsed;
+	// empty when absent.
+	Subject string
+	// MessageID is the Message-ID header; empty when absent.
 	MessageID string
 	// From is the first address of the From header.
 	From Address
 	// To and Cc are the addresses of all To and Cc headers.
 	To, Cc []Address
-	// Body is everything after the header block, with LF line ends.
+	// Date is the Date header, or ReadOptions.ReceivedAt when the header
+	// is missing or unreadable.
+	Date time.Time
+	// Body is the text of the message in UTF-8 with LF line ends: the
+	// text/plain parts, else the HTML part converted to text; empty when
+	// the message has only attachments.
 	Body string
+	// BodyHTML is the first text/html part in UTF-8; empty when there is
+	// none.
+	BodyHTML string
+	// Attachments are the parts that are neither Body nor BodyHTML.
+	Attachments []Attachment
 	// Size is the number of bytes read from the input, including any part
 	// over the limit.
 	Size int64
@@ -74,6 +114,9 @@ type ReadOptions struct {
 	// discarded, so that the caller does not get a broken pipe. Zero
 	// keeps everything.
 	MaxSize int64
+	// ReceivedAt is the time the message arrived; it stands in for a
+	// missing Date header.
+	ReceivedAt time.Time
 }
 
 // Read consumes r to the end and splits the mail into headers and body.
@@ -83,7 +126,8 @@ type ReadOptions struct {
 // leading mbox "From " line is dropped, input without a header block is
 // all body, and a malformed header line starts the body, because a
 // notification with an odd layout is worth more to the operator than a
-// lost one.
+// lost one. MIME structure, transfer encodings, encoded words and charsets
+// are decoded in the same lenient way; see decodeBody and decodeText.
 //
 // The input is held once: line ends and dots are rewritten in place, the
 // header block is scanned without splitting it into lines, and the body is
@@ -105,7 +149,7 @@ func Read(r io.Reader, opt ReadOptions) (*Message, []Address, []string, error) {
 	if discarded > 0 {
 		warnings = append(warnings, WarningTruncated)
 	}
-	msg := &Message{Header: mail.Header{}, Size: int64(len(raw)) + discarded}
+	msg := &Message{Header: Header{}, Size: int64(len(raw)) + discarded}
 	raw = normalize(raw, opt.IgnoreDots)
 	if bytes.HasPrefix(raw, []byte("From ")) {
 		raw = raw[lineEnd(raw, 0):]
@@ -115,9 +159,16 @@ func Read(r io.Reader, opt ReadOptions) (*Message, []Address, []string, error) {
 		warnings = append(warnings, WarningMalformedHeader)
 	}
 	var from, bcc []Address
+	top := entity{body: raw[bodyStart:]}
 	for name, value := range fields(string(raw[:headerEnd])) {
 		key := textproto.CanonicalMIMEHeaderKey(name)
 		switch key {
+		case "Content-Type":
+			top.contentType = firstValue(top.contentType, value)
+		case "Content-Transfer-Encoding":
+			top.encoding = firstValue(top.encoding, value)
+		case "Content-Disposition":
+			top.disposition = firstValue(top.disposition, value)
 		case "Bcc":
 			bcc = append(bcc, ParseAddressList(value)...)
 			continue
@@ -130,11 +181,17 @@ func Read(r io.Reader, opt ReadOptions) (*Message, []Address, []string, error) {
 		case "Cc":
 			msg.Cc = append(msg.Cc, ParseAddressList(value)...)
 		}
-		msg.Header[key] = append(msg.Header[key], value)
+		msg.Header[key] = append(msg.Header[key], decodeHeader(value))
 	}
-	msg.Body = string(raw[bodyStart:])
-	msg.Subject = msg.Header.Get("Subject")
+	if decodeBody(msg, top) {
+		warnings = append(warnings, WarningMalformedMIME)
+	}
+	msg.Subject = collapseSpace(msg.Header.Get("Subject"))
 	msg.MessageID = msg.Header.Get("Message-Id")
+	msg.Date = opt.ReceivedAt
+	if date, err := mail.ParseDate(msg.Header.Get("Date")); err == nil {
+		msg.Date = date
+	}
 	isDropped := false
 	for _, list := range []*[]Address{&from, &msg.To, &msg.Cc, &bcc} {
 		if dropControlAddresses(list) {
@@ -148,6 +205,15 @@ func Read(r io.Reader, opt ReadOptions) (*Message, []Address, []string, error) {
 		msg.From = from[0]
 	}
 	return msg, bcc, warnings, nil
+}
+
+// firstValue returns current, or value when current is empty: the first
+// of repeated fields wins.
+func firstValue(current, value string) string {
+	if current == "" {
+		return value
+	}
+	return current
 }
 
 // dropControlAddresses removes the addresses whose name or address holds

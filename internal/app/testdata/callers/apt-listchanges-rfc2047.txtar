@@ -7,7 +7,7 @@ recipients: ["root"]
 -- payloads --
 2
 -- title --
-=?utf-8?q?apt-listchanges=3A_news_for_h=C3=B4st?=
+apt-listchanges: news for hôst
 -- text --
 example-tool (2.0-1) unstable; urgency=medium
 -- warnings --

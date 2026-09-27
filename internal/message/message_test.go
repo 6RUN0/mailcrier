@@ -3,12 +3,16 @@ package message
 import (
 	"errors"
 	"io"
+	"math"
 	"reflect"
 	"runtime"
+	"runtime/debug"
 	"slices"
 	"strings"
 	"testing"
 	"testing/iotest"
+	"time"
+	"unicode/utf8"
 )
 
 func TestRead(t *testing.T) {
@@ -223,10 +227,14 @@ func TestReadReportsInputError(t *testing.T) {
 }
 
 // FuzzRead checks that no input panics Read and that the result keeps its
-// promises: LF line ends only, no Bcc header, the input size counted.
+// promises: LF line ends only, no Bcc header, text in valid UTF-8, the
+// input size counted.
 func FuzzRead(f *testing.F) {
 	for _, seed := range []string{
 		"Subject: s\n\nb\n", "From x\nTo: a\n.\n", "Bcc: a,\n b\n\n", " x\n", "\r\n\r\n", "a:b\n\n..x\n.\r\n",
+		"Subject: =?utf-8?q?a=C3?= =?x?B?!!?=\n\n\xff\n",
+		"Content-Type: multipart/mixed; boundary=b\n\n--b\nContent-Type: text/html\n\n<a href=x>y</a>\n--b\nContent-Transfer-Encoding: base64\n\nQQ==\n--b--\n",
+		"Content-Type: text/plain; charset=koi8-r\nContent-Transfer-Encoding: quoted-printable\n\n=F0=\n=ZZ\n",
 	} {
 		f.Add(seed, false)
 		f.Add(seed, true)
@@ -245,6 +253,16 @@ func FuzzRead(f *testing.F) {
 		if msg.Size != int64(len(input)) {
 			t.Errorf("Size = %d, want %d", msg.Size, len(input))
 		}
+		if !utf8.ValidString(msg.Body) || !utf8.ValidString(msg.BodyHTML) || !utf8.ValidString(msg.Subject) {
+			t.Errorf("text is not valid UTF-8: %q, %q, %q", msg.Subject, msg.Body, msg.BodyHTML)
+		}
+		for name, values := range msg.Header {
+			for _, value := range values {
+				if !utf8.ValidString(value) {
+					t.Errorf("header %s is not valid UTF-8: %q", name, value)
+				}
+			}
+		}
 	})
 }
 
@@ -260,12 +278,44 @@ func allocatedBytes(t *testing.T, input string) uint64 {
 	return after.TotalAlloc - before.TotalAlloc
 }
 
-// TestReadIsLinear pins that the allocations of Read grow linearly with
-// inputs that stress each part of the reader: a folded header, many
-// fields, long address lists, many Bcc lines and many body lines; the
-// header blocks of the larger inputs exceed 1 MiB. Four times the input
-// may cost about four times the allocations, a quadratic step would cost
-// sixteen, so the test allows eight.
+// readDuration returns the time of one Read over input, averaged over a
+// batch of runs that together take at least 20 ms, as testing.Benchmark
+// does, so that timer and scheduler noise stay small against the batch
+// however short one run is.
+func readDuration(t *testing.T, input string) time.Duration {
+	t.Helper()
+	runtime.GC()
+	defer debug.SetGCPercent(debug.SetGCPercent(-1))
+	runs := 0
+	start := time.Now()
+	for time.Since(start) < 20*time.Millisecond {
+		if _, _, _, err := Read(strings.NewReader(input), ReadOptions{MaxSize: MaxSize}); err != nil {
+			t.Fatal(err)
+		}
+		runs++
+	}
+	return time.Since(start) / time.Duration(runs)
+}
+
+// TestReadIsLinear pins that the allocations and the time of Read grow
+// linearly with inputs that stress each part of the reader: a folded
+// header, many fields, long address lists, many Bcc lines, many body
+// lines, MIME structure and HTML; the header blocks of the larger inputs
+// exceed 1 MiB. Four times the input may cost about four times the
+// allocations and the time, a quadratic step would cost sixteen, so the
+// test allows eight for allocations and ten for time.
+//
+// A quadratic step that allocates nothing, such as rescanning the text
+// of every enclosing link, shows only in the time. The time is measured
+// first, from the smallest input, doubling, whose Read takes at least
+// 5 ms, so that a quadratic step, which reaches 5 ms early, fails by the
+// ratio in seconds and not by the test timeout on the inputs of the
+// allocations. The batches of both sizes alternate, so that a change of
+// the machine load hits both, and the fastest of three counts. Cache and
+// memory bandwidth shared with other processes still put about one ratio
+// in a hundred over the limit on a loaded machine, so an exceeded limit
+// is measured again, up to three times: a quadratic step exceeds it every
+// time.
 func TestReadIsLinear(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -279,9 +329,55 @@ func TestReadIsLinear(t *testing.T) {
 			return "Bcc: a@example.org,\n" + strings.Repeat(" c@example.org,\n", n) + " d\n\nbody\n"
 		}},
 		{"body-lines", func(n int) string { return "Subject: a\n\n" + strings.Repeat(".x\n", n) }},
+		{"encoded-words", func(n int) string { return "Subject: " + strings.Repeat("=?utf-8?q?a=C3=A9?= ", n) + "\n\nbody\n" }},
+		{"malformed-encoded-words", func(n int) string { return "Subject: " + strings.Repeat("=?a?B?!", n) + "?=\n\nbody\n" }},
+		{"latin1-header", func(n int) string { return "Subject: " + strings.Repeat("caf\xe9 ", n) + "\n\nbody\n" }},
+		{"content-type-parameters", func(n int) string {
+			return "Content-Type: text/plain; " + strings.Repeat("a=b; ", n) + "charset=utf-8\n\nbody\n"
+		}},
+		{"multipart-parts", func(n int) string {
+			return "Content-Type: multipart/mixed; boundary=b\n\n" + strings.Repeat("--b\n\nx\n", n) + "--b--\n"
+		}},
+		{"boundary-prefixes", func(n int) string {
+			return "Content-Type: multipart/mixed; boundary=b\n\n--b\n\n" + strings.Repeat("--bx\n", n) + "--b--\n"
+		}},
+		{"base64-body", func(n int) string {
+			return "Content-Transfer-Encoding: base64\n\n" + strings.Repeat("aGVsbG8gd29y\n", n)
+		}},
+		{"quoted-printable-body", func(n int) string {
+			return "Content-Transfer-Encoding: quoted-printable\n\n" + strings.Repeat("=C3=A9t=C3=A9 =\n", n)
+		}},
+		{"html-nested-links", func(n int) string {
+			return "Content-Type: text/html\n\n" + strings.Repeat("<a href=\"https://example.org/\">", n) + "t" + strings.Repeat("</a>", n)
+		}},
+		{"html-links-around-space", func(n int) string {
+			return "Content-Type: text/html\n\n<pre>" + strings.Repeat("<a href=\"https://example.org/\">", n) + strings.Repeat(" ", 16*n) + strings.Repeat("</a>", n)
+		}},
+		{"html-dropped-elements", func(n int) string {
+			return "Content-Type: text/html\n\n" + strings.Repeat("<svg>", n) + strings.Repeat("</svg>", n) + "text"
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			n := 1000
+			for readDuration(t, tc.input(n)) < 5*time.Millisecond && n < 1<<20 {
+				n *= 2
+			}
+			smallInput, largeInput := tc.input(n), tc.input(4*n)
+			var smallTime, largeTime time.Duration
+			for range 3 {
+				smallTime, largeTime = time.Duration(math.MaxInt64), time.Duration(math.MaxInt64)
+				for range 3 {
+					smallTime = min(smallTime, readDuration(t, smallInput))
+					largeTime = min(largeTime, readDuration(t, largeInput))
+				}
+				if largeTime <= 10*smallTime {
+					break
+				}
+			}
+			if largeTime > 10*smallTime {
+				t.Fatalf("time grows from %v to %v for 4 times the input", smallTime, largeTime)
+			}
 			small := allocatedBytes(t, tc.input(50000))
 			large := allocatedBytes(t, tc.input(200000))
 			if large > 8*small {

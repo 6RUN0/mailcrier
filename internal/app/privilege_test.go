@@ -19,6 +19,7 @@ import (
 	"testing"
 	"testing/fstest"
 	"testing/iotest"
+	"time"
 
 	"github.com/6RUN0/slendmail/internal/sendmail"
 )
@@ -443,6 +444,7 @@ func runHTTP2DebugHelper(mode string) {
 		ConfigPath:     SystemConfigPath,
 		HTTP:           &http.Client{Transport: transport},
 		Hostname:       "host1.example.org",
+		Now:            time.Now,
 		Stderr:         os.Stderr,
 		SetLogOutput:   log.SetOutput,
 		Credentials:    creds,

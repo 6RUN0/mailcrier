@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"strings"
+	"time"
 
 	"github.com/6RUN0/slendmail/internal/backend"
 	"github.com/6RUN0/slendmail/internal/backend/webhook"
@@ -56,6 +57,9 @@ type Deps struct {
 	HTTP *http.Client
 	// Hostname is the name of the machine, sent along with each message.
 	Hostname string
+	// Now returns the current time; it dates a message without a Date
+	// header.
+	Now func() time.Time
 	// Program is argv[0]; its base name selects the newaliases and mailq
 	// modes.
 	Program string
@@ -144,7 +148,7 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 		log.Error("configuration rejected, message not delivered", "err", err)
 		return exitConfig
 	}
-	msg, bcc, readWarnings, err := message.Read(stdin, message.ReadOptions{IgnoreDots: inv.IgnoreDots, MaxSize: message.MaxSize})
+	msg, bcc, readWarnings, err := message.Read(stdin, message.ReadOptions{IgnoreDots: inv.IgnoreDots, MaxSize: message.MaxSize, ReceivedAt: d.Now()})
 	if err != nil {
 		log.Error("message not read, giving up", "err", err)
 		return exitNoInput

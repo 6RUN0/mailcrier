@@ -102,6 +102,7 @@ func (inv *invocation) run(t *testing.T) int {
 		ConfigPath:   SystemConfigPath,
 		HTTP:         client,
 		Hostname:     "host1.example.org",
+		Now:          func() time.Time { return testNow },
 		Program:      program,
 		Stdout:       &inv.stdout,
 		Stderr:       &inv.stderr,
@@ -117,6 +118,9 @@ func (inv *invocation) run(t *testing.T) int {
 	}
 	return Run(context.Background(), deps, args, inv.stdin)
 }
+
+// testNow is the clock of the invocations.
+var testNow = time.Date(2026, 9, 27, 10, 0, 0, 0, time.UTC)
 
 // testUsers is the user database of the invocations.
 var testUsers = map[int]string{0: "root", 990: "slendmail", 1000: "alice"}

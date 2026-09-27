@@ -12,8 +12,7 @@ unattended-upgrades result for host1: SUCCESS
 Unattended upgrade result: All upgrades installed
 
 Packages that were upgraded:
- example-lib example-tool=
- 
+ example-lib example-tool
 
 Package installation log:
 Log started: 2026-09-27  06:25:01

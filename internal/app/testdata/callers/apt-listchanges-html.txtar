@@ -9,8 +9,6 @@ recipients: ["root"]
 -- title --
 apt-listchanges: Changelogs
 -- text --
-<html><head><title>apt-listchanges output</title></head><body>
-<pre>example-tool (2.0-1)
-  * Fix <a href="https://example.org/bugs/1">bug 1</a>.</pre>
-</body></html>
+example-tool (2.0-1)
+  * Fix bug 1 (https://example.org/bugs/1).
 -- warnings --
