@@ -62,6 +62,9 @@ const (
 type Config struct {
 	// General holds process-wide settings.
 	General General `toml:"general"`
+	// Strings overrides the notices written in place of missing content;
+	// an empty field keeps the built-in English text.
+	Strings Strings `toml:"strings"`
 	// Targets maps the target name, the key of [target.<name>], to its
 	// settings. TOML rejects a table defined twice, so names are unique.
 	Targets map[string]Target `toml:"target"`
@@ -76,6 +79,19 @@ type General struct {
 	HTTPTimeout Duration `toml:"http_timeout"`
 	// Deadline bounds the delivery of the message to all targets.
 	Deadline Duration `toml:"deadline"`
+}
+
+// Strings is the [strings] table.
+type Strings struct {
+	// NoSubject stands in for a missing subject.
+	NoSubject string `toml:"no_subject"`
+	// EmptyBody stands in for a body without visible text.
+	EmptyBody string `toml:"empty_body"`
+	// Truncated ends a body cut to the length limit of a target.
+	Truncated string `toml:"truncated"`
+	// MoreAttachments follows a list of attachments cut to the length
+	// limit of a target; its one %d is the number left out.
+	MoreAttachments string `toml:"more_attachments"`
 }
 
 // Duration is a time span written as a Go duration string, such as "15s".
@@ -231,6 +247,19 @@ func validate(cfg *Config, keys keyIndex) *Error {
 			pos := keys.position("general", limit.key)
 			return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("value of key %q must be positive", limit.key)}
 		}
+	}
+	for _, notice := range []struct{ key, value string }{
+		{"no_subject", cfg.Strings.NoSubject}, {"empty_body", cfg.Strings.EmptyBody}, {"truncated", cfg.Strings.Truncated},
+		{"more_attachments", cfg.Strings.MoreAttachments},
+	} {
+		if keys.has("strings", notice.key) && strings.TrimSpace(notice.value) == "" {
+			pos := keys.position("strings", notice.key)
+			return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("value of key %q must not be blank", notice.key)}
+		}
+	}
+	if keys.has("strings", "more_attachments") && (strings.Count(cfg.Strings.MoreAttachments, "%d") != 1 || strings.Count(cfg.Strings.MoreAttachments, "%") != 1) {
+		pos := keys.position("strings", "more_attachments")
+		return &Error{Line: pos.Line, Column: pos.Column, Msg: `value of key "more_attachments" must hold one %d and no other %`}
 	}
 	if len(cfg.Targets) == 0 {
 		return &Error{Msg: "no targets configured"}

@@ -49,6 +49,12 @@ syslog_tag = "slendmail"        # optional, default "slendmail"
 http_timeout = "15s"            # optional, one HTTP request
 deadline = "30s"                # optional, delivery to all targets
 
+[strings]                       # optional, notices in place of missing content
+no_subject = "(no subject)"
+empty_body = "(empty body)"
+truncated = "[truncated]"
+more_attachments = "... and %d more"
+
 [target.hook]                   # the table key is the target name: [a-z0-9-]
 type = "http"
 url_file = "/etc/slendmail.d/hook.url"  # or url = "https://..."
@@ -62,6 +68,16 @@ preset = "generic-json"
   `{"subject": ..., "body": ..., "hostname": ...}` with
   `Content-Type: application/json`. Other target types and presets are
   recognized by the parser but rejected with exit status 78 until implemented.
+- `[strings]` replaces the English notices that stand in for missing
+  content: `no_subject` for a message without a subject, `empty_body` for
+  a body without visible text, `truncated` at the end of a body cut to the
+  length limit of a target, `more_attachments` after a list of
+  attachments cut to that limit, with `%d` for the number left out (exactly
+  one `%d` and no other `%`, else exit status 78). Each is optional and
+  must not be blank; the values above are the defaults. The `http` target
+  applies only `empty_body`: its payload carries the subject as it is,
+  empty when the message has none, and it has no length limit. The others
+  take effect in the built-in templates of the native targets.
 - Exit status: see "Exit status" below.
 - Logging goes to syslog, facility `mail`. Where no syslog socket exists (a
   container without `/dev/log`) the records go to stderr, with time and
@@ -190,7 +206,8 @@ option: `-f --probe` names a sender.
   first line is no header field, a continuation line included, is all body;
   a later line with a space before the colon or without a colon starts the
   body and logs a warning. Input beyond 10 MiB is read and discarded with
-  a warning. A body without visible text is sent as `(empty body)`.
+  a warning. A body without visible text is sent as `(empty body)`, or the
+  `empty_body` text of `[strings]`.
 - MIME: `Content-Type` and `Content-Transfer-Encoding` are honoured with or
   without `MIME-Version`. The text is the `text/plain` parts, named or not,
   unless `Content-Disposition: attachment` marks them, else the first

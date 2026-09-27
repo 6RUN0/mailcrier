@@ -12,8 +12,10 @@ import (
 	"testing/iotest"
 
 	"github.com/6RUN0/slendmail/internal/backend"
+	"github.com/6RUN0/slendmail/internal/config"
 	"github.com/6RUN0/slendmail/internal/delivery"
 	"github.com/6RUN0/slendmail/internal/message"
+	"github.com/6RUN0/slendmail/internal/render"
 )
 
 // recorder stands in for delivery: it keeps the envelope and payloads and
@@ -241,8 +243,21 @@ func (tc runEmptyBodyCase) check(t *testing.T) {
 	if code := inv.run(t); code != 0 {
 		t.Fatalf("Run() = %d, want 0", code)
 	}
-	if len(rec.payloads) != 2 || rec.payloads[0].Text != emptyBodyText {
-		t.Errorf("payloads = %+v, want 2 with text %q", rec.payloads, emptyBodyText)
+	if want := render.DefaultStrings().EmptyBody; len(rec.payloads) != 2 || rec.payloads[0].Text != want {
+		t.Errorf("payloads = %+v, want 2 with text %q", rec.payloads, want)
+	}
+}
+
+// TestRunConfiguredNotice pins that [strings] replaces the notice for an
+// empty body.
+func TestRunConfiguredNotice(t *testing.T) {
+	rec := &recorder{}
+	inv := &invocation{config: "[strings]\nempty_body = \"(leer)\"\n\n" + twoTargets, args: []string{"root"}, stdin: strings.NewReader(""), deliver: rec.deliver}
+	if code := inv.run(t); code != 0 {
+		t.Fatalf("Run() = %d, want 0", code)
+	}
+	if len(rec.payloads) != 2 || rec.payloads[0].Text != "(leer)" {
+		t.Errorf("payloads = %+v, want 2 with text %q", rec.payloads, "(leer)")
 	}
 }
 
@@ -434,4 +449,16 @@ func TestRunCronieCommandLine(t *testing.T) {
 			t.Errorf("log has a warning or lacks recipients=1:\n%s", log)
 		}
 	})
+}
+
+// TestNotices pins that every configured notice replaces its built-in
+// one and an absent one keeps it.
+func TestNotices(t *testing.T) {
+	got := notices(config.Strings{NoSubject: "a", EmptyBody: "b", Truncated: "c", MoreAttachments: "%d d"})
+	if want := (render.Strings{NoSubject: "a", EmptyBody: "b", Truncated: "c", MoreAttachments: "%d d"}); got != want {
+		t.Errorf("notices = %+v, want %+v", got, want)
+	}
+	if got := notices(config.Strings{}); got != render.DefaultStrings() {
+		t.Errorf("notices of nothing = %+v", got)
+	}
 }

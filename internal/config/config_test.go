@@ -332,3 +332,38 @@ func TestLoadTimeLimits(t *testing.T) {
 		}
 	})
 }
+
+func TestLoadStrings(t *testing.T) {
+	const target = "\n[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\n"
+	t.Run("configured", func(t *testing.T) {
+		cfg, err := load(t, "[strings]\nno_subject = \"(ohne Betreff)\"\nempty_body = \"(leer)\"\ntruncated = \"[gekürzt]\"\nmore_attachments = \"und %d weitere\"\n"+target, nil)
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+		if want := (Strings{NoSubject: "(ohne Betreff)", EmptyBody: "(leer)", Truncated: "[gekürzt]", MoreAttachments: "und %d weitere"}); cfg.Strings != want {
+			t.Errorf("Strings = %+v, want %+v", cfg.Strings, want)
+		}
+	})
+	t.Run("absent", func(t *testing.T) {
+		cfg, err := load(t, target, nil)
+		if err != nil || cfg.Strings != (Strings{}) {
+			t.Errorf("Strings = %+v, err = %v", cfg.Strings, err)
+		}
+	})
+	for name, doc := range map[string]string{
+		"blank":                       "[strings]\nempty_body = \"  \"\n",
+		"unknown":                     "[strings]\nsubject = \"x\"\n",
+		"more-attachments-no-verb":    "[strings]\nmore_attachments = \"and more\"\n",
+		"more-attachments-two-verbs":  "[strings]\nmore_attachments = \"%d of %d\"\n",
+		"more-attachments-other-verb": "[strings]\nmore_attachments = \"%s more\"\n",
+		"more-attachments-percent":    "[strings]\nmore_attachments = \"%d more, 100%\"\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := load(t, doc+target, nil)
+			var cfgErr *Error
+			if !errors.As(err, &cfgErr) || cfgErr.Line != 2 {
+				t.Errorf("Load() error = %v, want *Error on line 2", err)
+			}
+		})
+	}
+}

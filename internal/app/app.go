@@ -25,6 +25,7 @@ import (
 	"github.com/6RUN0/slendmail/internal/delivery"
 	"github.com/6RUN0/slendmail/internal/message"
 	"github.com/6RUN0/slendmail/internal/redact"
+	"github.com/6RUN0/slendmail/internal/render"
 	"github.com/6RUN0/slendmail/internal/sendmail"
 )
 
@@ -186,7 +187,7 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 			return delivery.Deliver(ctx, targets, p)
 		}
 	}
-	results := deliver(ctx, targets, env, buildPayload(msg))
+	results := deliver(ctx, targets, env, buildPayload(msg, notices(cfg.Strings)))
 	for _, r := range results {
 		logResult(log, r)
 	}
@@ -194,17 +195,32 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 	return delivery.ExitCode(results)
 }
 
-// emptyBodyText stands in for a body without visible text: at -m
-// and logrotate send such mail, and services reject an empty message.
-const emptyBodyText = "(empty body)"
-
-// buildPayload returns the text of msg for the targets.
-func buildPayload(msg *message.Message) backend.Payload {
+// buildPayload returns the text of msg for the targets. A body without
+// visible text, as at -m and logrotate send it, becomes the EmptyBody
+// notice: services reject an empty message.
+func buildPayload(msg *message.Message, strs render.Strings) backend.Payload {
 	text := msg.Body
 	if strings.TrimSpace(text) == "" {
-		text = emptyBodyText
+		text = strs.EmptyBody
 	}
 	return backend.Payload{Title: msg.Subject, Text: text}
+}
+
+// notices returns the built-in notices with the configured ones in place.
+func notices(configured config.Strings) render.Strings {
+	strs := render.DefaultStrings()
+	for _, notice := range []struct {
+		value string
+		dst   *string
+	}{
+		{configured.NoSubject, &strs.NoSubject}, {configured.EmptyBody, &strs.EmptyBody}, {configured.Truncated, &strs.Truncated},
+		{configured.MoreAttachments, &strs.MoreAttachments},
+	} {
+		if notice.value != "" {
+			*notice.dst = notice.value
+		}
+	}
+	return strs
 }
 
 // defaultSender returns the sender of a message without -f and From. An
