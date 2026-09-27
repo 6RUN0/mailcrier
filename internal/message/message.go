@@ -3,8 +3,10 @@
 package message
 
 import (
+	"bytes"
 	"fmt"
 	"io"
+	"iter"
 	"net/mail"
 	"net/textproto"
 	"strings"
@@ -82,6 +84,10 @@ type ReadOptions struct {
 // all body, and a malformed header line starts the body, because a
 // notification with an odd layout is worth more to the operator than a
 // lost one.
+//
+// The input is held once: line ends and dots are rewritten in place, the
+// header block is scanned without splitting it into lines, and the body is
+// one slice of the input.
 func Read(r io.Reader, opt ReadOptions) (*Message, []Address, []string, error) {
 	var warnings []string
 	limited := r
@@ -99,43 +105,36 @@ func Read(r io.Reader, opt ReadOptions) (*Message, []Address, []string, error) {
 	if discarded > 0 {
 		warnings = append(warnings, WarningTruncated)
 	}
-	lines := splitLines(raw, opt.IgnoreDots)
-	if len(lines) > 0 && strings.HasPrefix(lines[0], "From ") {
-		lines = lines[1:]
-	}
 	msg := &Message{Header: mail.Header{}, Size: int64(len(raw)) + discarded}
-	var bcc []Address
-	headerEnd, isMalformed := scanHeader(lines)
+	raw = normalize(raw, opt.IgnoreDots)
+	if bytes.HasPrefix(raw, []byte("From ")) {
+		raw = raw[lineEnd(raw, 0):]
+	}
+	headerEnd, bodyStart, isMalformed := scanHeader(raw)
 	if isMalformed {
 		warnings = append(warnings, WarningMalformedHeader)
 	}
-	for _, field := range unfold(lines[:headerEnd]) {
-		name, value, _ := strings.Cut(field, ":")
+	var from, bcc []Address
+	for name, value := range fields(string(raw[:headerEnd])) {
 		key := textproto.CanonicalMIMEHeaderKey(name)
-		value = strings.TrimSpace(value)
-		if key == "Bcc" {
+		switch key {
+		case "Bcc":
 			bcc = append(bcc, ParseAddressList(value)...)
 			continue
+		case "From":
+			if _, ok := msg.Header[key]; !ok {
+				from = ParseAddressList(value)
+			}
+		case "To":
+			msg.To = append(msg.To, ParseAddressList(value)...)
+		case "Cc":
+			msg.Cc = append(msg.Cc, ParseAddressList(value)...)
 		}
 		msg.Header[key] = append(msg.Header[key], value)
 	}
-	body := lines[headerEnd:]
-	if len(body) > 0 && body[0] == "\n" {
-		body = body[1:]
-	}
-	msg.Body = strings.Join(body, "")
+	msg.Body = string(raw[bodyStart:])
 	msg.Subject = msg.Header.Get("Subject")
 	msg.MessageID = msg.Header.Get("Message-Id")
-	var from []Address
-	if value, ok := msg.Header["From"]; ok {
-		from = ParseAddressList(value[0])
-	}
-	for _, value := range msg.Header["To"] {
-		msg.To = append(msg.To, ParseAddressList(value)...)
-	}
-	for _, value := range msg.Header["Cc"] {
-		msg.Cc = append(msg.Cc, ParseAddressList(value)...)
-	}
 	isDropped := false
 	for _, list := range []*[]Address{&from, &msg.To, &msg.Cc, &bcc} {
 		if dropControlAddresses(list) {
@@ -171,89 +170,139 @@ func hasControl(s string) bool {
 	return strings.ContainsFunc(s, func(r rune) bool { return r < ' ' || r == 0x7f })
 }
 
-// splitLines returns the lines of raw with their LF ends, the CRs before
-// an LF removed. Unless ignoreDots is set, a line with a single dot ends
-// the input and a line starting with two dots loses one, as sendmail 8
-// does: callers that pass no -i rely on it.
-func splitLines(raw []byte, ignoreDots bool) []string {
-	lines := strings.SplitAfter(string(raw), "\n")
-	if lines[len(lines)-1] == "" {
-		lines = lines[:len(lines)-1]
-	}
-	for i, line := range lines {
-		if content, ok := strings.CutSuffix(line, "\n"); ok {
-			lines[i] = strings.TrimRight(content, "\r") + "\n"
+// normalize rewrites raw in place and returns the shortened slice: the CRs
+// that end a line are removed, and unless ignoreDots is set, a line with a
+// single dot ends the input and a line starting with two dots loses one,
+// as sendmail 8 does: callers that pass no -i rely on it.
+func normalize(raw []byte, ignoreDots bool) []byte {
+	w := 0
+	isLineStart := true
+	for r := 0; r < len(raw); {
+		if isLineStart && !ignoreDots && raw[r] == '.' {
+			next := r + 1
+			for next < len(raw) && raw[next] == '\r' {
+				next++
+			}
+			if next == len(raw) || raw[next] == '\n' {
+				return raw[:w]
+			}
+			if raw[r+1] == '.' {
+				r++
+			}
+		}
+		isLineStart = false
+		switch c := raw[r]; c {
+		case '\r':
+			// A run of CRs is copied at once, so that a long run without
+			// an LF is not scanned again for every CR in it.
+			end := r
+			for end < len(raw) && raw[end] == '\r' {
+				end++
+			}
+			if end < len(raw) && raw[end] == '\n' {
+				r = end
+				continue
+			}
+			w += copy(raw[w:], raw[r:end])
+			r = end
+		case '\n':
+			raw[w] = c
+			w, r = w+1, r+1
+			isLineStart = true
+		default:
+			raw[w] = c
+			w, r = w+1, r+1
 		}
 	}
-	if ignoreDots {
-		return lines
-	}
-	for i, line := range lines {
-		content := strings.TrimSuffix(line, "\n")
-		if content == "." || content == ".\r" {
-			return lines[:i]
-		}
-		if strings.HasPrefix(line, "..") {
-			lines[i] = line[1:]
-		}
-	}
-	return lines
+	return raw[:w]
 }
 
-// scanHeader returns the number of lines of the header block, which ends
-// before an empty line, before a malformed line, or at the end of the
+// lineEnd returns the offset after the line of raw that starts at pos: past
+// its LF, or the end of raw.
+func lineEnd(raw []byte, pos int) int {
+	if n := bytes.IndexByte(raw[pos:], '\n'); n >= 0 {
+		return pos + n + 1
+	}
+	return len(raw)
+}
+
+// scanHeader returns where the header block of raw ends and where the body
+// starts. The block ends before an empty line, which belongs to neither,
+// before a malformed line, which starts the body, or at the end of the
 // input. isMalformed reports a malformed line after at least one field;
 // input whose first line is no field is a body without headers.
-func scanHeader(lines []string) (end int, isMalformed bool) {
-	for i, line := range lines {
-		switch {
-		case line == "\n":
-			return i, false
-		case line[0] == ' ' || line[0] == '\t':
-			if i == 0 {
-				return 0, false
+func scanHeader(raw []byte) (headerEnd, bodyStart int, isMalformed bool) {
+	for pos := 0; pos < len(raw); pos = lineEnd(raw, pos) {
+		switch c := raw[pos]; {
+		case c == '\n':
+			return pos, pos + 1, false
+		case c == ' ' || c == '\t':
+			if pos == 0 {
+				return 0, 0, false
 			}
-		case !isFieldStart(line):
-			return i, i > 0
+		case !isFieldStart(raw[pos:]):
+			return pos, pos, pos > 0
 		}
 	}
-	return len(lines), false
+	return len(raw), len(raw), false
 }
 
 // isFieldStart reports whether line starts with a field name, printable
 // ASCII other than the colon, directly followed by a colon.
-func isFieldStart(line string) bool {
-	name, _, found := strings.Cut(line, ":")
-	if !found || name == "" {
-		return false
-	}
-	for i := 0; i < len(name); i++ {
-		if name[i] <= ' ' || name[i] > '~' {
+func isFieldStart(line []byte) bool {
+	for i, c := range line {
+		switch {
+		case c == ':':
+			return i > 0
+		case c <= ' ' || c > '~':
 			return false
 		}
 	}
-	return true
+	return false
 }
 
-// unfold joins each field of a header block with its continuation lines,
-// one space between the parts. Each field is joined once: appending line
-// by line would copy the field again for every continuation line.
-func unfold(lines []string) []string {
-	var fields, parts []string
-	flush := func() {
-		if len(parts) > 0 {
-			fields = append(fields, strings.Join(parts, " "))
+// fields yields the name and value of each field of a header block, the
+// value with its continuation lines joined by one space and trimmed. A
+// value on one line is a substring of block and costs no copy.
+func fields(block string) iter.Seq2[string, string] {
+	return func(yield func(string, string) bool) {
+		for pos := 0; pos < len(block); {
+			end := pos
+			for {
+				if n := strings.IndexByte(block[end:], '\n'); n >= 0 {
+					end += n + 1
+				} else {
+					end = len(block)
+				}
+				if end == len(block) || (block[end] != ' ' && block[end] != '\t') {
+					break
+				}
+			}
+			name, value, _ := strings.Cut(block[pos:end], ":")
+			pos = end
+			if !yield(name, unfold(value)) {
+				return
+			}
 		}
 	}
-	for _, line := range lines {
-		line = strings.TrimRight(line, "\r\n")
-		if line[0] == ' ' || line[0] == '\t' {
-			parts = append(parts, strings.TrimSpace(line))
-			continue
-		}
-		flush()
-		parts = []string{line}
+}
+
+// unfold joins the lines of a field value with one space, each line
+// trimmed.
+func unfold(value string) string {
+	value = strings.TrimSpace(value)
+	if !strings.Contains(value, "\n") {
+		return value
 	}
-	flush()
-	return fields
+	var b strings.Builder
+	b.Grow(len(value))
+	for {
+		line, rest, found := strings.Cut(value, "\n")
+		b.WriteString(strings.TrimSpace(line))
+		if !found {
+			return b.String()
+		}
+		b.WriteByte(' ')
+		value = rest
+	}
 }

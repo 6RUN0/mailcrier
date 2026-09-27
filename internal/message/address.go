@@ -3,6 +3,7 @@ package message
 import (
 	"net/mail"
 	"strings"
+	"unicode"
 )
 
 // ParseAddressList returns the mailboxes of an address header value. It
@@ -11,9 +12,16 @@ import (
 // is split at top-level commas, and each part yields the address in angle
 // brackets, or else the text outside comments, with the display name or
 // the first comment as Name.
+//
+// A value over maxStrictListLength goes to the loose parser directly:
+// net/mail collects the words of a phrase in a slice, which for megabytes
+// of words costs many times the value in memory.
 func ParseAddressList(value string) []Address {
 	if strings.TrimSpace(value) == "" {
 		return nil
+	}
+	if len(value) > maxStrictListLength {
+		return parseLooseList(value)
 	}
 	if list, err := mail.ParseAddressList(value); err == nil {
 		addresses := make([]Address, 0, len(list))
@@ -22,6 +30,15 @@ func ParseAddressList(value string) []Address {
 		}
 		return addresses
 	}
+	return parseLooseList(value)
+}
+
+// maxStrictListLength bounds the header values given to net/mail; a list
+// of a thousand addresses stays far below it.
+const maxStrictListLength = 256 << 10
+
+// parseLooseList reads a list without requiring a domain.
+func parseLooseList(value string) []Address {
 	var addresses []Address
 	for _, part := range splitTopLevel(value) {
 		if a, ok := parseLooseAddress(part); ok {
@@ -83,7 +100,7 @@ func parseLooseAddress(part string) (Address, bool) {
 		}
 		return Address{Name: name, Addr: strings.TrimSpace(outside[open+1 : open+end])}, true
 	}
-	a := Address{Addr: strings.Join(strings.Fields(outside), "")}
+	a := Address{Addr: withoutSpace(outside)}
 	if len(comments) > 0 {
 		a.Name = comments[0]
 	}
@@ -160,4 +177,14 @@ func unquote(name string) string {
 		out.WriteByte(name[i])
 	}
 	return out.String()
+}
+
+// withoutSpace returns s without its white space.
+func withoutSpace(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, s)
 }

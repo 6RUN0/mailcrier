@@ -260,11 +260,12 @@ func allocatedBytes(t *testing.T, input string) uint64 {
 	return after.TotalAlloc - before.TotalAlloc
 }
 
-// TestReadIsLinear pins that the work of Read grows linearly with inputs
-// that stress each part of the reader: a folded header, many fields, a
-// long address list and many body lines, the header blocks of the larger
-// inputs over 1 MiB. Four times the input may cost
-// about four times the allocations; a quadratic step would cost sixteen.
+// TestReadIsLinear pins that the allocations of Read grow linearly with
+// inputs that stress each part of the reader: a folded header, many
+// fields, long address lists, many Bcc lines and many body lines; the
+// header blocks of the larger inputs exceed 1 MiB. Four times the input
+// may cost about four times the allocations, a quadratic step would cost
+// sixteen, so the test allows eight.
 func TestReadIsLinear(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -300,9 +301,9 @@ func TestReadLargeHeaderKeepsBcc(t *testing.T) {
 		input   string
 		wantBcc []Address
 	}{
-		{"bcc-field-after-limit", "Subject: s\n" + filler + "Bcc: secret@example.org\n\nbody\n", []Address{{Addr: "secret@example.org"}}},
-		{"bcc-continuation-over-limit", "Subject: s\nBcc: first@example.org,\n" + strings.Repeat(" x@example.org,\n", 70000) + " secret@example.org\n\nbody\n", nil},
-		{"bcc-filler-cont", "Subject: s\nBcc: first@example.org\n " + strings.Repeat("x", 1<<20) + "\n secret@example.org\n\nbody\n", nil},
+		{"bcc-field-after-large-field", "Subject: s\n" + filler + "Bcc: secret@example.org\n\nbody\n", []Address{{Addr: "secret@example.org"}}},
+		{"bcc-continuation-after-many-lines", "Subject: s\nBcc: first@example.org,\n" + strings.Repeat(" x@example.org,\n", 70000) + " secret@example.org\n\nbody\n", nil},
+		{"bcc-continuation-after-large-line", "Subject: s\nBcc: first@example.org\n " + strings.Repeat("x", 1<<20) + "\n secret@example.org\n\nbody\n", nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -347,5 +348,23 @@ func TestReadDropsControlAddresses(t *testing.T) {
 	}
 	if !slices.Equal(warnings, []string{WarningControlAddress}) {
 		t.Errorf("warnings = %q", warnings)
+	}
+}
+
+// TestParseAddressListLong pins that a list too long for net/mail yields
+// every mailbox, names and addresses without domain included.
+func TestParseAddressListLong(t *testing.T) {
+	const count = 20000
+	value := strings.Repeat("Ops Team <ops@example.org>, root (Cron Daemon), ", count)
+	if len(value) <= maxStrictListLength {
+		t.Fatalf("value of %d bytes does not exceed maxStrictListLength", len(value))
+	}
+	got := ParseAddressList(value)
+	if len(got) != 2*count {
+		t.Fatalf("got %d addresses, want %d", len(got), 2*count)
+	}
+	want := []Address{{Name: "Ops Team", Addr: "ops@example.org"}, {Name: "Cron Daemon", Addr: "root"}}
+	if !reflect.DeepEqual(got[len(got)-2:], want) {
+		t.Errorf("last addresses = %+v, want %+v", got[len(got)-2:], want)
 	}
 }
