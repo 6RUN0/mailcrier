@@ -1,6 +1,26 @@
-# binaries
-slendmail
+/*
+.*
 
-# editor files
-**.code-workspace
-Logs/
+!/.github/
+!/.gitignore
+!/.golangci.yml
+!/.goreleaser.yaml
+!/.gremlins.yaml
+!/.yamllint.yaml
+!/.zizmor.yml
+!/*_test.go
+!/CLAUDE.md
+!/LICENSE
+!/Makefile
+!/README.md
+!/cliff.toml
+!/cmd/
+!/docs/
+!/go.mod
+!/go.sum
+!/internal/
+!/main.go
+!/packaging/
+!/scripts/
+!/testdata/
+!/tools/
