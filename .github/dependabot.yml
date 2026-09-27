@@ -5,8 +5,67 @@ updates:
     directory: "/"
     schedule:
       interval: daily
-  - package-ecosystem: "github-actions"
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: build
+      include: scope
+    groups:
+      go-minor-patch:
+        update-types:
+          - minor
+          - patch
+  - package-ecosystem: gomod
+    directories:
+      - "/tools"
+      - "/tools/actionlint"
+      - "/tools/goreleaser"
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: build
+      include: scope
+    allow:
+      - dependency-name: "github.com/golangci/golangci-lint/v2"
+        dependency-type: all
+      - dependency-name: "golang.org/x/vuln"
+        dependency-type: all
+      - dependency-name: "github.com/rhysd/actionlint"
+        dependency-type: all
+      - dependency-name: "github.com/goreleaser/goreleaser/v2"
+        dependency-type: all
+    groups:
+      go-tools-minor-patch:
+        update-types:
+          - minor
+          - patch
+  - package-ecosystem: pip
+    directory: "/tools"
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: build
+      include: scope
+    groups:
+      python-tools-minor-patch:
+        update-types:
+          - minor
+          - patch
+  - package-ecosystem: github-actions
     directory: "/"
     schedule:
-      # Check for updates to GitHub Actions every weekday
-      interval: "daily"
+      interval: daily
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      actions-minor-patch:
+        update-types:
+          - minor
+          - patch
