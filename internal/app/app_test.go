@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"testing/fstest"
 	"testing/iotest"
+	"time"
 )
 
 // invocation is one Run call against an in-memory configuration with the
@@ -174,5 +176,53 @@ func TestRunReportsUnreadableInput(t *testing.T) {
 	inv := &invocation{config: httpTargetConfig("http://127.0.0.1:1"), stdin: iotest.ErrReader(errors.New("input/output error"))}
 	if code := inv.run(t); code != 66 {
 		t.Fatalf("Run() = %d, want 66", code)
+	}
+}
+
+// hangingServer accepts connections and never answers until the test ends.
+func hangingServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { <-release }))
+	t.Cleanup(func() {
+		close(release)
+		server.Close()
+	})
+	return server
+}
+
+// TestRunTimeLimits pins that a receiver which never answers cannot hold
+// the process: the request timeout ends one request, the call deadline ends
+// the whole delivery. Each limit is set far below the other, so the elapsed
+// time shows which one fired.
+func TestRunTimeLimits(t *testing.T) {
+	cases := []struct {
+		name    string
+		general string
+		targets int
+	}{
+		{"T-ADJ-51/request-timeout", "http_timeout = \"50ms\"\ndeadline = \"1h\"\n", 1},
+		{"T-ADJ-51/call-deadline", "http_timeout = \"1h\"\ndeadline = \"50ms\"\n", 2},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := hangingServer(t)
+			config := "[general]\n" + tc.general
+			for i := range tc.targets {
+				config += fmt.Sprintf("\n[target.hook%d]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"%s\"\n", i, server.URL)
+			}
+			inv := &invocation{config: config, stdin: strings.NewReader("Subject: t\n\nb\n")}
+			start := time.Now()
+			code := inv.run(t)
+			if elapsed := time.Since(start); elapsed > 10*time.Second {
+				t.Errorf("Run() took %v, want the 50ms limit to end it", elapsed)
+			}
+			if code != 69 {
+				t.Errorf("Run() = %d, want 69", code)
+			}
+			if log := inv.log("slendmail"); strings.Count(log, "target failed") != tc.targets {
+				t.Errorf("log does not record %d failed targets:\n%s", tc.targets, log)
+			}
+		})
 	}
 }

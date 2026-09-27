@@ -34,7 +34,8 @@ type Deps struct {
 	// named in it are read from ConfigFS too.
 	ConfigFS   fs.FS
 	ConfigPath string
-	// HTTP performs the requests of HTTP-based targets.
+	// HTTP performs the requests of HTTP-based targets. Run uses a copy
+	// with the configured request timeout.
 	HTTP *http.Client
 	// Hostname is the name of the machine, sent along with each message.
 	Hostname string
@@ -57,11 +58,15 @@ func Run(ctx context.Context, d Deps, _ []string, stdin io.Reader) int {
 	if cfg.General.SyslogTag != config.DefaultSyslogTag {
 		log = d.NewLogger(cfg.General.SyslogTag)
 	}
-	targets, err := buildTargets(cfg, d)
+	client := *d.HTTP
+	client.Timeout = cfg.General.HTTPTimeout.Duration
+	targets, err := buildTargets(cfg, d.Hostname, &client)
 	if err != nil {
 		log.Error("configuration rejected, message not delivered", "err", err)
 		return exitConfig
 	}
+	ctx, cancel := context.WithTimeout(ctx, cfg.General.Deadline.Duration)
+	defer cancel()
 	payload := backend.Payload{Title: msg.Subject, Text: msg.Body}
 	results := delivery.Deliver(ctx, targets, payload)
 	for _, r := range results {
@@ -75,14 +80,15 @@ func Run(ctx context.Context, d Deps, _ []string, stdin io.Reader) int {
 }
 
 // buildTargets maps configured targets to senders, in name order so that
-// logs and delivery order do not depend on map iteration.
-func buildTargets(cfg *config.Config, d Deps) ([]delivery.Target, error) {
+// logs and delivery order do not depend on map iteration. All targets share
+// client, which carries the request timeout.
+func buildTargets(cfg *config.Config, hostname string, client *http.Client) ([]delivery.Target, error) {
 	var targets []delivery.Target
 	for _, name := range cfg.TargetNames() {
 		target := cfg.Targets[name]
 		switch {
 		case target.Type == config.TypeHTTP && target.Preset == config.PresetGenericJSON:
-			sender := webhook.New(webhook.Options{URL: target.URL, Hostname: d.Hostname, Client: d.HTTP})
+			sender := webhook.New(webhook.Options{URL: target.URL, Hostname: hostname, Client: client})
 			targets = append(targets, delivery.Target{ID: name, Sender: sender})
 		case target.Type == config.TypeHTTP:
 			return nil, fmt.Errorf("target %q: preset %q is not implemented", name, target.Preset)

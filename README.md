@@ -46,6 +46,8 @@ and the exit status is 78.
 ```toml
 [general]
 syslog_tag = "slendmail"        # optional, default "slendmail"
+http_timeout = "15s"            # optional, one HTTP request
+deadline = "30s"                # optional, delivery to all targets
 
 [target.hook]                   # the table key is the target name: [a-z0-9-]
 type = "http"
@@ -62,9 +64,10 @@ preset = "generic-json"
   recognized by the parser but rejected with exit status 78 until implemented.
 - Exit status: 0 when at least one target accepted the message, 69 when none
   did, 66 when stdin cannot be read.
-- Not ready to replace `/usr/sbin/sendmail`: HTTP requests have no timeout,
-  so a receiver that accepts the connection and never answers hangs the
-  process and the cron job that called it.
+- `http_timeout` bounds one HTTP request from dialing to the end of the
+  response; `deadline` bounds the delivery to all targets together. Both
+  take Go duration strings (`"500ms"`, `"15s"`, `"1m"`) and must be
+  positive. A target that runs out of either counts as a temporary failure.
 
 The sections below describe the legacy `main.go` in the repository root.
 

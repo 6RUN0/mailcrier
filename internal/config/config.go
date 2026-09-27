@@ -16,12 +16,22 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/pelletier/go-toml/v2"
 )
 
 // DefaultSyslogTag is the syslog tag used when [general] does not set one.
 const DefaultSyslogTag = "slendmail"
+
+// Defaults of the [general] time limits. A request timeout below the
+// deadline leaves room for a second target after the first one hangs. The
+// deadline covers the delivery to all targets, where a call can hang on the
+// network; reading stdin and the configuration are not under it.
+const (
+	DefaultHTTPTimeout = 15 * time.Second
+	DefaultDeadline    = 30 * time.Second
+)
 
 // Target types.
 const (
@@ -61,6 +71,27 @@ type Config struct {
 type General struct {
 	// SyslogTag is the tag of every syslog record.
 	SyslogTag string `toml:"syslog_tag"`
+	// HTTPTimeout bounds one HTTP request, from dialing to the end of the
+	// response body.
+	HTTPTimeout Duration `toml:"http_timeout"`
+	// Deadline bounds the delivery of the message to all targets.
+	Deadline Duration `toml:"deadline"`
+}
+
+// Duration is a time span written as a Go duration string, such as "15s".
+type Duration struct {
+	time.Duration
+}
+
+// UnmarshalText parses a duration string. The error does not quote the
+// value, as no configuration error does.
+func (d *Duration) UnmarshalText(text []byte) error {
+	parsed, err := time.ParseDuration(string(text))
+	if err != nil {
+		return errors.New("invalid duration, want a Go duration such as \"15s\"")
+	}
+	d.Duration = parsed
+	return nil
 }
 
 // Target is one [target.<name>] table. It is the union of the keys of all
@@ -164,6 +195,12 @@ func Load(fsys fs.FS, path string) (*Config, error) {
 	if cfg.General.SyslogTag == "" {
 		cfg.General.SyslogTag = DefaultSyslogTag
 	}
+	if !keys.has("general", "http_timeout") {
+		cfg.General.HTTPTimeout.Duration = DefaultHTTPTimeout
+	}
+	if !keys.has("general", "deadline") {
+		cfg.General.Deadline.Duration = DefaultDeadline
+	}
 	return &cfg, nil
 }
 
@@ -186,6 +223,15 @@ func decodeError(path string, err error) *Error {
 }
 
 func validate(cfg *Config, keys keyIndex) *Error {
+	for _, limit := range []struct {
+		key   string
+		value time.Duration
+	}{{"http_timeout", cfg.General.HTTPTimeout.Duration}, {"deadline", cfg.General.Deadline.Duration}} {
+		if keys.has("general", limit.key) && limit.value <= 0 {
+			pos := keys.position("general", limit.key)
+			return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("value of key %q must be positive", limit.key)}
+		}
+	}
 	if len(cfg.Targets) == 0 {
 		return &Error{Msg: "no targets configured"}
 	}

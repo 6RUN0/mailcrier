@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 )
 
 const configPath = "etc/slendmail.conf"
@@ -200,6 +201,16 @@ func TestLoadRejects(t *testing.T) {
 			want: `:3:1: target "tg": value of key "token" is empty`,
 		},
 		{
+			name: "bad-duration",
+			doc:  "[general]\nhttp_timeout = \"15\"\n",
+			want: `:2:16: toml: invalid duration, want a Go duration such as "15s"`,
+		},
+		{
+			name: "zero-deadline",
+			doc:  "[general]\ndeadline = \"0s\"\n\n[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\n",
+			want: `:2:1: value of key "deadline" must be positive`,
+		},
+		{
 			name: "no-targets",
 			doc:  "[general]\nsyslog_tag = \"x\"\n",
 			want: `: no targets configured`,
@@ -227,6 +238,7 @@ func TestLoadErrorOmitsValues(t *testing.T) {
 		"[target.tg]\ntype = \"telegram\"\ntoken = \"" + secret + "\"\ntoken_file = \"/x\"\n",
 		"[target.tg]\ntype = \"telegram\"\ntoken = \"" + secret + "\"\nbogus = 1\n",
 		"[target.tg]\ntype = \"telegram\"\ntoken = \"" + secret + "\"\nchat_id = \n",
+		"[general]\nhttp_timeout = \"" + secret + "\"\n",
 	}
 	for _, doc := range docs {
 		_, err := load(t, doc, nil)
@@ -297,4 +309,26 @@ func sectionAfter(doc, heading string) string {
 		return rest[:end]
 	}
 	return rest
+}
+
+func TestLoadTimeLimits(t *testing.T) {
+	t.Run("T-ADJ-51/defaults", func(t *testing.T) {
+		cfg, err := load(t, "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\n", nil)
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+		if cfg.General.HTTPTimeout.Duration != 15*time.Second || cfg.General.Deadline.Duration != 30*time.Second {
+			t.Errorf("http_timeout = %v, deadline = %v, want 15s and 30s", cfg.General.HTTPTimeout, cfg.General.Deadline)
+		}
+	})
+	t.Run("configured", func(t *testing.T) {
+		doc := "[general]\nhttp_timeout = \"2s\"\ndeadline = \"1m\"\n\n[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\n"
+		cfg, err := load(t, doc, nil)
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+		if cfg.General.HTTPTimeout.Duration != 2*time.Second || cfg.General.Deadline.Duration != time.Minute {
+			t.Errorf("http_timeout = %v, deadline = %v, want 2s and 1m", cfg.General.HTTPTimeout, cfg.General.Deadline)
+		}
+	})
 }
