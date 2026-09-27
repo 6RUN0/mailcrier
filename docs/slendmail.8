@@ -50,7 +50,11 @@ An unknown flag is logged and ignored.
 Recipients are the arguments, split at commas, and with
 .Fl t
 the addresses of the To, Cc and Bcc headers, without duplicates.
-Bcc headers are removed from the message.
+A message with a Resent-To, Resent-Cc or Resent-Bcc header, even an empty one,
+is a resent message: then
+.Fl t
+takes the addresses of these three headers instead.
+Bcc and Resent-Bcc headers are removed from the message.
 .Pa /etc/aliases
 and
 .Pa .forward
@@ -76,7 +80,8 @@ Without a value or with a line break the call exits 64.
 .It Fl F Ar name
 Full name of the sender; a line break exits 64.
 .It Fl t
-Take recipients from the To, Cc and Bcc headers as well.
+Take recipients from the To, Cc and Bcc headers as well, or only from the
+Resent-To, Resent-Cc and Resent-Bcc headers when the message has any of them.
 .It Fl i , Fl oi
 A line with a single dot is ordinary text.
 Without it such a line ends the message, and the first dot of a line

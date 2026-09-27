@@ -47,12 +47,12 @@ func fixtureData(t *testing.T, name string) Data {
 	if err != nil {
 		t.Fatal(err)
 	}
-	msg, bcc, _, err := message.Read(strings.NewReader(string(input)), message.ReadOptions{IgnoreDots: inv.IgnoreDots, MaxSize: message.MaxSize, ReceivedAt: testReceivedAt})
+	msg, blind, _, err := message.Read(strings.NewReader(string(input)), message.ReadOptions{IgnoreDots: inv.IgnoreDots, MaxSize: message.MaxSize, ReceivedAt: testReceivedAt})
 	if err != nil {
 		t.Fatal(err)
 	}
-	env := inv.Envelope(msg, bcc, func() string { return "alice@host1.example.org" })
-	d := NewData(msg, env, bcc)
+	env := inv.Envelope(msg, blind, func() string { return "alice@host1.example.org" })
+	d := NewData(msg, env, blind)
 	d.Hostname = "host1.example.org"
 	d.ReceivedAt = testReceivedAt
 	return d

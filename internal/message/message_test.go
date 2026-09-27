@@ -109,7 +109,7 @@ func TestReadAddresses(t *testing.T) {
 		"Bcc: audit@example.org,\n" +
 		" Archive <archive@example.org>\n" +
 		"Subject: s\n\nb\n"
-	msg, bcc, _, err := Read(strings.NewReader(input), ReadOptions{MaxSize: MaxSize})
+	msg, blind, _, err := Read(strings.NewReader(input), ReadOptions{MaxSize: MaxSize})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,8 +123,8 @@ func TestReadAddresses(t *testing.T) {
 		t.Errorf("Cc = %+v, want %+v", msg.Cc, want)
 	}
 	t.Run("T-MTA-15/bcc-removed-with-continuation", func(t *testing.T) {
-		if want := []Address{{Addr: "audit@example.org"}, {Name: "Archive", Addr: "archive@example.org"}}; !reflect.DeepEqual(bcc, want) {
-			t.Errorf("bcc = %+v, want %+v", bcc, want)
+		if want := []Address{{Addr: "audit@example.org"}, {Name: "Archive", Addr: "archive@example.org"}}; !reflect.DeepEqual(blind.Bcc, want) {
+			t.Errorf("Bcc = %+v, want %+v", blind.Bcc, want)
 		}
 		if _, ok := msg.Header["Bcc"]; ok {
 			t.Errorf("Header keeps Bcc: %v", msg.Header)
@@ -231,7 +231,7 @@ func TestReadReportsInputError(t *testing.T) {
 // input size counted.
 func FuzzRead(f *testing.F) {
 	for _, seed := range []string{
-		"Subject: s\n\nb\n", "From x\nTo: a\n.\n", "Bcc: a,\n b\n\n", " x\n", "\r\n\r\n", "a:b\n\n..x\n.\r\n",
+		"Subject: s\n\nb\n", "From x\nTo: a\n.\n", "Bcc: a,\n b\n\n", "resent-bcc: a\n\n", " x\n", "\r\n\r\n", "a:b\n\n..x\n.\r\n",
 		"Subject: =?utf-8?q?a=C3?= =?x?B?!!?=\n\n\xff\n",
 		"Content-Type: multipart/mixed; boundary=b\n\n--b\nContent-Type: text/html\n\n<a href=x>y</a>\n--b\nContent-Transfer-Encoding: base64\n\nQQ==\n--b--\n",
 		"Content-Type: text/plain; charset=koi8-r\nContent-Transfer-Encoding: quoted-printable\n\n=F0=\n=ZZ\n",
@@ -247,8 +247,8 @@ func FuzzRead(f *testing.F) {
 		if strings.Contains(msg.Body, "\r\n") {
 			t.Errorf("Body keeps CRLF: %q", msg.Body)
 		}
-		if _, ok := msg.Header["Bcc"]; ok {
-			t.Errorf("Header keeps Bcc")
+		if msg.Header.Has("Bcc") || msg.Header.Has("Resent-Bcc") {
+			t.Errorf("Header keeps Bcc or Resent-Bcc")
 		}
 		if msg.Size != int64(len(input)) {
 			t.Errorf("Size = %d, want %d", msg.Size, len(input))
@@ -403,10 +403,11 @@ func TestReadLargeHeaderKeepsBcc(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			msg, bcc, warnings, err := Read(strings.NewReader(tc.input), ReadOptions{MaxSize: MaxSize})
+			msg, blind, warnings, err := Read(strings.NewReader(tc.input), ReadOptions{MaxSize: MaxSize})
 			if err != nil {
 				t.Fatal(err)
 			}
+			bcc := blind.Bcc
 			if msg.Body != "body\n" || msg.Subject != "s" {
 				t.Errorf("Subject %q, body starts %q", msg.Subject, msg.Body[:min(len(msg.Body), 40)])
 			}
@@ -430,15 +431,73 @@ func TestReadLargeHeaderKeepsBcc(t *testing.T) {
 	}
 }
 
+// TestReadResent pins that the Resent-To, Resent-Cc and Resent-Bcc
+// addresses are kept apart from To, Cc and Bcc, that any of these headers,
+// even one without addresses, marks the message as resent, that the first
+// Resent-From wins, and that Resent-Bcc is removed from the header fields.
+func TestReadResent(t *testing.T) {
+	t.Run("T-MTA-14/resent-addresses-apart", func(t *testing.T) {
+		input := "Resent-From: Fwd <fwd@example.org>\nResent-From: old@example.org\nResent-To: r1@example.org\nResent-Cc: rc@example.org\nResent-To: r2@example.org\n" +
+			"Resent-Bcc: Secret <secret@example.org>\nFrom: a@example.org\nTo: t@example.org\nBcc: b@example.org\n\nbody\n"
+		msg, blind, _, err := Read(strings.NewReader(input), ReadOptions{MaxSize: MaxSize})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !msg.IsResent {
+			t.Error("IsResent = false")
+		}
+		if want := (Address{Name: "Fwd", Addr: "fwd@example.org"}); msg.ResentFrom != want {
+			t.Errorf("ResentFrom = %+v, want %+v", msg.ResentFrom, want)
+		}
+		if want := []Address{{Addr: "r1@example.org"}, {Addr: "r2@example.org"}}; !reflect.DeepEqual(msg.ResentTo, want) {
+			t.Errorf("ResentTo = %+v, want %+v", msg.ResentTo, want)
+		}
+		if want := []Address{{Addr: "rc@example.org"}}; !reflect.DeepEqual(msg.ResentCc, want) {
+			t.Errorf("ResentCc = %+v, want %+v", msg.ResentCc, want)
+		}
+		want := BlindCopies{Bcc: []Address{{Addr: "b@example.org"}}, ResentBcc: []Address{{Name: "Secret", Addr: "secret@example.org"}}}
+		if !reflect.DeepEqual(blind, want) {
+			t.Errorf("blind = %+v, want %+v", blind, want)
+		}
+		if want := []Address{{Addr: "t@example.org"}}; !reflect.DeepEqual(msg.To, want) || msg.From.Addr != "a@example.org" {
+			t.Errorf("To = %+v, From = %+v", msg.To, msg.From)
+		}
+		if got := msg.Header.Names(); slices.Contains(got, "Resent-Bcc") || slices.Contains(got, "Bcc") {
+			t.Errorf("Names = %q", got)
+		}
+	})
+	for _, header := range []string{"Resent-To", "Resent-Cc", "Resent-Bcc"} {
+		t.Run("T-MTA-14/empty-"+strings.ToLower(header)+"-marks-resent", func(t *testing.T) {
+			msg, _, _, err := Read(strings.NewReader("To: a@example.org\n"+header+":\n\nbody\n"), ReadOptions{MaxSize: MaxSize})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !msg.IsResent {
+				t.Error("IsResent = false")
+			}
+		})
+	}
+	t.Run("resent-from-alone-is-not-resent", func(t *testing.T) {
+		msg, _, _, err := Read(strings.NewReader("Resent-From: fwd@example.org\nTo: a@example.org\n\nbody\n"), ReadOptions{MaxSize: MaxSize})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if msg.IsResent || msg.ResentFrom.Addr != "fwd@example.org" {
+			t.Errorf("IsResent = %v, ResentFrom = %+v", msg.IsResent, msg.ResentFrom)
+		}
+	})
+}
+
 // TestReadDropsControlAddresses pins that an address carrying a control
 // character, such as a bare CR that would split a header later, is
 // dropped with a warning; the other addresses stay.
 func TestReadDropsControlAddresses(t *testing.T) {
 	input := "From: <evil\rX-Injected: 1>\nTo: <a\rb@example.org>, ok@example.org\nCc: \"Na\x01me\" <c@example.org>\nBcc: d\x7f@example.org, e@example.org\n\nbody\n"
-	msg, bcc, warnings, err := Read(strings.NewReader(input), ReadOptions{MaxSize: MaxSize})
+	msg, blind, warnings, err := Read(strings.NewReader(input), ReadOptions{MaxSize: MaxSize})
 	if err != nil {
 		t.Fatal(err)
 	}
+	bcc := blind.Bcc
 	if msg.From != (Address{}) || !reflect.DeepEqual(msg.To, []Address{{Addr: "ok@example.org"}}) || len(msg.Cc) != 0 || !reflect.DeepEqual(bcc, []Address{{Addr: "e@example.org"}}) {
 		t.Errorf("From %+v, To %+v, Cc %+v, bcc %+v", msg.From, msg.To, msg.Cc, bcc)
 	}

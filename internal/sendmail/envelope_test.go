@@ -16,11 +16,11 @@ func envelopeOf(t *testing.T, args []string, input string) (message.Envelope, *m
 	if err != nil {
 		t.Fatal(err)
 	}
-	msg, bcc, _, err := message.Read(strings.NewReader(input), message.ReadOptions{IgnoreDots: inv.IgnoreDots})
+	msg, blind, _, err := message.Read(strings.NewReader(input), message.ReadOptions{IgnoreDots: inv.IgnoreDots})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return inv.Envelope(msg, bcc, func() string { return "fallback@host1.example.org" }), msg
+	return inv.Envelope(msg, blind, func() string { return "fallback@host1.example.org" }), msg
 }
 
 func TestEnvelope(t *testing.T) {
@@ -79,6 +79,36 @@ func TestEnvelope(t *testing.T) {
 		input: "To: root\n\nx\n",
 		want:  message.Envelope{Sender: "root", SenderName: "CronDaemon", Recipients: []string{"root"}},
 	}.check)
+	t.Run("T-MTA-14/resent-headers-replace-recipient-headers", envelopeCase{
+		args:  []string{"-t"},
+		input: "Resent-To: r@example.org\nResent-Cc: rc@example.org\nResent-Bcc: rb@example.org\nTo: a@example.org\nCc: c@example.org\nBcc: b@example.org\n\nx\n",
+		want:  message.Envelope{Sender: "fallback@host1.example.org", Recipients: []string{"r@example.org", "rc@example.org", "rb@example.org"}},
+	}.check)
+	t.Run("T-MTA-14/resent-bcc-alone-replaces-to", envelopeCase{
+		args:  []string{"-t"},
+		input: "To: a@example.org\nResent-Bcc: rb@example.org\n\nx\n",
+		want:  message.Envelope{Sender: "fallback@host1.example.org", Recipients: []string{"rb@example.org"}},
+	}.check)
+	t.Run("T-MTA-14/empty-resent-to-leaves-argv-only", envelopeCase{
+		args:  []string{"-t", "root"},
+		input: "To: a@example.org\nResent-To:\n\nx\n",
+		want:  message.Envelope{Sender: "fallback@host1.example.org", Recipients: []string{"root"}},
+	}.check)
+	t.Run("T-MTA-14/resent-ignored-without-t", envelopeCase{
+		args:  []string{"root"},
+		input: "Resent-To: r@example.org\nResent-Bcc: rb@example.org\n\nx\n",
+		want:  message.Envelope{Sender: "fallback@host1.example.org", Recipients: []string{"root"}},
+	}.check)
+	t.Run("T-ADJ-09/resent-from-and-resent-to", envelopeCase{
+		args:  []string{"-t"},
+		input: "From: original@example.com\r\nResent-From: forwarder@example.com\r\nResent-To: forwarded@example.com\r\nTo: first@example.com\r\nSubject: Fwd\r\n\r\nBody\n",
+		want:  message.Envelope{Sender: "forwarder@example.com", Recipients: []string{"forwarded@example.com"}},
+	}.check)
+	t.Run("f-overrides-resent-from", envelopeCase{
+		args:  []string{"-f", "sender@example.org", "root"},
+		input: "From: original@example.com\nResent-From: forwarder@example.com\n\nBody\n",
+		want:  message.Envelope{Sender: "sender@example.org", Recipients: []string{"root"}},
+	}.check)
 	t.Run("T-MTA-19/t-without-recipient-headers", envelopeCase{
 		args:  []string{"-t"},
 		input: "Subject: x\n\nx\n",
@@ -98,8 +128,8 @@ func (tc envelopeCase) check(t *testing.T) {
 	if !reflect.DeepEqual(got, tc.want) {
 		t.Errorf("Envelope() = %+v, want %+v", got, tc.want)
 	}
-	if _, ok := msg.Header["Bcc"]; ok {
-		t.Errorf("message keeps the Bcc header: %v", msg.Header)
+	if msg.Header.Has("Bcc") || msg.Header.Has("Resent-Bcc") {
+		t.Errorf("message keeps the Bcc or Resent-Bcc header: %v", msg.Header)
 	}
 }
 

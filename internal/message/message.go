@@ -63,10 +63,10 @@ type Attachment struct {
 	Data []byte
 }
 
-// Message is one mail read from standard input. It holds no Bcc: those
-// addresses route the message and never reach its text.
+// Message is one mail read from standard input. It holds no Bcc or
+// Resent-Bcc: those addresses route the message and never reach its text.
 type Message struct {
-	// Header holds the header fields, Bcc removed.
+	// Header holds the header fields, Bcc and Resent-Bcc removed.
 	Header Header
 	// Subject is the decoded Subject header with white space collapsed;
 	// empty when absent.
@@ -77,6 +77,16 @@ type Message struct {
 	From Address
 	// To and Cc are the addresses of all To and Cc headers.
 	To, Cc []Address
+	// ResentFrom is the first address of the first Resent-From header,
+	// the one of the latest resending.
+	ResentFrom Address
+	// ResentTo and ResentCc are the addresses of all Resent-To and
+	// Resent-Cc headers.
+	ResentTo, ResentCc []Address
+	// IsResent reports a Resent-To, Resent-Cc or Resent-Bcc header, even
+	// one without addresses: with -t such headers alone name the
+	// recipients.
+	IsResent bool
 	// Date is the Date header, or ReadOptions.ReceivedAt when the header
 	// is missing or unreadable.
 	Date time.Time
@@ -92,6 +102,12 @@ type Message struct {
 	// Size is the number of bytes read from the input, including any part
 	// over the limit.
 	Size int64
+}
+
+// BlindCopies are the addresses of the Bcc and Resent-Bcc headers: they
+// route a message and never reach its text.
+type BlindCopies struct {
+	Bcc, ResentBcc []Address
 }
 
 // Envelope is where a message goes, as opposed to what its headers say.
@@ -120,7 +136,8 @@ type ReadOptions struct {
 }
 
 // Read consumes r to the end and splits the mail into headers and body.
-// It returns the message, the addresses of its Bcc headers, and warnings.
+// It returns the message, the addresses of its Bcc and Resent-Bcc
+// headers, and warnings.
 //
 // Nothing short of a read error rejects the input: CRLF becomes LF, a
 // leading mbox "From " line is dropped, input without a header block is
@@ -132,7 +149,7 @@ type ReadOptions struct {
 // The input is held once: line ends and dots are rewritten in place, the
 // header block is scanned without splitting it into lines, and the body is
 // one slice of the input.
-func Read(r io.Reader, opt ReadOptions) (*Message, []Address, []string, error) {
+func Read(r io.Reader, opt ReadOptions) (*Message, BlindCopies, []string, error) {
 	var warnings []string
 	limited := r
 	if opt.MaxSize > 0 {
@@ -140,11 +157,11 @@ func Read(r io.Reader, opt ReadOptions) (*Message, []Address, []string, error) {
 	}
 	raw, err := io.ReadAll(limited)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("read message: %w", err)
+		return nil, BlindCopies{}, nil, fmt.Errorf("read message: %w", err)
 	}
 	discarded, err := io.Copy(io.Discard, r)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("read message: %w", err)
+		return nil, BlindCopies{}, nil, fmt.Errorf("read message: %w", err)
 	}
 	if discarded > 0 {
 		warnings = append(warnings, WarningTruncated)
@@ -158,7 +175,8 @@ func Read(r io.Reader, opt ReadOptions) (*Message, []Address, []string, error) {
 	if isMalformed {
 		warnings = append(warnings, WarningMalformedHeader)
 	}
-	var from, bcc []Address
+	var from, resentFrom []Address
+	var blind BlindCopies
 	top := entity{body: raw[bodyStart:]}
 	for name, value := range fields(string(raw[:headerEnd])) {
 		key := textproto.CanonicalMIMEHeaderKey(name)
@@ -170,7 +188,11 @@ func Read(r io.Reader, opt ReadOptions) (*Message, []Address, []string, error) {
 		case "Content-Disposition":
 			top.disposition = firstValue(top.disposition, value)
 		case "Bcc":
-			bcc = append(bcc, ParseAddressList(value)...)
+			blind.Bcc = append(blind.Bcc, ParseAddressList(value)...)
+			continue
+		case "Resent-Bcc":
+			blind.ResentBcc = append(blind.ResentBcc, ParseAddressList(value)...)
+			msg.IsResent = true
 			continue
 		case "From":
 			if _, ok := msg.Header[key]; !ok {
@@ -180,6 +202,16 @@ func Read(r io.Reader, opt ReadOptions) (*Message, []Address, []string, error) {
 			msg.To = append(msg.To, ParseAddressList(value)...)
 		case "Cc":
 			msg.Cc = append(msg.Cc, ParseAddressList(value)...)
+		case "Resent-From":
+			if _, ok := msg.Header[key]; !ok {
+				resentFrom = ParseAddressList(value)
+			}
+		case "Resent-To":
+			msg.ResentTo = append(msg.ResentTo, ParseAddressList(value)...)
+			msg.IsResent = true
+		case "Resent-Cc":
+			msg.ResentCc = append(msg.ResentCc, ParseAddressList(value)...)
+			msg.IsResent = true
 		}
 		msg.Header[key] = append(msg.Header[key], decodeHeader(value))
 	}
@@ -193,7 +225,7 @@ func Read(r io.Reader, opt ReadOptions) (*Message, []Address, []string, error) {
 		msg.Date = date
 	}
 	isDropped := false
-	for _, list := range []*[]Address{&from, &msg.To, &msg.Cc, &bcc} {
+	for _, list := range []*[]Address{&from, &msg.To, &msg.Cc, &blind.Bcc, &resentFrom, &msg.ResentTo, &msg.ResentCc, &blind.ResentBcc} {
 		if dropControlAddresses(list) {
 			isDropped = true
 		}
@@ -204,7 +236,10 @@ func Read(r io.Reader, opt ReadOptions) (*Message, []Address, []string, error) {
 	if len(from) > 0 {
 		msg.From = from[0]
 	}
-	return msg, bcc, warnings, nil
+	if len(resentFrom) > 0 {
+		msg.ResentFrom = resentFrom[0]
+	}
+	return msg, blind, warnings, nil
 }
 
 // firstValue returns current, or value when current is empty: the first

@@ -76,19 +76,21 @@ it.
   `--` only, usage errors exit 64 before stdin is read.
   `Invocation.Envelope` builds sender and recipients. The flag table is
   repeated in README and `docs/slendmail.8`; change all three together.
-- `internal/message.Read` returns the message without Bcc, the Bcc
-  addresses separately (routing only, never rendered), and constant
-  warning texts that `app` logs as they are. MIME, encoded words and
-  charsets are decoded there (stdlib plus `x/text`, own multipart splitter
-  over slices of the input, `x/net/html` tokenizer for HTML to text); the
-  input is held once, so a new step must not copy it per line or per part.
+- `internal/message.Read` returns the message without Bcc and Resent-Bcc,
+  their addresses separately as `BlindCopies` (routing only, never
+  rendered), and constant warning texts that `app` logs as they are.
+  MIME, encoded words and charsets are decoded there (stdlib plus
+  `x/text`, own multipart splitter over slices of the input, `x/net/html`
+  tokenizer for HTML to text); the input is held once, so a new step must
+  not copy it per line or per part.
 - `internal/text` (leaf): escapers per target markup, `MeasureTelegramHTML`,
   truncation. `internal/render`: `Data` (built by `NewData`, which drops
-  Bcc-only recipients), built-in templates in `defaults/<format>.tmpl` keyed
-  by `text.Format`, `Fit` (a long subject cut to a quarter of the limit,
-  then binary searches over the attachment list, the raw body and the
-  subject, measured after escaping). Golden output of every template for
-  every caller fixture is in `internal/render/testdata/golden`.
+  Bcc-only and Resent-Bcc-only recipients), built-in templates in
+  `defaults/<format>.tmpl` keyed by `text.Format`, `Fit` (a long subject
+  cut to a quarter of the limit, then binary searches over the attachment
+  list, the raw body and the subject, measured after escaping). Golden
+  output of every template for every caller fixture is in
+  `internal/render/testdata/golden`.
 - `internal/config.Load` parses strictly: an unknown key, a key of another
   target type, a bad name or value gives `*config.Error` with
   `path:line:col` and exit 78. URLs must be absolute http(s) (for

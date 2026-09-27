@@ -66,7 +66,8 @@ type Invocation struct {
 	HasSender bool
 	// FullName is the sender's full name from -F.
 	FullName string
-	// ExtractRecipients is -t: the To, Cc and Bcc headers add recipients.
+	// ExtractRecipients is -t: the To, Cc and Bcc headers add recipients,
+	// or the Resent-To, Resent-Cc and Resent-Bcc headers when present.
 	ExtractRecipients bool
 	// IgnoreDots is -i or -oi: a line with a single dot is ordinary text.
 	IgnoreDots bool

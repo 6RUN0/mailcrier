@@ -159,7 +159,7 @@ option: `-f --probe` names a sender.
 |---|---|---|
 | `-f`, `-r` | required | envelope sender; `''` or `<>` is the null sender |
 | `-F` | required | sender's full name |
-| `-t` | none | the `To`, `Cc` and `Bcc` headers add recipients |
+| `-t` | none | the `To`, `Cc` and `Bcc` headers add recipients, or only the `Resent-To`, `Resent-Cc` and `Resent-Bcc` headers when there are any |
 | `-i`, `-oi` | none | a line with a single dot is ordinary text |
 | `-o` | required | `-oi` as above, any other `-o` option ignored |
 | `-b` | required | by the first letter: `m` delivers (the default), `i` does nothing, `p` lists the queue, `s` is refused with 64, other letters are ignored with a warning |
@@ -187,18 +187,23 @@ option: `-f --probe` names a sender.
 - Recipients are the arguments, split at commas
   (`a@example.org, b@example.org` in one argument, or `a@example.org,` and
   `b@example.org` as Debian cron passes them), and with `-t` the addresses
-  of the `To`, `Cc` and `Bcc` headers; duplicates are dropped. `Bcc`
-  headers are removed from the message and never reach a notification. A
-  message without any recipient is delivered to every target.
+  of the `To`, `Cc` and `Bcc` headers; duplicates are dropped. A message
+  with a `Resent-To`, `Resent-Cc` or `Resent-Bcc` header, even an empty
+  one, is a resent message: `-t` takes the addresses of these three
+  headers instead of `To`, `Cc` and `Bcc`, as Postfix does. `Bcc` and
+  `Resent-Bcc` headers are removed from the message and never reach a
+  notification. A message without any recipient is delivered to every
+  target.
 - The sender is the value of `-f` or `-r` without surrounding angle
-  brackets, else the `From` address, else `EMAIL`, else `USER` or `LOGNAME`
-  at the host name, else the login name of the caller's uid at the host
-  name. A setgid-elevated process skips the environment and uses the login
-  name of the uid. When the uid has no entry in the user database, as in a
-  container started with a numeric user, the sender is empty.
+  brackets, else the first `Resent-From` address, else the `From` address,
+  else `EMAIL`, else `USER` or `LOGNAME` at the host name, else the login
+  name of the caller's uid at the host name. A setgid-elevated process
+  skips the environment and uses the login name of the uid. When the uid
+  has no entry in the user database, as in a container started with a
+  numeric user, the sender is empty.
 - A line break in `-f`, `-r`, `-F` or a recipient argument exits 64. An
-  address of a `From`, `To`, `Cc` or `Bcc` header that holds a control
-  character is dropped with a warning.
+  address of a `From`, `To`, `Cc` or `Bcc` header or of their `Resent-`
+  counterparts that holds a control character is dropped with a warning.
 - The message: CRLF line ends become LF; a leading mbox envelope line
   (`From` and a space) is dropped; without `-i` a line with a single dot
   ends the message and the first dot of a line starting with two dots is

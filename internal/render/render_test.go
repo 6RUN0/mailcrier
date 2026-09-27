@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/6RUN0/slendmail/internal/message"
+	"github.com/6RUN0/slendmail/internal/sendmail"
 	"github.com/6RUN0/slendmail/internal/text"
 )
 
@@ -17,19 +18,17 @@ import (
 // returns the template data.
 func readData(t *testing.T, input string, argvRecipients ...string) Data {
 	t.Helper()
-	msg, bcc, _, err := message.Read(strings.NewReader(input), message.ReadOptions{IgnoreDots: true, MaxSize: message.MaxSize, ReceivedAt: testReceivedAt})
+	inv, _, err := sendmail.Parse("sendmail", append([]string{"-t", "-i"}, argvRecipients...))
 	if err != nil {
 		t.Fatal(err)
 	}
-	env := message.Envelope{Sender: "root@host1.example.org", Recipients: argvRecipients}
-	for _, list := range [][]message.Address{msg.To, msg.Cc, bcc} {
-		for _, a := range list {
-			if !slices.Contains(env.Recipients, a.Addr) {
-				env.Recipients = append(env.Recipients, a.Addr)
-			}
-		}
+	msg, blind, _, err := message.Read(strings.NewReader(input), message.ReadOptions{IgnoreDots: true, MaxSize: message.MaxSize, ReceivedAt: testReceivedAt})
+	if err != nil {
+		t.Fatal(err)
 	}
-	d := NewData(msg, env, bcc)
+	env := inv.Envelope(msg, blind, func() string { return "root@host1.example.org" })
+	env.Sender = "root@host1.example.org"
+	d := NewData(msg, env, blind)
 	d.Hostname = "host1.example.org"
 	return d
 }
@@ -74,6 +73,27 @@ func TestNewDataHidesBcc(t *testing.T) {
 		dump += out
 		if strings.Contains(dump, "hidden") || strings.Contains(dump, "Hidden") || strings.Contains(dump, "Bcc") {
 			t.Errorf("template data shows the Bcc header:\n%s", dump)
+		}
+	})
+	t.Run("resent-bcc-not-in-template-data", func(t *testing.T) {
+		d := readData(t, "From: cron@example.org\nTo: ops@example.org\nResent-To: fwd@example.org\nResent-Bcc: Secret Person <secret@example.org>\nSubject: s\n\nbody\n")
+		if want := []string{"fwd@example.org"}; !slices.Equal(d.Recipients, want) {
+			t.Errorf("Recipients = %q, want %q", d.Recipients, want)
+		}
+		custom, err := parse("custom", `{{ range .Headers.Names }}{{ . }}{{ end }}{{ .Headers.Get "Resent-Bcc" }}`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := custom.Execute(d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dump := fmt.Sprintf("%+v", d) + out
+		for _, rendered := range renderAll(t, d) {
+			dump += rendered
+		}
+		if strings.Contains(dump, "ecret") || strings.Contains(dump, "Bcc") {
+			t.Errorf("template data shows the Resent-Bcc header:\n%s", dump)
 		}
 	})
 }

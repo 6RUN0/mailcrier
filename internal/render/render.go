@@ -66,7 +66,7 @@ type Data struct {
 	// To and Cc are the addresses of the headers.
 	To, Cc []message.Address
 	// Recipients are the envelope recipients without the addresses that
-	// only a Bcc header named.
+	// only a Bcc or Resent-Bcc header named.
 	Recipients []string
 	// Date is the Date header, or the receive time.
 	Date time.Time
@@ -74,7 +74,7 @@ type Data struct {
 	ReceivedAt time.Time
 	// MessageID is the Message-ID header.
 	MessageID string
-	// Headers are all header fields except Bcc; Get, Values, Has and
+	// Headers are all header fields except Bcc and Resent-Bcc; Get, Values, Has and
 	// Names ignore the case of the name.
 	Headers message.Header
 	// Body is the text of the message; BodyHTML its HTML part, if any.
@@ -96,21 +96,23 @@ type Data struct {
 	Strings Strings
 }
 
-// NewData returns the data of msg for a template. bcc are the addresses
-// of the Bcc headers: they route the message but appear nowhere in the
-// data, not even among the recipients, unless To or Cc name them too. The
+// NewData returns the data of msg for a template. The blind copies route
+// the message but appear nowhere in the data, not even among the
+// recipients, unless To, Cc, Resent-To or Resent-Cc name them too. The
 // caller sets Hostname, ReceivedAt, Target and Limit.
-func NewData(msg *message.Message, env message.Envelope, bcc []message.Address) Data {
+func NewData(msg *message.Message, env message.Envelope, blind message.BlindCopies) Data {
 	visible := map[string]bool{}
-	for _, list := range [][]message.Address{msg.To, msg.Cc} {
+	for _, list := range [][]message.Address{msg.To, msg.Cc, msg.ResentTo, msg.ResentCc} {
 		for _, a := range list {
 			visible[a.Addr] = true
 		}
 	}
 	hidden := map[string]bool{}
-	for _, a := range bcc {
-		if !visible[a.Addr] {
-			hidden[a.Addr] = true
+	for _, list := range [][]message.Address{blind.Bcc, blind.ResentBcc} {
+		for _, a := range list {
+			if !visible[a.Addr] {
+				hidden[a.Addr] = true
+			}
 		}
 	}
 	var recipients []string

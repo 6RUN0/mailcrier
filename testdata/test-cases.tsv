@@ -7,7 +7,7 @@ T-ADJ-05	critical	done	The msmtp flag set (-bm -G -m -n -U -v -B 8BITMIME -h 5 -
 T-ADJ-06	high	done	Without From and -f the sender falls back to EMAIL, then USER or LOGNAME at the host name	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/sendmail/parse_test.go#L95
 T-ADJ-07	high	done	When no sender source is available the sender becomes user@hostname instead of an error	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/sendmail/parse_test.go#L140
 T-ADJ-08	critical	done	-t without To, Cc, Bcc and without argv recipients follows the no-recipient policy: catch-all routing delivers, otherwise exit 64	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/sendmail/parse_test.go#L157
-T-ADJ-09	low	todo	Resent-From takes precedence over From and Resent-To/Cc/Bcc replace the recipient headers	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/sendmail/parse_test.go#L171
+T-ADJ-09	low	done	Resent-From takes precedence over From and Resent-To/Cc/Bcc replace the recipient headers	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/sendmail/parse_test.go#L171
 T-ADJ-10	critical	done	Empty stdin is not an error; the message is delivered with an empty-body marker	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/sendmail/parse_test.go#L190
 T-ADJ-11	high	done	Duplicate recipients from argv and To collapse into one	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/sendmail/parse_test.go#L203
 T-ADJ-12	critical	done	-f without an argument exits 64	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/sendmail/parse.go#L124-L128
@@ -73,7 +73,7 @@ T-MTA-10	high	done	A leading mbox envelope line From ... is dropped and not trea
 T-MTA-11	high	done	CRLF input is normalized to LF	https://github.com/vdukhovni/postfix/blob/8e965decf941/postfix/src/sendmail/sendmail.c#L949-L969
 T-MTA-12	critical	done	-t takes recipients from To, Cc and Bcc	https://github.com/corecode/dma/blob/f4e1d913e6f3/mail.c#L430-L438
 T-MTA-13	critical	done	-t together with argv recipients uses the union without duplicates	https://github.com/marlam/msmtp/blob/755df9f0d3ac/doc/msmtp.1#L175-L180
-T-MTA-14	low	todo	With -t, Resent-To/Cc/Bcc headers, when present, replace the ordinary recipient headers	https://github.com/vdukhovni/postfix/blob/8e965decf941/postfix/src/sendmail/sendmail.c#L659-L670
+T-MTA-14	low	done	With -t, Resent-To/Cc/Bcc headers, when present, replace the ordinary recipient headers	https://github.com/vdukhovni/postfix/blob/8e965decf941/postfix/src/sendmail/sendmail.c#L659-L670
 T-MTA-15	critical	done	Bcc is removed from the forwarded headers, including its continuation lines	https://github.com/corecode/dma/blob/f4e1d913e6f3/mail.c#L407-L422
 T-MTA-16	critical	done	Bcc addresses route the message but never appear in the notification text	https://github.com/marlam/msmtp/blob/755df9f0d3ac/tests/test-header-handling.sh#L35-L55
 T-MTA-17	high	done	RFC 5322 address lists parse: groups, empty groups, comments, quoted strings, encoded display names, folded and repeated To headers	https://github.com/marlam/msmtp/blob/755df9f0d3ac/tests/test-header-handling.sh#L20-L55
