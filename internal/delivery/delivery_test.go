@@ -3,6 +3,7 @@ package delivery
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/6RUN0/slendmail/internal/backend"
@@ -48,7 +49,7 @@ func TestDeliver(t *testing.T) {
 		if results[i] != want[i] {
 			t.Errorf("results[%d] = %+v, want %+v", i, results[i], want[i])
 		}
-		if len(senders[i].sent) != 1 || senders[i].sent[0] != payload {
+		if len(senders[i].sent) != 1 || !reflect.DeepEqual(senders[i].sent[0], payload) {
 			t.Errorf("target %q got payloads %+v, want exactly %+v", want[i].TargetID, senders[i].sent, payload)
 		}
 	}

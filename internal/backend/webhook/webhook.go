@@ -66,7 +66,7 @@ func (s *Sender) Send(ctx context.Context, p backend.Payload) error {
 	}
 	resp, err := s.opts.Client.Do(req)
 	if err != nil {
-		return &backend.Error{Class: backend.Classify(0, err), Err: withoutURL(err)}
+		return &backend.Error{Class: backend.Classify(0, nil, err), Err: withoutURL(err)}
 	}
 	defer func() { _ = resp.Body.Close() }()
 	return parseResponse(resp)
@@ -97,9 +97,10 @@ func parseResponse(resp *http.Response) error {
 		return nil
 	}
 	return &backend.Error{
-		Class:  backend.Classify(resp.StatusCode, nil),
-		Status: resp.StatusCode,
-		Err:    errors.New(http.StatusText(resp.StatusCode)),
+		Class:      backend.Classify(resp.StatusCode, resp.Header, nil),
+		RetryAfter: backend.RetryAfter(resp.Header),
+		Status:     resp.StatusCode,
+		Err:        errors.New(http.StatusText(resp.StatusCode)),
 	}
 }
 

@@ -19,19 +19,44 @@ type Sender interface {
 	Send(ctx context.Context, p Payload) error
 }
 
-// Caps describes the limits of a target. A zero value means "no limit".
+// Caps describes the limits of a target. A zero limit means "no limit",
+// except MaxFiles, where 0 means the target sends text only.
 type Caps struct {
-	// MaxText is the longest text the target accepts, in the target's own
-	// unit of length.
+	// MaxText is the longest text the target accepts, in the unit of
+	// Measure.
 	MaxText int
+	// Measure returns the length of a text as the target counts it; nil
+	// counts characters.
+	Measure func(string) int
+	// MaxFiles is the number of attachments sent with one message.
+	MaxFiles int
+	// MaxFileSize is the largest attachment in bytes.
+	MaxFileSize int64
+	// MaxFilesSize is the sum of the attachment sizes of one message in
+	// bytes.
+	MaxFilesSize int64
 }
 
-// Payload is the text prepared for one target.
+// Payload is what one target receives.
 type Payload struct {
-	// Title is the short headline of the notification, usually the subject.
+	// Title is the short headline of the notification: the subject, or
+	// the notice for a missing one.
 	Title string
-	// Text is the notification body.
+	// Text is the notification in the markup of the target, within
+	// Caps.MaxText.
 	Text string
+	// Attachments are the files to send, within the file limits of Caps.
+	Attachments []Attachment
+}
+
+// Attachment is one file of a Payload.
+type Attachment struct {
+	// Name is the file name, never empty.
+	Name string
+	// ContentType is the media type; empty when unknown.
+	ContentType string
+	// Data is the content.
+	Data []byte
 }
 
 // Class tells whether a failed delivery is worth retrying.
@@ -69,6 +94,10 @@ type Error struct {
 	// Err is the underlying cause. It must not contain secrets, because it
 	// ends up in syslog.
 	Err error
+	// IsPartial reports that the text reached the target and only
+	// attachments failed: sending the message again would repeat the
+	// text, so the delivery counts as done.
+	IsPartial bool
 }
 
 // Error returns the class, the status when known, and the cause.

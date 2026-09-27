@@ -44,7 +44,7 @@ T-ADJ-42	high	todo	Truncation: text at the limit is kept, one more character tru
 T-ADJ-43	low	todo	Empty sender, subject and body get placeholder texts	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_parser.py#L498-L506
 T-ADJ-44	high	todo	Telegram request: parse_mode HTML, link preview disabled, disable_notification and chat_id from the configuration	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_client.py#L103-L172
 T-ADJ-45	high	todo	A Telegram answer ok:false with HTTP 200 is an error carrying error_code and description; a non-JSON answer, timeout and connection error have distinct messages	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_client.py#L188-L326
-T-ADJ-46	high	todo	Only 429, 500, 502, 503, 504 on POST are retried	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/src/telegram_sendmail/client.py#L31-L38
+T-ADJ-46	high	done	Any 5xx on POST is temporary and retried, 501 and 505 included	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/src/telegram_sendmail/client.py#L31-L38
 T-ADJ-47	low	todo	-bs SMTP dialogue on stdin/stdout; slendmail refuses it with exit 64 and a message	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_smtp.py#L152-L698
 T-ADJ-48	critical	done	Byte truncation never splits a UTF-8 rune and a zero or negative limit gives an empty string	https://github.com/lucasew/telegram-sendmail/blob/a09038a8b57f/internal/telegram/client_test.go#L14-L40
 T-ADJ-49	high	todo	A 400 answer to sendMessage is retried once as a document	https://github.com/lucasew/telegram-sendmail/blob/a09038a8b57f/internal/telegram/client_test.go#L75-L108

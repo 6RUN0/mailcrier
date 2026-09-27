@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"testing"
+	"time"
 )
 
 func TestClassify(t *testing.T) {
@@ -35,8 +36,62 @@ func TestClassify(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run("T-ADJ-21/"+tc.name, func(t *testing.T) {
-			if got := Classify(tc.status, tc.err); got != tc.want {
+			if got := Classify(tc.status, http.Header{}, tc.err); got != tc.want {
 				t.Errorf("Classify(%d, %v) = %v, want %v", tc.status, tc.err, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestClassifyAnyServerError pins that every 5xx answer to a POST is
+// temporary, those a retry rarely cures included: a wrong retry costs a
+// duplicate, a wrong give-up the message.
+func TestClassifyAnyServerError(t *testing.T) {
+	check := func(status int) func(t *testing.T) {
+		return func(t *testing.T) {
+			if got := Classify(status, http.Header{}, nil); got != Temporary {
+				t.Errorf("Classify(%d) = %v, want temporary", status, got)
+			}
+		}
+	}
+	t.Run("T-ADJ-46/not-implemented", check(http.StatusNotImplemented))
+	t.Run("T-ADJ-46/http-version-not-supported", check(http.StatusHTTPVersionNotSupported))
+	t.Run("T-ADJ-46/insufficient-storage", check(http.StatusInsufficientStorage))
+	t.Run("T-ADJ-46/network-authentication-required", check(http.StatusNetworkAuthenticationRequired))
+}
+
+// TestClassifyRetryAfter pins that a Retry-After header makes any answer
+// temporary: some services send it with 403 for a rate limit.
+func TestClassifyRetryAfter(t *testing.T) {
+	header := http.Header{"Retry-After": {"30"}}
+	for _, status := range []int{http.StatusForbidden, http.StatusBadRequest, http.StatusTooManyRequests} {
+		if got := Classify(status, header, nil); got != Temporary {
+			t.Errorf("Classify(%d, Retry-After: 30) = %v, want temporary", status, got)
+		}
+	}
+}
+
+func TestRetryAfter(t *testing.T) {
+	cases := []struct {
+		name  string
+		value string
+		want  time.Duration
+	}{
+		{"seconds", "17", 17 * time.Second},
+		{"zero", "0", 0},
+		{"absent", "", 0},
+		{"http-date", "Wed, 21 Oct 2015 07:28:00 GMT", 0},
+		{"negative", "-5", 0},
+		{"bounded", "999999999", MaxRetryAfter},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			header := http.Header{}
+			if tc.value != "" {
+				header.Set("Retry-After", tc.value)
+			}
+			if got := RetryAfter(header); got != tc.want {
+				t.Errorf("RetryAfter(%q) = %v, want %v", tc.value, got, tc.want)
 			}
 		})
 	}
