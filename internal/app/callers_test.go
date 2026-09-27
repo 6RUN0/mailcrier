@@ -21,7 +21,7 @@ const callersDir = "../../testdata/callers"
 var logTime = regexp.MustCompile(`^time=\S+ `)
 
 // TestCallers runs every caller fixture through Run with two recording
-// targets and compares exit status, envelope, payloads and warnings with
+// targets and compares exit status, envelope, subject, body and warnings with
 // testdata/callers/<name>.txtar.
 func TestCallers(t *testing.T) {
 	argvFiles, err := filepath.Glob(filepath.Join(callersDir, "*.argv"))
@@ -69,12 +69,12 @@ func callerArchive(code int, rec *recorder, inv *invocation) golden.Archive {
 	sections := []golden.Section{
 		{Name: "exit", Data: []byte(strconv.Itoa(code))},
 		{Name: "envelope", Data: []byte(envelope)},
-		{Name: "payloads", Data: []byte(strconv.Itoa(len(rec.payloads)))},
+		{Name: "payloads", Data: []byte(strconv.Itoa(len(rec.data)))},
 	}
-	if len(rec.payloads) > 0 {
+	if len(rec.data) > 0 {
 		sections = append(sections,
-			golden.Section{Name: "title", Data: []byte(rec.payloads[0].Title)},
-			golden.Section{Name: "text", Data: []byte(rec.payloads[0].Text)},
+			golden.Section{Name: "title", Data: []byte(rec.data[0].Subject)},
+			golden.Section{Name: "text", Data: []byte(rec.data[0].Body)},
 		)
 	}
 	sections = append(sections, golden.Section{Name: "warnings", Data: []byte(warnings.String())})

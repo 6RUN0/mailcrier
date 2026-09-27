@@ -9,5 +9,4 @@ recipients: ["admin@example.org"]
 -- title --
 /var/log/empty.log.1
 -- text --
-(empty body)
 -- warnings --

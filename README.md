@@ -77,10 +77,14 @@ preset = "generic-json"
   one `%d` and no other `%`, else exit status 78), `not_sent` after an
   attachment listed in the text but not sent because it exceeds a file
   limit of the target. Each is optional and
-  must not be blank; the values above are the defaults. The `http` target
-  applies only `empty_body`: its payload carries the subject as it is,
-  empty when the message has none, and it has no length limit. The others
-  take effect in the built-in templates of the native targets.
+  must not be blank; the values above are the defaults. The
+  `generic-json` preset uses none of them: it carries subject and body as
+  they are, empty when the message has none, and has no length limit.
+- A text longer than the target accepts is cut: first a subject longer
+  than a quarter of the limit (at least 64 units of the target) is cut at
+  a word and ends with `...`, then the list of attachments, then the body,
+  which ends with the `truncated` notice. The limit is counted the way the
+  service counts it, after escaping.
 - Exit status: see "Exit status" below.
 - Logging goes to syslog, facility `mail`. Where no syslog socket exists (a
   container without `/dev/log`) the records go to stderr, with time and
@@ -93,9 +97,12 @@ preset = "generic-json"
   digits, one value per invocation) on every record, `msgid` (the
   Message-ID header, cut to 256 bytes, absent when the message has none)
   and `size` (bytes read) for the message, `target`, `class` (`temp` or
-  `perm`) and `status` (the HTTP status, when the service answered) for a
-  failed target. Headers and body of the message are never logged, nor is
-  the response body of a service.
+  `perm`), `status` (the HTTP status, when the service answered) and
+  `retry_after` (the delay the service asked for) for a failed target.
+  `text truncated for target` (info) names a target that got a cut text,
+  `attachments not delivered` (warning) one that took the text but not
+  the files; the message counts as delivered there. Headers and body of
+  the message are never logged, nor is the response body of a service.
 - Tokens and URLs, including the content of `*_file`, are replaced by `***`
   in every log record and in the debug output of the Go HTTP stack. A URL
   is masked whole, and so are its host, host labels, request URI, path
@@ -254,9 +261,12 @@ option: `-f --probe` names a sender.
 | `--probe` or `--check-config` from an elevated caller other than root and the `slendmail` user | 77 |
 | the configuration cannot be read, parsed or validated, or defines no targets | 78 |
 
-A panic in any other goroutine ends the process with the Go runtime's own
-report on stderr and status 2; that report is not redacted. A target that
-failed is logged as `target failed`; without a queue a temporary failure is
+The targets are sent to at the same time. A panic while rendering or
+sending for one target (a bug) fails that target permanently, logged
+redacted as `target failed`, and the others still deliver. A panic in any
+other goroutine ends the process with the Go runtime's own report on
+stderr and status 2; that report is not redacted. A target that failed is
+logged as `target failed`; without a queue a temporary failure is
 also logged as `message lost for target` when another target accepted the
 message, and as `message lost` when every target failed temporarily.
 

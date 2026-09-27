@@ -11,13 +11,22 @@ import (
 
 	"github.com/6RUN0/slendmail/internal/backend"
 	"github.com/6RUN0/slendmail/internal/golden"
+	"github.com/6RUN0/slendmail/internal/render"
+	"github.com/6RUN0/slendmail/internal/text"
 )
 
 func TestBuildRequestGenericJSON(t *testing.T) {
-	opts := Options{URL: "https://hooks.example.org/in/abc", Hostname: "db1.example.org"}
-	payload := backend.Payload{Title: "cron <root@db1> backup", Text: "line \"one\"\n\tline <two> & three\n"}
+	opts := Options{URL: "https://hooks.example.org/in/abc"}
+	tmpl, err := render.Builtin(text.FormatGenericJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	document, err := tmpl.Execute(render.Data{Subject: "cron <root@db1> backup", Body: "line \"one\"\n\tline <two> & three\n", Hostname: "db1.example.org"})
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	req, err := buildRequest(context.Background(), opts, payload)
+	req, err := buildRequest(context.Background(), opts, backend.Payload{Text: document})
 	if err != nil {
 		t.Fatalf("buildRequest() error = %v", err)
 	}
@@ -91,11 +100,12 @@ func TestSendPostsToServer(t *testing.T) {
 	}))
 	defer server.Close()
 
-	sender := New(Options{URL: server.URL + "/hook", Hostname: "h", Client: server.Client()})
-	if err := sender.Send(context.Background(), backend.Payload{Title: "s", Text: "b"}); err != nil {
+	sender := New(Options{URL: server.URL + "/hook", Client: server.Client()})
+	want := `{"subject": "s", "body": "b", "hostname": "h"}`
+	if err := sender.Send(context.Background(), backend.Payload{Title: "s", Text: want}); err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
-	if want := `{"subject":"s","body":"b","hostname":"h"}`; gotBody != want {
+	if gotBody != want {
 		t.Errorf("server got %s, want %s", gotBody, want)
 	}
 }

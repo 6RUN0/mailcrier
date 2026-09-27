@@ -1,16 +1,15 @@
-// Package webhook implements the http target type: one POST of a JSON
-// document per message.
+// Package webhook implements the http target type: one POST per message
+// of the JSON document its preset template renders.
 package webhook
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/6RUN0/slendmail/internal/backend"
 )
@@ -19,15 +18,12 @@ import (
 type Options struct {
 	// URL is the endpoint; it may embed a secret.
 	URL string
-	// Hostname is sent along with the message so that the receiver can
-	// tell which machine produced it.
-	Hostname string
 	// Client performs the requests; it must not be nil. New uses a copy
 	// that does not follow redirects.
 	Client *http.Client
 }
 
-// Sender posts the generic-json payload to the configured URL.
+// Sender posts the rendered payload to the configured URL.
 type Sender struct {
 	opts Options
 }
@@ -46,16 +42,10 @@ func New(opts Options) *Sender {
 	return &Sender{opts: opts}
 }
 
-// Caps reports no limits: the receiver of a generic webhook is unknown.
+// Caps reports no length limit and no files: the receiver of a webhook is
+// unknown, and a JSON document carries no file.
 func (s *Sender) Caps() backend.Caps {
 	return backend.Caps{}
-}
-
-// genericJSON is the body of the generic-json preset.
-type genericJSON struct {
-	Subject  string `json:"subject"`
-	Body     string `json:"body"`
-	Hostname string `json:"hostname"`
 }
 
 // Send posts p and classifies the outcome.
@@ -72,12 +62,9 @@ func (s *Sender) Send(ctx context.Context, p backend.Payload) error {
 	return parseResponse(resp)
 }
 
+// buildRequest posts p.Text, the JSON document of the preset template.
 func buildRequest(ctx context.Context, opts Options, p backend.Payload) (*http.Request, error) {
-	body, err := json.Marshal(genericJSON{Subject: p.Title, Body: p.Text, Hostname: opts.Hostname})
-	if err != nil {
-		return nil, fmt.Errorf("encode payload: %w", err)
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, opts.URL, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, opts.URL, strings.NewReader(p.Text))
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", withoutURL(err))
 	}

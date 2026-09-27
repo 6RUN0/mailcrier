@@ -17,9 +17,9 @@ import (
 	"testing/iotest"
 	"time"
 
-	"github.com/6RUN0/slendmail/internal/backend"
 	"github.com/6RUN0/slendmail/internal/delivery"
 	"github.com/6RUN0/slendmail/internal/message"
+	"github.com/6RUN0/slendmail/internal/render"
 )
 
 // invocation is one Run call against an in-memory configuration with the
@@ -49,7 +49,7 @@ type invocation struct {
 	program string
 	stdout  bytes.Buffer
 	// deliver replaces the delivery to the configured targets.
-	deliver func(ctx context.Context, targets []delivery.Target, env message.Envelope, p backend.Payload) []delivery.Result
+	deliver func(ctx context.Context, targets []delivery.Target, env message.Envelope, d render.Data, files []message.Attachment) []delivery.Result
 }
 
 // execCall is one attempt to replace the process image.

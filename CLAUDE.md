@@ -108,8 +108,12 @@ it.
   output with one `Redactor` and registers tokens and URLs right after
   `config.Load`; a new secret-bearing config key must be registered in
   `app.registerSecrets`.
-- `internal/delivery`: sequential `Deliver`; `ExitCode` is 0 when any target
-  accepted the message or every target was suppressed, else 69.
+- `internal/delivery`: `Deliver` runs one goroutine per target that picks
+  the files within `Caps`, fits the target's template with `render.Fit`
+  and sends; a panic there is recovered into a permanent result, so a
+  target must not share mutable state with another. `ExitCode` is 0 when
+  any target accepted the message (an `IsPartial` error counts as
+  accepted) or every target was suppressed, else 69.
 - `TestImportGraph` (`import_graph_test.go`) enforces the package graph: a
   new package needs an entry in `allowedImports`.
 

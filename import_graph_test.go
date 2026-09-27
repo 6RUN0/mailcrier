@@ -22,7 +22,7 @@ const modulePath = "github.com/6RUN0/slendmail"
 // needs an explicit decision here.
 var allowedImports = map[string][]string{
 	"cmd/slendmail":      {"internal/app"},
-	"internal/app":       {"internal/sendmail", "internal/config", "internal/message", "internal/route", "internal/render", "internal/delivery", "internal/spool", "internal/backend", "internal/backend/*", "internal/redact"},
+	"internal/app":       {"internal/sendmail", "internal/config", "internal/message", "internal/route", "internal/render", "internal/text", "internal/delivery", "internal/spool", "internal/backend", "internal/backend/*", "internal/redact"},
 	"internal/delivery":  {"internal/backend", "internal/render", "internal/text", "internal/message", "internal/spool"},
 	"internal/backend/*": {"internal/backend", "internal/text", "internal/message"},
 	"internal/backend":   {"internal/text", "internal/message"},

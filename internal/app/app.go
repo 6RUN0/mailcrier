@@ -27,6 +27,7 @@ import (
 	"github.com/6RUN0/slendmail/internal/redact"
 	"github.com/6RUN0/slendmail/internal/render"
 	"github.com/6RUN0/slendmail/internal/sendmail"
+	"github.com/6RUN0/slendmail/internal/text"
 )
 
 // Exit statuses from sysexits.h that Run produces itself.
@@ -84,9 +85,10 @@ type Deps struct {
 	// database; false when there is none.
 	LookupUserName func(uid int) (string, bool)
 
-	// deliver sends p to the targets; nil means delivery.Deliver. Tests
-	// set it to observe the envelope and payload and to choose outcomes.
-	deliver func(ctx context.Context, targets []delivery.Target, env message.Envelope, p backend.Payload) []delivery.Result
+	// deliver sends the message to the targets; nil means
+	// delivery.Deliver. Tests set it to observe the envelope and the
+	// template data and to choose outcomes.
+	deliver func(ctx context.Context, targets []delivery.Target, env message.Envelope, d render.Data, files []message.Attachment) []delivery.Result
 }
 
 // Run handles one invocation and returns the process exit status; args
@@ -149,7 +151,8 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 		log.Error("configuration rejected, message not delivered", "err", err)
 		return exitConfig
 	}
-	msg, bcc, readWarnings, err := message.Read(stdin, message.ReadOptions{IgnoreDots: inv.IgnoreDots, MaxSize: message.MaxSize, ReceivedAt: d.Now()})
+	receivedAt := d.Now()
+	msg, bcc, readWarnings, err := message.Read(stdin, message.ReadOptions{IgnoreDots: inv.IgnoreDots, MaxSize: message.MaxSize, ReceivedAt: receivedAt})
 	if err != nil {
 		log.Error("message not read, giving up", "err", err)
 		return exitNoInput
@@ -174,7 +177,7 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 		log = newLogger(cfg.General.SyslogTag).With(msgAttrs...)
 	}
 	client.Timeout = cfg.General.HTTPTimeout.Duration
-	targets, err := buildTargets(cfg, d.Hostname, &client)
+	targets, err := buildTargets(cfg, &client)
 	if err != nil {
 		log.Error("configuration rejected, message not delivered", "err", err)
 		return exitConfig
@@ -183,27 +186,18 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 	defer cancel()
 	deliver := d.deliver
 	if deliver == nil {
-		deliver = func(ctx context.Context, targets []delivery.Target, _ message.Envelope, p backend.Payload) []delivery.Result {
-			return delivery.Deliver(ctx, targets, p)
+		deliver = func(ctx context.Context, targets []delivery.Target, _ message.Envelope, data render.Data, files []message.Attachment) []delivery.Result {
+			return delivery.Deliver(ctx, targets, data, files)
 		}
 	}
-	results := deliver(ctx, targets, env, buildPayload(msg, notices(cfg.Strings)))
+	data := render.NewData(msg, env, bcc)
+	data.Hostname, data.ReceivedAt, data.Strings = d.Hostname, receivedAt, notices(cfg.Strings)
+	results := deliver(ctx, targets, env, data, msg.Attachments)
 	for _, r := range results {
 		logResult(log, r)
 	}
 	logOutcome(log, results)
 	return delivery.ExitCode(results)
-}
-
-// buildPayload returns the text of msg for the targets. A body without
-// visible text, as at -m and logrotate send it, becomes the EmptyBody
-// notice: services reject an empty message.
-func buildPayload(msg *message.Message, strs render.Strings) backend.Payload {
-	text := msg.Body
-	if strings.TrimSpace(text) == "" {
-		text = strs.EmptyBody
-	}
-	return backend.Payload{Title: msg.Subject, Text: text}
 }
 
 // notices returns the built-in notices with the configured ones in place.
@@ -379,13 +373,20 @@ func selectConfigPath(d Deps, inv sendmail.Invocation, log *slog.Logger) (string
 }
 
 // logResult records the outcome of one target. For a failure class is
-// temp or perm, status the HTTP status when the service answered.
+// temp or perm, status the HTTP status when the service answered and
+// retry_after the delay it asked for.
 func logResult(log *slog.Logger, r delivery.Result) {
-	switch r.Status {
-	case delivery.OK:
+	if r.IsTruncated {
+		log.Info("text truncated for target", "target", r.TargetID)
+	}
+	switch {
+	case r.Status == delivery.OK && r.Err != nil:
+		log.Warn("attachments not delivered", "target", r.TargetID, "err", r.Err)
+		return
+	case r.Status == delivery.OK:
 		log.Debug("target delivered", "target", r.TargetID)
 		return
-	case delivery.Suppressed:
+	case r.Status == delivery.Suppressed:
 		log.Info("target suppressed", "target", r.TargetID)
 		return
 	}
@@ -393,6 +394,9 @@ func logResult(log *slog.Logger, r delivery.Result) {
 	var deliveryErr *backend.Error
 	if errors.As(r.Err, &deliveryErr) && deliveryErr.Status != 0 {
 		attrs = append(attrs, "status", deliveryErr.Status)
+	}
+	if deliveryErr != nil && deliveryErr.RetryAfter > 0 {
+		attrs = append(attrs, "retry_after", deliveryErr.RetryAfter)
 	}
 	log.Error("target failed", append(attrs, "err", r.Err)...)
 }
@@ -407,22 +411,28 @@ func registerSecrets(redactor *redact.Redactor, cfg *config.Config) {
 	}
 }
 
-// buildTargets maps configured targets to senders, in name order so that
-// logs and delivery order do not depend on map iteration. All targets share
+// buildTargets maps configured targets to senders and templates, in name
+// order so that logs do not depend on map iteration. All targets share
 // client, which carries the request timeout.
-func buildTargets(cfg *config.Config, hostname string, client *http.Client) ([]delivery.Target, error) {
+func buildTargets(cfg *config.Config, client *http.Client) ([]delivery.Target, error) {
 	var targets []delivery.Target
 	for _, name := range cfg.TargetNames() {
 		target := cfg.Targets[name]
+		var sender backend.Sender
+		var format text.Format
 		switch {
 		case target.Type == config.TypeHTTP && target.Preset == config.PresetGenericJSON:
-			sender := webhook.New(webhook.Options{URL: target.URL, Hostname: hostname, Client: client})
-			targets = append(targets, delivery.Target{ID: name, Sender: sender})
+			sender, format = webhook.New(webhook.Options{URL: target.URL, Client: client}), text.FormatGenericJSON
 		case target.Type == config.TypeHTTP:
 			return nil, fmt.Errorf("target %q: preset %q is not implemented", name, target.Preset)
 		default:
 			return nil, fmt.Errorf("target %q: type %q is not implemented", name, target.Type)
 		}
+		tmpl, err := render.Builtin(format)
+		if err != nil {
+			return nil, fmt.Errorf("target %q: %w", name, err)
+		}
+		targets = append(targets, delivery.Target{ID: name, Sender: sender, Template: tmpl})
 	}
 	return targets, nil
 }

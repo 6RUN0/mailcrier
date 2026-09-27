@@ -3,4 +3,4 @@ Request of the http target with the generic-json preset.
 POST https://hooks.example.org/in/abc
 Content-Type: application/json
 -- body --
-{"subject":"cron \u003croot@db1\u003e backup","body":"line \"one\"\n\tline \u003ctwo\u003e \u0026 three\n","hostname":"db1.example.org"}
+{"subject": "cron <root@db1> backup", "body": "line \"one\"\n\tline <two> & three\n", "hostname": "db1.example.org"}

@@ -16,23 +16,25 @@ import (
 	"github.com/6RUN0/slendmail/internal/delivery"
 	"github.com/6RUN0/slendmail/internal/message"
 	"github.com/6RUN0/slendmail/internal/render"
+	"github.com/6RUN0/slendmail/internal/text"
 )
 
-// recorder stands in for delivery: it keeps the envelope and payloads and
-// answers each target with the status set for it, OK by default.
+// recorder stands in for delivery: it keeps the envelope and the template
+// data, once per target, and answers each target with the status set for
+// it, OK by default.
 type recorder struct {
 	statuses map[string]delivery.Status
 	calls    int
 	env      message.Envelope
-	payloads []backend.Payload
+	data     []render.Data
 }
 
-func (r *recorder) deliver(_ context.Context, targets []delivery.Target, env message.Envelope, p backend.Payload) []delivery.Result {
+func (r *recorder) deliver(_ context.Context, targets []delivery.Target, env message.Envelope, d render.Data, _ []message.Attachment) []delivery.Result {
 	r.calls++
 	r.env = env
 	var results []delivery.Result
 	for _, target := range targets {
-		r.payloads = append(r.payloads, p)
+		r.data = append(r.data, d)
 		status := r.statuses[target.ID]
 		if status == 0 {
 			status = delivery.OK
@@ -47,6 +49,20 @@ func (r *recorder) deliver(_ context.Context, targets []delivery.Target, env mes
 		results = append(results, result)
 	}
 	return results
+}
+
+// plainText renders d with the built-in plain template.
+func plainText(t *testing.T, d render.Data) string {
+	t.Helper()
+	tmpl, err := render.Builtin(text.FormatPlain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := tmpl.Execute(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
 }
 
 // twoTargets configures targets "a" and "b"; the recorder never sends.
@@ -115,7 +131,7 @@ func TestRunExitStatusMatrix(t *testing.T) {
 		}
 	})
 	t.Run("panic-in-run", func(t *testing.T) {
-		deliver := func(context.Context, []delivery.Target, message.Envelope, backend.Payload) []delivery.Result {
+		deliver := func(context.Context, []delivery.Target, message.Envelope, render.Data, []message.Attachment) []delivery.Result {
 			panic("bug")
 		}
 		inv := &invocation{config: twoTargets, stdin: strings.NewReader("Subject: t\n\nb\n"), deliver: deliver}
@@ -214,8 +230,8 @@ func (tc runWithoutRecipientsCase) check(t *testing.T) {
 	if code := inv.run(t); code != 0 {
 		t.Fatalf("Run() = %d, want 0", code)
 	}
-	if len(rec.env.Recipients) != 0 || len(rec.payloads) != 2 {
-		t.Errorf("recipients %q, %d payloads; want none and 2", rec.env.Recipients, len(rec.payloads))
+	if len(rec.env.Recipients) != 0 || len(rec.data) != 2 {
+		t.Errorf("recipients %q, %d deliveries; want none and 2", rec.env.Recipients, len(rec.data))
 	}
 	if !strings.Contains(inv.log("slendmail"), "recipients=0") {
 		t.Errorf("log lacks recipients=0:\n%s", inv.log("slendmail"))
@@ -243,8 +259,8 @@ func (tc runEmptyBodyCase) check(t *testing.T) {
 	if code := inv.run(t); code != 0 {
 		t.Fatalf("Run() = %d, want 0", code)
 	}
-	if want := render.DefaultStrings().EmptyBody; len(rec.payloads) != 2 || rec.payloads[0].Text != want {
-		t.Errorf("payloads = %+v, want 2 with text %q", rec.payloads, want)
+	if want := render.DefaultStrings().EmptyBody; len(rec.data) != 2 || !strings.HasSuffix(plainText(t, rec.data[0]), "\n"+want) {
+		t.Errorf("deliveries = %+v, want 2 with the text ending %q", rec.data, want)
 	}
 }
 
@@ -256,8 +272,8 @@ func TestRunConfiguredNotice(t *testing.T) {
 	if code := inv.run(t); code != 0 {
 		t.Fatalf("Run() = %d, want 0", code)
 	}
-	if len(rec.payloads) != 2 || rec.payloads[0].Text != "(leer)" {
-		t.Errorf("payloads = %+v, want 2 with text %q", rec.payloads, "(leer)")
+	if len(rec.data) != 2 || !strings.HasSuffix(plainText(t, rec.data[0]), "\n(leer)") {
+		t.Errorf("deliveries = %+v, want 2 with the text ending %q", rec.data, "(leer)")
 	}
 }
 
@@ -342,9 +358,9 @@ func TestRunLargeHeaderKeepsBcc(t *testing.T) {
 		if !slices.Equal(rec.env.Recipients, []string{"secret@example.org"}) {
 			t.Errorf("recipients = %q", rec.env.Recipients)
 		}
-		for _, p := range rec.payloads {
-			if strings.Contains(p.Title+p.Text, "secret") {
-				t.Errorf("payload shows the Bcc address: %q", p.Text)
+		for _, d := range rec.data {
+			if out := plainText(t, d); strings.Contains(out, "secret") || slices.Contains(d.Recipients, "secret@example.org") {
+				t.Errorf("template data shows the Bcc address: %q, %q", out, d.Recipients)
 			}
 		}
 	})
@@ -359,8 +375,8 @@ func TestRunReadWarnings(t *testing.T) {
 		if code := inv.run(t); code != 0 {
 			t.Fatalf("Run() = %d, want 0", code)
 		}
-		if len(rec.payloads) != 2 || rec.payloads[0].Title != "t" || rec.payloads[0].Text != "not a header\nbody\n" {
-			t.Errorf("payloads = %+v", rec.payloads)
+		if len(rec.data) != 2 || rec.data[0].Subject != "t" || rec.data[0].Body != "not a header\nbody\n" {
+			t.Errorf("deliveries = %+v", rec.data)
 		}
 		if want := `level=WARN msg="` + message.WarningMalformedHeader + `"`; !strings.Contains(inv.log("slendmail"), want) {
 			t.Errorf("log lacks %q:\n%s", want, inv.log("slendmail"))
@@ -405,8 +421,8 @@ func TestRunDotConvention(t *testing.T) {
 			if code := inv.run(t); code != 0 {
 				t.Fatalf("Run() = %d, want 0", code)
 			}
-			if len(rec.payloads) == 0 || rec.payloads[0].Text != tc.wantText {
-				t.Errorf("payloads = %+v, want text %q", rec.payloads, tc.wantText)
+			if len(rec.data) == 0 || rec.data[0].Body != tc.wantText {
+				t.Errorf("deliveries = %+v, want body %q", rec.data, tc.wantText)
 			}
 		})
 	}
