@@ -6,11 +6,15 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"github.com/6RUN0/slendmail/internal/backend"
 	"github.com/6RUN0/slendmail/internal/backend/webhook"
@@ -57,8 +61,11 @@ type Deps struct {
 func Run(ctx context.Context, d Deps, _ []string, stdin io.Reader) (code int) {
 	redactor := &redact.Redactor{}
 	d.SetLogOutput(redactor.Writer(d.Stderr))
+	// call ties the records of one invocation together: cron sets no
+	// Message-ID.
+	call := newCallID()
 	newLogger := func(tag string) *slog.Logger {
-		return slog.New(redactor.Handler(d.NewLogger(tag).Handler()))
+		return slog.New(redactor.Handler(d.NewLogger(tag).Handler())).With("call", call)
 	}
 	log := newLogger(config.DefaultSyslogTag)
 	// A panic value may quote a request URL; logging it through the
@@ -75,6 +82,12 @@ func Run(ctx context.Context, d Deps, _ []string, stdin io.Reader) (code int) {
 		log.Error("message not read, giving up", "err", err)
 		return exitNoInput
 	}
+	// Headers and body stay out of the log: they may carry anything the
+	// calling job printed. The Message-ID, when present, links the records
+	// to the message.
+	msgAttrs := messageAttrs(msg)
+	log = log.With(msgAttrs...)
+	log.Info("message received", "size", len(msg.Raw))
 	cfg, err := config.Load(d.ConfigFS, d.ConfigPath)
 	if err != nil {
 		log.Error("configuration rejected, message not delivered", "err", err)
@@ -82,7 +95,7 @@ func Run(ctx context.Context, d Deps, _ []string, stdin io.Reader) (code int) {
 	}
 	registerSecrets(redactor, cfg)
 	if cfg.General.SyslogTag != config.DefaultSyslogTag {
-		log = newLogger(cfg.General.SyslogTag)
+		log = newLogger(cfg.General.SyslogTag).With(msgAttrs...)
 	}
 	client := *d.HTTP
 	client.Timeout = cfg.General.HTTPTimeout.Duration
@@ -96,13 +109,48 @@ func Run(ctx context.Context, d Deps, _ []string, stdin io.Reader) (code int) {
 	payload := backend.Payload{Title: msg.Subject, Text: msg.Body}
 	results := delivery.Deliver(ctx, targets, payload)
 	for _, r := range results {
-		if r.Status == delivery.OK {
-			log.Debug("target delivered", "target", r.TargetID)
-			continue
-		}
-		log.Error("target failed", "target", r.TargetID, "status", r.Status, "err", r.Err)
+		logResult(log, r)
 	}
 	return delivery.ExitCode(results)
+}
+
+// maxMessageIDLength bounds the msgid field: the header comes from the
+// caller and is repeated in every record of the call.
+const maxMessageIDLength = 256
+
+// messageAttrs returns the msgid field, cut to maxMessageIDLength, or
+// nothing when the message has no Message-ID.
+func messageAttrs(msg *message.Message) []any {
+	id := msg.MessageID
+	if id == "" {
+		return nil
+	}
+	if len(id) > maxMessageIDLength {
+		id = strings.ToValidUTF8(id[:maxMessageIDLength], "")
+	}
+	return []any{"msgid", id}
+}
+
+// newCallID returns 8 random bytes in hex.
+func newCallID() string {
+	id := make([]byte, 8)
+	_, _ = rand.Read(id) // never fails on Linux, per crypto/rand
+	return hex.EncodeToString(id)
+}
+
+// logResult records the outcome of one target: class is temp or perm,
+// status the HTTP status when the service answered.
+func logResult(log *slog.Logger, r delivery.Result) {
+	if r.Status == delivery.OK {
+		log.Debug("target delivered", "target", r.TargetID)
+		return
+	}
+	attrs := []any{"target", r.TargetID, "class", r.Status}
+	var deliveryErr *backend.Error
+	if errors.As(r.Err, &deliveryErr) && deliveryErr.Status != 0 {
+		attrs = append(attrs, "status", deliveryErr.Status)
+	}
+	log.Error("target failed", append(attrs, "err", r.Err)...)
 }
 
 // registerSecrets hands every value that may hold a secret to the redactor:

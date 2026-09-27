@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -53,6 +54,10 @@ func (inv *invocation) run(t *testing.T) int {
 	return Run(context.Background(), deps, []string{"-ti"}, inv.stdin)
 }
 
+// callField is the random call id on every record; log and output drop it
+// so that tests can match the fields after it.
+var callField = regexp.MustCompile(` call=[0-9a-f]{16}`)
+
 // output returns everything the invocation wrote: all syslog tags and
 // stderr.
 func (inv *invocation) output() string {
@@ -60,12 +65,12 @@ func (inv *invocation) output() string {
 	for tag, buf := range inv.logs {
 		all.WriteString("[" + tag + "]\n" + buf.String())
 	}
-	return all.String() + "[stderr]\n" + inv.stderr.String()
+	return callField.ReplaceAllString(all.String(), "") + "[stderr]\n" + inv.stderr.String()
 }
 
 func (inv *invocation) log(tag string) string {
 	if buf, ok := inv.logs[tag]; ok {
-		return buf.String()
+		return callField.ReplaceAllString(buf.String(), "")
 	}
 	return ""
 }
@@ -238,6 +243,99 @@ func TestRunTimeLimits(t *testing.T) {
 			}
 			if log := inv.log("slendmail"); strings.Count(log, "target failed") != tc.targets {
 				t.Errorf("log does not record %d failed targets:\n%s", tc.targets, log)
+			}
+		})
+	}
+}
+
+// TestRunKeepsMessageOutOfLogs pins that the log carries the size and the
+// Message-ID of the message but neither its headers nor its body, on
+// success, on a rejection whose response echoes the request, and on a
+// configuration error.
+func TestRunKeepsMessageOutOfLogs(t *testing.T) {
+	const marker = "MARKER-7f3a"
+	input := "Subject: disk " + marker + "\nMessage-ID: <42@db1.example.org>\nX-Job: " + marker + "\n\nbody " + marker + "\n"
+	echo := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.Copy(w, r.Body)
+	}))
+	defer echo.Close()
+	accept := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	defer accept.Close()
+
+	cases := []struct {
+		name     string
+		config   string
+		wantCode int
+	}{
+		{"delivered", httpTargetConfig(accept.URL), 0},
+		{"rejected-with-echo", httpTargetConfig(echo.URL), 69},
+		{"configuration-error", "", 78},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			inv := &invocation{config: tc.config, stdin: strings.NewReader(input)}
+			if code := inv.run(t); code != tc.wantCode {
+				t.Errorf("Run() = %d, want %d", code, tc.wantCode)
+			}
+			output := inv.output()
+			if strings.Contains(output, marker) {
+				t.Errorf("output quotes the message:\n%s", output)
+			}
+			want := fmt.Sprintf(`msg="message received" msgid=<42@db1.example.org> size=%d`, len(input))
+			if !strings.Contains(output, want) {
+				t.Errorf("output lacks %q:\n%s", want, output)
+			}
+		})
+	}
+}
+
+// TestRunLogsResultFields pins the logfmt fields of a failed target, which
+// operators filter syslog by.
+func TestRunLogsResultFields(t *testing.T) {
+	server := echoServer(t, http.StatusBadGateway)
+	inv := &invocation{config: httpTargetConfig(server.URL), stdin: strings.NewReader("Message-ID: <1@h>\n\nb\n")}
+	if code := inv.run(t); code != 69 {
+		t.Fatalf("Run() = %d, want 69", code)
+	}
+	want := `level=ERROR msg="target failed" msgid=<1@h> target=hook class=temp status=502 err=`
+	if log := inv.log("slendmail"); !strings.Contains(log, want) {
+		t.Errorf("log lacks %q:\n%s", want, log)
+	}
+}
+
+// TestRunTagsRecordsWithCall pins the fields that tie records together:
+// every record of a call carries the same call id, and msgid appears only
+// when the message has a Message-ID, cut to 256 bytes.
+func TestRunTagsRecordsWithCall(t *testing.T) {
+	server := echoServer(t, http.StatusBadGateway)
+	cases := []struct {
+		name      string
+		header    string
+		wantMsgID string
+	}{
+		{"no-message-id", "", ""},
+		{"message-id", "Message-ID: <1@h>\n", "msgid=<1@h> "},
+		{"long-message-id", "Message-ID: <" + strings.Repeat("x", 1000) + ">\n", "msgid=<" + strings.Repeat("x", 255) + " "},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			inv := &invocation{config: httpTargetConfig(server.URL), stdin: strings.NewReader(tc.header + "Subject: t\n\nb\n")}
+			if code := inv.run(t); code != 69 {
+				t.Fatalf("Run() = %d, want 69", code)
+			}
+			raw := inv.logs["slendmail"].String()
+			lines := strings.Split(strings.TrimSpace(raw), "\n")
+			ids := map[string]bool{}
+			for _, line := range lines {
+				ids[callField.FindString(line)] = true
+			}
+			if len(lines) < 2 || len(ids) != 1 || ids[""] {
+				t.Errorf("records do not share one call id:\n%s", raw)
+			}
+			if got := inv.log("slendmail"); tc.wantMsgID == "" && strings.Contains(got, "msgid=") ||
+				tc.wantMsgID != "" && !strings.Contains(got, `msg="target failed" `+tc.wantMsgID+"target=hook") {
+				t.Errorf("msgid field wrong, want %q:\n%s", tc.wantMsgID, got)
 			}
 		})
 	}

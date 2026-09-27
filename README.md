@@ -65,6 +65,13 @@ preset = "generic-json"
 - Exit status: 0 when at least one target accepted the message, 69 when none
   did, 66 when stdin cannot be read, 70 on an internal error (a bug; the
   record in the log carries the details).
+- Logging goes to syslog, facility `mail`. Each record is a constant message
+  with logfmt fields: `call` (16 hex digits, one value per invocation) on
+  every record, `msgid` (the Message-ID header, cut to 256 bytes, absent
+  when the message has none) and `size` (bytes read) for the message,
+  `target`, `class` (`temp` or `perm`) and `status` (the HTTP status, when
+  the service answered) for a failed target. Headers and body of the
+  message are never logged, nor is the response body of a service.
 - Tokens and URLs, including the content of `*_file`, are replaced by `***`
   in every log record and in the debug output of the Go HTTP stack. A URL
   is masked whole, and so are its host, host labels, request URI, path

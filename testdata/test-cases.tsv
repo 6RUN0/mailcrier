@@ -48,7 +48,7 @@ T-ADJ-46	high	todo	Only 429, 500, 502, 503, 504 on POST are retried	https://gith
 T-ADJ-47	low	todo	-bs SMTP dialogue on stdin/stdout; slendmail refuses it with exit 64 and a message	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_smtp.py#L152-L698
 T-ADJ-48	critical	todo	Byte truncation never splits a UTF-8 rune and a zero or negative limit gives an empty string	https://github.com/lucasew/telegram-sendmail/blob/a09038a8b57f/internal/telegram/client_test.go#L14-L40
 T-ADJ-49	high	todo	A 400 answer to sendMessage is retried once as a document	https://github.com/lucasew/telegram-sendmail/blob/a09038a8b57f/internal/telegram/client_test.go#L75-L108
-T-ADJ-50	low	todo	An error response body is read up to 4 KiB and passes through redaction	https://github.com/lucasew/telegram-sendmail/blob/a09038a8b57f/internal/telegram/client_test.go#L156-L200
+T-ADJ-50	low	done	An error response body is read at most 4 KiB and is not quoted in the error, so it cannot leak into the log	https://github.com/lucasew/telegram-sendmail/blob/a09038a8b57f/internal/telegram/client_test.go#L156-L200
 T-ADJ-51	critical	done	HTTP requests have a default timeout (15 s) and the whole call has a deadline (30 s)	https://github.com/lucasew/telegram-sendmail/blob/a09038a8b57f/internal/telegram/client_test.go#L202
 T-ADJ-52	critical	todo	Subject header matched in any case, a default subject when missing, input without headers becomes the body, RFC 2047 B and Q decoded to UTF-8	https://github.com/lucasew/telegram-sendmail/blob/a09038a8b57f/cmd/telegram-sendmail/serve_test.go#L43-L118
 T-ADJ-53	high	todo	A queue run continues after one entry fails to send	https://github.com/lucasew/telegram-sendmail/blob/a09038a8b57f/cmd/telegram-sendmail/serve_test.go#L121

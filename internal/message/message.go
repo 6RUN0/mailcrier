@@ -13,6 +13,8 @@ import (
 type Message struct {
 	// Subject is the raw Subject header value.
 	Subject string
+	// MessageID is the raw Message-ID header value; empty when absent.
+	MessageID string
 	// Body is everything after the header block.
 	Body string
 	// Raw is the input exactly as read.
@@ -40,6 +42,7 @@ func Read(r io.Reader) (*Message, error) {
 		return nil, fmt.Errorf("read message body: %w", err)
 	}
 	msg.Subject = parsed.Header.Get("Subject")
+	msg.MessageID = parsed.Header.Get("Message-Id")
 	msg.Body = string(body)
 	return msg, nil
 }

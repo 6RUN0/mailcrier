@@ -140,3 +140,32 @@ func TestSendDoesNotFollowRedirect(t *testing.T) {
 		t.Errorf("server got %v, want exactly [POST /hook]", requests)
 	}
 }
+
+// endlessBody is a response body that never ends and counts what is read.
+type endlessBody struct{ read int }
+
+func (b *endlessBody) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = 'x'
+	}
+	b.read += len(p)
+	return len(p), nil
+}
+
+func (*endlessBody) Close() error { return nil }
+
+func TestParseResponseBoundsBody(t *testing.T) {
+	t.Run("T-ADJ-50/error-body-bounded", func(t *testing.T) {
+		body := &endlessBody{}
+		err := parseResponse(&http.Response{StatusCode: http.StatusInternalServerError, Body: body})
+		if err == nil {
+			t.Fatal("parseResponse() accepted status 500")
+		}
+		if body.read > maxDrainBytes {
+			t.Errorf("read %d bytes of the body, want at most %d", body.read, maxDrainBytes)
+		}
+		if strings.Contains(err.Error(), "xxxx") {
+			t.Errorf("error text quotes the body: %v", err)
+		}
+	})
+}

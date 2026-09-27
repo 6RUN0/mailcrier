@@ -12,12 +12,13 @@ func TestRead(t *testing.T) {
 		name        string
 		input       string
 		wantSubject string
+		wantID      string
 		wantBody    string
 	}{
-		{"headers-and-body", "Subject: disk full\nTo: root\n\n/dev/sda1 99%\n", "disk full", "/dev/sda1 99%\n"},
-		{"no-subject", "To: root\n\nbody\n", "", "body\n"},
-		{"not-a-header-block", "just text\nmore text\n", "", "just text\nmore text\n"},
-		{"empty-input", "", "", ""},
+		{"headers-and-body", "Subject: disk full\nTo: root\nMessage-ID: <1@db1>\n\n/dev/sda1 99%\n", "disk full", "<1@db1>", "/dev/sda1 99%\n"},
+		{"no-subject", "To: root\n\nbody\n", "", "", "body\n"},
+		{"not-a-header-block", "just text\nmore text\n", "", "", "just text\nmore text\n"},
+		{"empty-input", "", "", "", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -27,6 +28,9 @@ func TestRead(t *testing.T) {
 			}
 			if msg.Subject != tc.wantSubject {
 				t.Errorf("Subject = %q, want %q", msg.Subject, tc.wantSubject)
+			}
+			if msg.MessageID != tc.wantID {
+				t.Errorf("MessageID = %q, want %q", msg.MessageID, tc.wantID)
 			}
 			if msg.Body != tc.wantBody {
 				t.Errorf("Body = %q, want %q", msg.Body, tc.wantBody)
