@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"io"
 	"log"
 	"log/slog"
 	"log/syslog"
@@ -34,12 +35,22 @@ func SystemDeps() Deps {
 }
 
 // newSystemLogger logs to syslog with the mail facility, because cron and
-// at discard the output of the mailer they run. When syslog is unreachable
-// the records go to stderr instead of being lost.
+// at discard the output of the mailer they run.
 func newSystemLogger(tag string) *slog.Logger {
-	writer, err := syslog.New(syslog.LOG_MAIL|syslog.LOG_INFO, tag)
+	return newFallbackLogger(tag, dialSyslog, os.Stderr)
+}
+
+func dialSyslog(tag string) (*syslog.Writer, error) {
+	return syslog.New(syslog.LOG_MAIL|syslog.LOG_INFO, tag)
+}
+
+// newFallbackLogger logs to the syslog writer dial returns or, when syslog
+// is unreachable (a container has no /dev/log), to stderr as logfmt with
+// time and level, so that the records are not lost and the call goes on.
+func newFallbackLogger(tag string, dial func(tag string) (*syslog.Writer, error), stderr io.Writer) *slog.Logger {
+	writer, err := dial(tag)
 	if err != nil {
-		logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		logger := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
 		logger.Warn("syslog unavailable, logging to stderr", "err", err)
 		return logger
 	}

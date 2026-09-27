@@ -1,6 +1,8 @@
 package app
 
 import (
+	"bytes"
+	"errors"
 	"log/slog"
 	"log/syslog"
 	"net"
@@ -66,4 +68,25 @@ func pidOf(packet string) string {
 		return ""
 	}
 	return packet[start+len("slendmail[") : end]
+}
+
+// TestFallbackLoggerUsesStderr pins that a missing syslog daemon does not
+// stop the call: the records go to stderr, after one warning.
+func TestFallbackLoggerUsesStderr(t *testing.T) {
+	var stderr bytes.Buffer
+	dial := func(string) (*syslog.Writer, error) {
+		return nil, errors.New("dial unix /dev/log: connect: no such file or directory")
+	}
+	logger := newFallbackLogger("slendmail", dial, &stderr)
+	logger.Error("target failed", "target", "hook")
+	lines := strings.Split(strings.TrimSpace(stderr.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("stderr has %d lines, want the warning and the record:\n%s", len(lines), stderr.String())
+	}
+	if !strings.Contains(lines[0], `level=WARN msg="syslog unavailable, logging to stderr" err="dial unix /dev/log`) {
+		t.Errorf("warning line = %q", lines[0])
+	}
+	if !strings.Contains(lines[1], `level=ERROR msg="target failed" target=hook`) {
+		t.Errorf("record line = %q", lines[1])
+	}
 }
