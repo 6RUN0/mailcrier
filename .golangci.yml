@@ -1,6 +1,10 @@
 ---
 version: "2"
 
+run:
+  build-tags:
+    - setgid_e2e
+
 linters:
   default: standard
   enable:

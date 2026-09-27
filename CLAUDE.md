@@ -10,6 +10,7 @@ make check        # all CI checks of a push; govulncheck only warns here
 make lint         # other targets: tidy test fuzz build vuln check-refs
                   # check-commits snapshot
 make fuzz FUZZTIME=10m   # longer fuzzing; check runs each target 10s
+make setgid-e2e   # needs docker: TestSetgidReexec in a root container
 go build -o slendmail ./cmd/slendmail   # new binary; the name is gitignored
 go build -o /dev/null .                 # legacy root main.go, must still build
 go test ./internal/backend/webhook -update   # rewrite golden files
@@ -36,10 +37,12 @@ go test ./internal/backend/webhook -update   # rewrite golden files
 - A manual run of the new binary reads `/etc/slendmail.conf`, or the file
   in `SLENDMAIL_CONFIG` or `--config` (honoured when not setgid-elevated).
 
-CI: `.github/workflows/ci.yml` runs `make check` and `make snapshot` on push
-and PR to `develop` (the main branch) and a blocking `make vuln` daily;
-CodeQL runs on `develop`. Actions are pinned by commit SHA with the version
-in a comment. Dependabot waits 7 days before proposing a new version.
+CI: `.github/workflows/ci.yml` runs `make check`, `make snapshot` and
+`make setgid-e2e` on push and PR to `develop` (the main branch) and a
+blocking `make vuln` daily; CodeQL runs on `develop`. Actions are pinned by
+commit SHA with the version in a comment, the e2e image
+(`testdata/setgid-e2e/Dockerfile`) by digest. Dependabot waits 7 days
+before proposing a new version.
 
 ## Architecture
 

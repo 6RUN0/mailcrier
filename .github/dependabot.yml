@@ -69,3 +69,12 @@ updates:
         update-types:
           - minor
           - patch
+  - package-ecosystem: docker
+    directory: "/testdata/setgid-e2e"
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: test
+      include: scope

@@ -26,11 +26,16 @@ BASE ?= $(shell git rev-parse -q --verify origin/develop >/dev/null && echo orig
 FUZZTIME ?= 10s
 FUZZ_TARGETS := ./internal/app:FuzzSanitize
 
+# setgid-e2e installs the binary setgid inside a throwaway container and
+# needs docker; the image is testdata/setgid-e2e/Dockerfile.
+E2E_DIR := $(CURDIR)/.e2e
+E2E_IMAGE := slendmail-setgid-e2e
+
 # The legacy root package is not shipped and is only a feature reference,
 # so its dependencies are not scanned.
 VULN_PACKAGES := ./cmd/... ./internal/... ./scripts/...
 
-.PHONY: check lint lint-go lint-yaml lint-actions tidy test fuzz build vuln check-refs check-commits snapshot
+.PHONY: check lint lint-go lint-yaml lint-actions tidy test fuzz build vuln check-refs check-commits snapshot setgid-e2e
 
 check: lint tidy test fuzz build check-refs check-commits
 	-$(MAKE) vuln
@@ -74,3 +79,11 @@ check-commits:
 
 snapshot:
 	$(GORELEASER) release --snapshot --clean
+
+setgid-e2e:
+	mkdir -p $(E2E_DIR)
+	CGO_ENABLED=0 $(GO) build -o $(E2E_DIR)/slendmail ./cmd/slendmail
+	CGO_ENABLED=0 $(GO) test -c -tags setgid_e2e -o $(E2E_DIR)/app.test ./internal/app
+	docker build -t $(E2E_IMAGE) testdata/setgid-e2e
+	docker run --rm --network none --cap-add SYS_PTRACE -v $(E2E_DIR):/e2e:ro $(E2E_IMAGE) \
+		/e2e/app.test -test.run '^TestSetgidReexec$$' -test.v -slendmail-binary /e2e/slendmail
