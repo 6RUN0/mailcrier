@@ -4,8 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
+	"strings"
 )
 
 // WithoutRedirects returns a copy of client that does not follow
@@ -62,4 +65,27 @@ func Drain(body io.ReadCloser) {
 // IsSuccess reports a 2xx status.
 func IsSuccess(status int) bool {
 	return status >= 200 && status < 300
+}
+
+// fileNameEscaper escapes a file name for a quoted Content-Disposition
+// parameter, as multipart.Writer.CreateFormFile does.
+var fileNameEscaper = strings.NewReplacer(`\`, `\\`, `"`, `\"`)
+
+// WriteFilePart adds file to form as the part named field, with its
+// content type, application/octet-stream when unknown; CreateFormFile
+// would always set the latter.
+func WriteFilePart(form *multipart.Writer, field string, file Attachment) error {
+	contentType := file.ContentType
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	header := textproto.MIMEHeader{}
+	header.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"; filename="%s"`, fileNameEscaper.Replace(field), fileNameEscaper.Replace(file.Name)))
+	header.Set("Content-Type", contentType)
+	part, err := form.CreatePart(header)
+	if err != nil {
+		return err
+	}
+	_, err = part.Write(file.Data)
+	return err
 }

@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -128,10 +129,16 @@ type Target struct {
 	// URLFile is an absolute path to a file holding the URL, for URLs that
 	// embed a secret.
 	URLFile string `toml:"url_file"`
-	// ChatID is the Telegram chat.
-	ChatID string `toml:"chat_id"`
+	// ChatID is the Telegram chat, set by Load from ChatIDValue: a numeric
+	// id or an @username.
+	ChatID string `toml:"-"`
+	// ChatIDValue is chat_id as written: a string, or an integer, as the
+	// Bot API documents numeric chat ids.
+	ChatIDValue any `toml:"chat_id"`
 	// MessageThreadID is the Telegram forum topic.
 	MessageThreadID int64 `toml:"message_thread_id"`
+	// DisableNotification sends Telegram messages silently.
+	DisableNotification bool `toml:"disable_notification"`
 	// Channel is the Slack channel.
 	Channel string `toml:"channel"`
 	// Preset selects the built-in payload of the http target.
@@ -146,13 +153,19 @@ type Target struct {
 // http target lists only what its implementation honours, so that a key it
 // would ignore rejects the file instead.
 var allowedKeys = map[string][]string{
-	TypeTelegram: {"token", "token_file", "chat_id", "message_thread_id", "on_long"},
+	TypeTelegram: {"token", "token_file", "chat_id", "message_thread_id", "disable_notification", "on_long"},
 	TypeDiscord:  {"url", "url_file", "on_long"},
 	TypeSlack:    {"token", "token_file", "channel", "on_long"},
 	TypeNtfy:     {"url", "url_file", "on_long"},
 	TypeHTTP:     {"url", "url_file", "preset"},
 	TypeExec:     {"argv"},
 	TypeShoutrrr: {"url", "url_file"},
+}
+
+// requiredKeys lists, per target type, the keys it cannot work without,
+// besides the token or URL pairs.
+var requiredKeys = map[string][]string{
+	TypeTelegram: {"chat_id"},
 }
 
 var (
@@ -200,6 +213,10 @@ func Load(fsys fs.FS, path string) (*Config, error) {
 		return nil, &Error{Path: path, Msg: err.Error()}
 	}
 	if err := validate(&cfg, keys); err != nil {
+		err.Path = path
+		return nil, err
+	}
+	if err := setChatIDs(&cfg, keys); err != nil {
 		err.Path = path
 		return nil, err
 	}
@@ -295,6 +312,11 @@ func validateTarget(name string, target Target, keys keyIndex) *Error {
 			return fail(key, "key %q is not valid for type %q", key, target.Type)
 		}
 	}
+	for _, key := range requiredKeys[target.Type] {
+		if !keys.has("target", name, key) {
+			return fail("", "key %q is required", key)
+		}
+	}
 	for _, pair := range [][2]string{{"token", "token_file"}, {"url", "url_file"}} {
 		if !slices.Contains(allowed, pair[0]) {
 			continue
@@ -317,6 +339,30 @@ func validateTarget(name string, target Target, keys keyIndex) *Error {
 	}
 	if keys.has("target", name, "on_long") && !slices.Contains(onLongPolicies, target.OnLong) {
 		return fail("on_long", "unknown policy, want one of %s", strings.Join(onLongPolicies, ", "))
+	}
+	return nil
+}
+
+// setChatIDs sets ChatID of every telegram target from chat_id, an integer
+// or a string that is not blank: an empty chat would only fail at
+// delivery, with the message lost.
+func setChatIDs(cfg *Config, keys keyIndex) *Error {
+	for _, name := range cfg.TargetNames() {
+		target := cfg.Targets[name]
+		if target.Type != TypeTelegram {
+			continue
+		}
+		switch value := target.ChatIDValue.(type) {
+		case int64:
+			target.ChatID = strconv.FormatInt(value, 10)
+		case string:
+			target.ChatID = strings.TrimSpace(value)
+		}
+		if target.ChatID == "" {
+			pos := keys.position("target", name, "chat_id")
+			return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("target %q: value of key %q must be an integer or a string that is not blank", name, "chat_id")}
+		}
+		cfg.Targets[name] = target
 	}
 	return nil
 }

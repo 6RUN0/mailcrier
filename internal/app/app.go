@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/6RUN0/slendmail/internal/backend"
+	"github.com/6RUN0/slendmail/internal/backend/telegram"
 	"github.com/6RUN0/slendmail/internal/backend/webhook"
 	"github.com/6RUN0/slendmail/internal/config"
 	"github.com/6RUN0/slendmail/internal/delivery"
@@ -421,6 +422,12 @@ func buildTargets(cfg *config.Config, client *http.Client) ([]delivery.Target, e
 		var sender backend.Sender
 		var format text.Format
 		switch {
+		case target.Type == config.TypeTelegram:
+			sender = telegram.New(telegram.Options{
+				Token: target.Token, ChatID: target.ChatID, MessageThreadID: target.MessageThreadID,
+				DisableNotification: target.DisableNotification, Client: client,
+			})
+			format = text.FormatTelegramHTML
 		case target.Type == config.TypeHTTP && target.Preset == config.PresetGenericJSON:
 			sender, format = webhook.New(webhook.Options{URL: target.URL, Client: client}), text.FormatGenericJSON
 		case target.Type == config.TypeHTTP:

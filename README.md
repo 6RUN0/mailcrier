@@ -67,8 +67,9 @@ preset = "generic-json"
   surrounding whitespace removed, is used as the value.
 - The `http` target with `preset = "generic-json"` posts
   `{"subject": ..., "body": ..., "hostname": ...}` with
-  `Content-Type: application/json`. Other target types and presets are
-  recognized by the parser but rejected with exit status 78 until implemented.
+  `Content-Type: application/json`. Target types and presets not described
+  under "Targets" are recognized by the parser but rejected with exit
+  status 78 until implemented.
 - `[strings]` replaces the English notices that stand in for missing
   content: `no_subject` for a message without a subject, `empty_body` for
   a body without visible text, `truncated` at the end of a body cut to the
@@ -115,6 +116,32 @@ preset = "generic-json"
 - Proxy environment variables (`HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`)
   are honoured without elevation and ignored by a setgid-elevated process.
 - The file mode creation mask is always `007`.
+
+### Targets
+
+All targets of the file receive every message, at the same time. Each
+sends the text in the markup of its service, escaped so that nothing in the
+message becomes markup, a link preview or a mention.
+
+```toml
+[target.ops-telegram]
+type = "telegram"
+token_file = "/etc/slendmail.d/tg.token"   # or token = "123456:ABC..."
+chat_id = -1001234567890                   # or "-1001234567890", "@channel"
+message_thread_id = 42                     # optional, forum topic
+disable_notification = true                # optional, silent messages
+```
+
+- `telegram`: `chat_id` (an integer or a non-blank string) is required.
+  `sendMessage` with `parse_mode` HTML and link previews off, then one
+  `sendDocument` per attachment. The text holds at most 4096 characters
+  as Telegram counts them, after entities, in UTF-16 units; up to 10
+  files of at most 50 MB each are sent, the others are listed with the
+  `not_sent` notice. An answer with `"ok": false` is a failure even with
+  status 200; `error_code` 429 and 5xx are temporary, with
+  `parameters.retry_after` logged as `retry_after`. When the text arrived
+  and a document did not, the message counts as delivered and
+  `attachments not delivered` is logged.
 
 ### Options, privileges and containers
 

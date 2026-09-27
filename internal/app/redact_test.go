@@ -91,6 +91,14 @@ func TestRunKeepsTokenOutOfLogs(t *testing.T) {
 		{"status-5xx", func(t *testing.T) (string, *http.Client) {
 			return httpTargetConfig(echoServer(t, http.StatusBadGateway).URL + "/hook/" + secretToken), nil
 		}, 69, "target failed"},
+		{"telegram-rejected", func(t *testing.T) (string, *http.Client) {
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = fmt.Fprintf(w, `{"ok":false,"error_code":400,"description":"Bad Request: no route for %s"}`, r.URL)
+			}))
+			t.Cleanup(server.Close)
+			return "[target.tg]\ntype = \"telegram\"\ntoken = \"" + secretToken + "\"\nchat_id = \"1\"\n", redirectingClient(server)
+		}, 69, "target failed"},
 		{"toml-error-after-token", func(*testing.T) (string, *http.Client) {
 			return "[target.tg]\ntype = \"telegram\"\ntoken = \"" + secretToken + "\"\nchat_id = \n", nil
 		}, 78, "configuration rejected"},

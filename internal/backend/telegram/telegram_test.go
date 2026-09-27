@@ -1,0 +1,394 @@
+package telegram
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+	"unicode/utf16"
+	"unicode/utf8"
+
+	"github.com/6RUN0/slendmail/internal/backend"
+	"github.com/6RUN0/slendmail/internal/delivery"
+	"github.com/6RUN0/slendmail/internal/message"
+	"github.com/6RUN0/slendmail/internal/render"
+	"github.com/6RUN0/slendmail/internal/text"
+)
+
+// testToken is a bot token of the Bot API format; it must never show in
+// an error.
+const testToken = "123456:AAtestTOKENtestTOKENtestTOKEN0123"
+
+func TestBuildRequest(t *testing.T) {
+	cases := []struct {
+		name string
+		opts Options
+		want map[string]any
+	}{
+		{"T-ADJ-44/defaults", Options{ChatID: "-100123"}, map[string]any{
+			"chat_id": "-100123", "text": "<b>s</b>", "parse_mode": "HTML",
+			"link_preview_options": map[string]any{"is_disabled": true},
+		}},
+		{"T-ADJ-44/thread-and-silent", Options{ChatID: "@ops", MessageThreadID: 42, DisableNotification: true}, map[string]any{
+			"chat_id": "@ops", "text": "<b>s</b>", "parse_mode": "HTML", "message_thread_id": float64(42),
+			"link_preview_options": map[string]any{"is_disabled": true}, "disable_notification": true,
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.opts.Token, tc.opts.APIURL = testToken, DefaultAPIURL
+			req, err := buildRequest(context.Background(), tc.opts, backend.Payload{Title: "s", Text: "<b>s</b>"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := "https://api.telegram.org/bot" + testToken + "/sendMessage"; req.Method != http.MethodPost || req.URL.String() != want {
+				t.Errorf("request %s %s, want POST %s", req.Method, req.URL, want)
+			}
+			if got := req.Header.Get("Content-Type"); got != "application/json" {
+				t.Errorf("Content-Type = %q", got)
+			}
+			var got map[string]any
+			if err := json.NewDecoder(req.Body).Decode(&got); err != nil {
+				t.Fatal(err)
+			}
+			if fmt.Sprint(got) != fmt.Sprint(tc.want) {
+				t.Errorf("body = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseResponse(t *testing.T) {
+	cases := []struct {
+		name           string
+		status         int
+		header         http.Header
+		body           string
+		wantClass      backend.Class
+		wantStatus     int
+		wantRetryAfter time.Duration
+		wantText       string
+	}{
+		{"ok", 200, nil, `{"ok":true,"result":{"message_id":1}}`, 0, 0, 0, ""},
+		{"T-ADJ-45/ok-false-with-200", 200, nil, `{"ok":false,"error_code":400,"description":"Bad Request: chat not found"}`, backend.Permanent, 400, 0, "Bad Request: chat not found"},
+		{"T-ADJ-45/ok-false-with-400", 400, nil, `{"ok":false,"error_code":400,"description":"Bad Request: can't parse entities"}`, backend.Permanent, 400, 0, "can't parse entities"},
+		{"blocked", 403, nil, `{"ok":false,"error_code":403,"description":"Forbidden: bot was blocked by the user"}`, backend.Permanent, 403, 0, "Forbidden"},
+		{"retry-after-of-telegram", 429, nil, `{"ok":false,"error_code":429,"description":"Too Many Requests: retry after 7","parameters":{"retry_after":7}}`, backend.Temporary, 429, 7 * time.Second, "Too Many Requests"},
+		{"retry-after-with-200", 200, nil, `{"ok":false,"error_code":400,"description":"Flood","parameters":{"retry_after":3}}`, backend.Temporary, 400, 3 * time.Second, "Flood"},
+		{"retry-after-header", 429, http.Header{"Retry-After": {"9"}}, `{"ok":false,"error_code":429,"description":"Too Many Requests"}`, backend.Temporary, 429, 9 * time.Second, "Too Many Requests"},
+		{"retry-after-bounded", 429, nil, `{"ok":false,"error_code":429,"description":"Too Many Requests","parameters":{"retry_after":9300000000}}`, backend.Temporary, 429, backend.MaxRetryAfter, "Too Many Requests"},
+		{"json-without-ok-with-200", 200, nil, `{}`, backend.Temporary, 200, 0, "no description"},
+		{"error-code-zero-with-200", 200, nil, `{"ok":false,"error_code":0,"description":"proxy said no"}`, backend.Temporary, 200, 0, "proxy said no"},
+		{"json-without-ok-with-403", 403, nil, `{}`, backend.Permanent, 403, 0, "no description"},
+		{"server-error", 502, nil, `{"ok":false,"error_code":502,"description":"Bad Gateway"}`, backend.Temporary, 502, 0, "Bad Gateway"},
+		{"T-ADJ-45/answer-not-json", 200, nil, `<html>proxy</html>`, backend.Temporary, 200, 0, "answer is not JSON"},
+		{"T-ADJ-45/error-page-not-json", 502, nil, `<html>bad gateway</html>`, backend.Temporary, 502, 0, "answer is not JSON"},
+		{"error-page-not-json-rejected", 404, nil, `<html>not found</html>`, backend.Permanent, 404, 0, "answer is not JSON"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			header := tc.header
+			if header == nil {
+				header = http.Header{}
+			}
+			err := parseResponse(&http.Response{StatusCode: tc.status, Header: header, Body: io.NopCloser(strings.NewReader(tc.body))})
+			if tc.wantClass == 0 {
+				if err != nil {
+					t.Fatalf("parseResponse() error = %v", err)
+				}
+				return
+			}
+			var deliveryErr *backend.Error
+			if !errors.As(err, &deliveryErr) {
+				t.Fatalf("parseResponse() error = %v, want *backend.Error", err)
+			}
+			if deliveryErr.Class != tc.wantClass || deliveryErr.Status != tc.wantStatus || deliveryErr.RetryAfter != tc.wantRetryAfter || !strings.Contains(err.Error(), tc.wantText) {
+				t.Errorf("error = %+v (%v), want class %v status %d retry after %v text %q", deliveryErr, err, tc.wantClass, tc.wantStatus, tc.wantRetryAfter, tc.wantText)
+			}
+		})
+	}
+}
+
+// TestSendTransportErrors pins distinct error texts for a timeout and a
+// refused connection, both temporary and without the token.
+func TestSendTransportErrors(t *testing.T) {
+	release := make(chan struct{})
+	hanging := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { <-release }))
+	defer hanging.Close()
+	defer close(release)
+	closed := httptest.NewServer(http.NotFoundHandler())
+	closed.Close()
+	cases := []struct {
+		name     string
+		url      string
+		wantText string
+	}{
+		{"T-ADJ-45/timeout", hanging.URL, "Client.Timeout exceeded"},
+		{"T-ADJ-45/connection-refused", closed.URL, "connection refused"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sender := New(Options{Token: testToken, ChatID: "1", APIURL: tc.url, Client: &http.Client{Timeout: 100 * time.Millisecond}})
+			err := sender.Send(context.Background(), backend.Payload{Text: "x"})
+			var deliveryErr *backend.Error
+			if !errors.As(err, &deliveryErr) || deliveryErr.Class != backend.Temporary || !strings.Contains(err.Error(), tc.wantText) {
+				t.Errorf("Send() error = %v, want temporary with %q", err, tc.wantText)
+			}
+			if err != nil && strings.Contains(err.Error(), testToken) {
+				t.Errorf("error text contains the token: %v", err)
+			}
+		})
+	}
+}
+
+// botAPI is a fake Bot API server. It checks the text of sendMessage the
+// way Telegram does: only the tags and entities of the HTML parse mode,
+// every tag closed, at most 4096 characters after entity parsing, counted
+// in UTF-16 units. A text that fails gets 400 with ok false.
+type botAPI struct {
+	server *httptest.Server
+	// failDocuments makes sendDocument answer 413.
+	failDocuments bool
+
+	mu        sync.Mutex
+	texts     []string
+	documents []document
+	rejected  []string
+}
+
+type document struct {
+	chatID, name, contentType, content string
+}
+
+func newBotAPI(t *testing.T) *botAPI {
+	t.Helper()
+	api := &botAPI{}
+	api.server = httptest.NewServer(http.HandlerFunc(api.serve))
+	t.Cleanup(api.server.Close)
+	return api
+}
+
+func (api *botAPI) sender(opts Options) *Sender {
+	opts.Token, opts.APIURL, opts.Client = testToken, api.server.URL, api.server.Client()
+	if opts.ChatID == "" {
+		opts.ChatID = "-100123"
+	}
+	return New(opts)
+}
+
+func (api *botAPI) serve(w http.ResponseWriter, r *http.Request) {
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+	switch r.URL.Path {
+	case "/bot" + testToken + "/sendMessage":
+		var msg struct {
+			Text      string `json:"text"`
+			ParseMode string `json:"parse_mode"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&msg); err != nil || msg.ParseMode != "HTML" {
+			http.Error(w, `{"ok":false,"error_code":400,"description":"Bad Request: no HTML"}`, http.StatusBadRequest)
+			return
+		}
+		length, err := parseBotHTML(msg.Text)
+		switch {
+		case err != nil:
+			api.rejected = append(api.rejected, err.Error())
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = fmt.Fprintf(w, `{"ok":false,"error_code":400,"description":%q}`, "Bad Request: can't parse entities: "+err.Error())
+			return
+		case length == 0 || length > 4096:
+			api.rejected = append(api.rejected, "length "+strconv.Itoa(length))
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, `{"ok":false,"error_code":400,"description":"Bad Request: message is too long"}`)
+			return
+		}
+		api.texts = append(api.texts, msg.Text)
+	case "/bot" + testToken + "/sendDocument":
+		if api.failDocuments {
+			w.WriteHeader(http.StatusRequestEntityTooLarge)
+			_, _ = io.WriteString(w, `{"ok":false,"error_code":413,"description":"Request Entity Too Large"}`)
+			return
+		}
+		file, header, err := r.FormFile("document")
+		if err != nil {
+			http.Error(w, `{"ok":false,"error_code":400,"description":"Bad Request: no document"}`, http.StatusBadRequest)
+			return
+		}
+		content, _ := io.ReadAll(file)
+		api.documents = append(api.documents, document{r.FormValue("chat_id"), header.Filename, header.Header.Get("Content-Type"), string(content)})
+	default:
+		http.Error(w, `{"ok":false,"error_code":404,"description":"Not Found"}`, http.StatusNotFound)
+		return
+	}
+	_, _ = io.WriteString(w, `{"ok":true,"result":{"message_id":1}}`)
+}
+
+// botTags are the tags of the HTML parse mode.
+var botTags = map[string]bool{
+	"b": true, "strong": true, "i": true, "em": true, "u": true, "ins": true, "s": true, "strike": true, "del": true,
+	"span": true, "tg-spoiler": true, "a": true, "tg-emoji": true, "code": true, "pre": true, "blockquote": true,
+}
+
+// botEntities are the named entities of the HTML parse mode.
+var botEntities = map[string]rune{"lt": '<', "gt": '>', "amp": '&', "quot": '"'}
+
+// parseBotHTML returns the length of the visible text in UTF-16 units, or
+// the error Telegram would report. It is written independently of
+// text.MeasureTelegramHTML, which it checks.
+func parseBotHTML(s string) (int, error) {
+	var open []string
+	length := 0
+	for i := 0; i < len(s); {
+		switch s[i] {
+		case '<':
+			end := strings.IndexByte(s[i:], '>')
+			if end < 0 {
+				return 0, fmt.Errorf("unclosed start tag at byte offset %d", i)
+			}
+			tag := s[i+1 : i+end]
+			name, _, _ := strings.Cut(strings.TrimPrefix(tag, "/"), " ")
+			if !botTags[strings.ToLower(name)] {
+				return 0, fmt.Errorf("unsupported start tag %q at byte offset %d", name, i)
+			}
+			if strings.HasPrefix(tag, "/") {
+				if len(open) == 0 || open[len(open)-1] != name {
+					return 0, fmt.Errorf("unmatched end tag %q", name)
+				}
+				open = open[:len(open)-1]
+			} else {
+				open = append(open, name)
+			}
+			i += end + 1
+		case '&':
+			end := strings.IndexByte(s[i:], ';')
+			if end < 0 {
+				return 0, fmt.Errorf("unterminated entity at byte offset %d", i)
+			}
+			name := s[i+1 : i+end]
+			r, ok := botEntities[name]
+			if code, found := strings.CutPrefix(name, "#"); found {
+				n, err := strconv.ParseUint(code, 10, 32)
+				r, ok = rune(n), err == nil
+			}
+			if !ok {
+				return 0, fmt.Errorf("unsupported entity %q", name)
+			}
+			length += utf16.RuneLen(r)
+			i += end + 1
+		case '>':
+			return 0, fmt.Errorf("bare > at byte offset %d", i)
+		default:
+			r, size := utf8.DecodeRuneInString(s[i:])
+			length += utf16.RuneLen(r)
+			i += size
+		}
+	}
+	if len(open) > 0 {
+		return 0, fmt.Errorf("unclosed tags %q", open)
+	}
+	return length, nil
+}
+
+// deliverTo renders d with the built-in telegram-html template and sends
+// it with sender through delivery.Deliver, as a real invocation does.
+func deliverTo(t *testing.T, sender *Sender, d render.Data, files []message.Attachment) delivery.Result {
+	t.Helper()
+	tmpl, err := render.Builtin(text.FormatTelegramHTML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.Strings = render.DefaultStrings()
+	return delivery.Deliver(context.Background(), []delivery.Target{{ID: "tg", Sender: sender, Template: tmpl}}, d, files)[0]
+}
+
+func TestDeliverTelegramHTML(t *testing.T) {
+	t.Run("long-body-with-markup-and-cyrillic", func(t *testing.T) {
+		api := newBotAPI(t)
+		body := strings.Repeat("&<> ёжик & <b>x</b> 😀\n", 5000)
+		if len(body) < 100<<10 {
+			t.Fatalf("body of %d bytes, want 100 KiB or more", len(body))
+		}
+		result := deliverTo(t, api.sender(Options{}), render.Data{Subject: "disk <raid> & more", Hostname: "h", Body: body}, nil)
+		if result.Status != delivery.OK || !result.IsTruncated || len(api.texts) != 1 {
+			t.Fatalf("result = %+v, rejected: %q", result, api.rejected)
+		}
+		if n, _ := parseBotHTML(api.texts[0]); n > 4096 || n < 4000 || n != text.MeasureTelegramHTML(api.texts[0]) {
+			t.Errorf("text of %d UTF-16 units, MeasureTelegramHTML %d; want the same, close to 4096", n, text.MeasureTelegramHTML(api.texts[0]))
+		}
+	})
+	t.Run("T-ESC-06/tags-outside-whitelist-literal", func(t *testing.T) {
+		api := newBotAPI(t)
+		result := deliverTo(t, api.sender(Options{}), render.Data{Subject: "s", Hostname: "h", Body: "<p>one</p><div>two</div><script>alert(1)</script>\n"}, nil)
+		if result.Status != delivery.OK || len(api.texts) != 1 || !strings.Contains(api.texts[0], "&lt;script&gt;alert(1)&lt;/script&gt;") {
+			t.Errorf("result = %+v, texts %q, rejected %q", result, api.texts, api.rejected)
+		}
+	})
+	t.Run("T-ADJ-41/markup-characters-escaped", func(t *testing.T) {
+		api := newBotAPI(t)
+		d := render.Data{Subject: "a < b & c > d", Hostname: "h&h", From: message.Address{Name: "<Cron & Co>", Addr: "root"}, Body: "x < y && z > 0\n"}
+		result := deliverTo(t, api.sender(Options{}), d, nil)
+		if result.Status != delivery.OK || len(api.texts) != 1 {
+			t.Fatalf("result = %+v, rejected %q", result, api.rejected)
+		}
+		for _, want := range []string{"a &lt; b &amp; c &gt; d", "h&amp;h", "&lt;Cron &amp; Co&gt; &lt;root&gt;", "x &lt; y &amp;&amp; z &gt; 0"} {
+			if !strings.Contains(api.texts[0], want) {
+				t.Errorf("text lacks %q: %q", want, api.texts[0])
+			}
+		}
+	})
+	t.Run("T-LIM-02/limit-counts-characters-not-bytes", func(t *testing.T) {
+		api := newBotAPI(t)
+		body := strings.Repeat("ж", 4000)
+		result := deliverTo(t, api.sender(Options{}), render.Data{Subject: "s", Hostname: "h", Body: body}, nil)
+		if result.Status != delivery.OK || result.IsTruncated || len(api.texts) != 1 || !strings.Contains(api.texts[0], body) || len(api.texts[0]) <= 4096 {
+			t.Errorf("result = %+v, %d texts, rejected %q", result, len(api.texts), api.rejected)
+		}
+	})
+}
+
+func TestDeliverTelegramDocuments(t *testing.T) {
+	files := []message.Attachment{
+		{Name: `report "1".log`, ContentType: "text/plain", Data: []byte("report one")},
+		{Name: "dump.bin", ContentType: "application/octet-stream", Size: maxFileSize + 1, Data: make([]byte, maxFileSize+1)},
+		{Name: "", Data: []byte("unnamed")},
+	}
+	d := render.Data{Subject: "s", Hostname: "h", Body: "b\n"}
+	for _, f := range files {
+		d.Attachments = append(d.Attachments, render.Attachment{Name: f.Name, ContentType: f.ContentType, Size: int64(len(f.Data))})
+	}
+	t.Run("T-LIM-07/file-over-50-mb-noted", func(t *testing.T) {
+		api := newBotAPI(t)
+		result := deliverTo(t, api.sender(Options{ChatID: "@ops"}), d, files)
+		if result.Status != delivery.OK || result.Err != nil || len(api.texts) != 1 {
+			t.Fatalf("result = %+v, rejected %q", result, api.rejected)
+		}
+		if !strings.Contains(api.texts[0], "dump.bin (application/octet-stream, 47.7 MiB) [not sent]") || strings.Count(api.texts[0], "[not sent]") != 1 {
+			t.Errorf("text does not note the skipped file: %q", api.texts[0])
+		}
+		want := []document{{"@ops", `report "1".log`, "text/plain", "report one"}, {"@ops", "attachment-3", "application/octet-stream", "unnamed"}}
+		if fmt.Sprint(api.documents) != fmt.Sprint(want) {
+			t.Errorf("documents = %q, want %q", api.documents, want)
+		}
+	})
+	t.Run("document-failure-is-partial", func(t *testing.T) {
+		api := newBotAPI(t)
+		api.failDocuments = true
+		result := deliverTo(t, api.sender(Options{}), d, files)
+		var deliveryErr *backend.Error
+		if result.Status != delivery.OK || !errors.As(result.Err, &deliveryErr) || !deliveryErr.IsPartial || deliveryErr.Status != 413 || len(api.texts) != 1 {
+			t.Errorf("result = %+v", result)
+		}
+		if !strings.Contains(result.Err.Error(), "document 1 of 2") {
+			t.Errorf("error %q does not name the document", result.Err)
+		}
+	})
+}

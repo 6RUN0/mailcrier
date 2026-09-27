@@ -221,7 +221,7 @@ func TestRunRejectsConfiguration(t *testing.T) {
 		{"unknown-key", httpTargetConfig("http://127.0.0.1:1") + "colour = \"red\"\n", `unknown key \"target.hook.colour\"`},
 		{"unparsable", "[target.hook\n", "expected"},
 		{"no-targets", "", "no targets configured"},
-		{"type-not-implemented", "[target.tg]\ntype = \"telegram\"\ntoken = \"1:a\"\n", `type \"telegram\" is not implemented`},
+		{"type-not-implemented", "[target.run]\ntype = \"exec\"\nargv = [\"/bin/true\"]\n", `type \"exec\" is not implemented`},
 		{"preset-not-implemented", "[target.mm]\ntype = \"http\"\nurl = \"http://127.0.0.1:1\"\npreset = \"mattermost\"\n", `preset \"mattermost\" is not implemented`},
 	}
 	for _, tc := range cases {

@@ -191,13 +191,33 @@ func TestLoadRejects(t *testing.T) {
 			want: `:3:1: target "dc": value of key "url" is not an absolute http or https URL`,
 		},
 		{
+			name: "chat-id-missing",
+			doc:  "[target.tg]\ntype = \"telegram\"\ntoken = \"1:a\"\n",
+			want: `:1:9: target "tg": key "chat_id" is required`,
+		},
+		{
+			name: "chat-id-empty",
+			doc:  "[target.tg]\ntype = \"telegram\"\ntoken = \"1:a\"\nchat_id = \"\"\n",
+			want: `:4:1: target "tg": value of key "chat_id" must be an integer or a string that is not blank`,
+		},
+		{
+			name: "chat-id-blank",
+			doc:  "[target.tg]\ntype = \"telegram\"\ntoken = \"1:a\"\nchat_id = \"  \"\n",
+			want: `:4:1: target "tg": value of key "chat_id" must be an integer or a string that is not blank`,
+		},
+		{
+			name: "chat-id-float",
+			doc:  "[target.tg]\ntype = \"telegram\"\ntoken = \"1:a\"\nchat_id = 1.5\n",
+			want: `:4:1: target "tg": value of key "chat_id" must be an integer or a string that is not blank`,
+		},
+		{
 			name: "blank-token",
-			doc:  "[target.tg]\ntype = \"telegram\"\ntoken = \"   \"\n",
+			doc:  "[target.tg]\ntype = \"telegram\"\ntoken = \"   \"\nchat_id = \"1\"\n",
 			want: `:3:1: target "tg": value of key "token" is empty`,
 		},
 		{
 			name: "empty-token",
-			doc:  "[target.tg]\ntype = \"telegram\"\ntoken = \"\"\n",
+			doc:  "[target.tg]\ntype = \"telegram\"\ntoken = \"\"\nchat_id = \"1\"\n",
 			want: `:3:1: target "tg": value of key "token" is empty`,
 		},
 		{
@@ -276,6 +296,21 @@ const readmeConfigHeading = "## Configuration (cmd/slendmail)"
 
 var tomlBlock = regexp.MustCompile("(?s)```toml\n(.*?)```")
 
+// TestLoadChatID pins that chat_id takes the integer form of the Bot API
+// examples as well as a string, and yields the same chat.
+func TestLoadChatID(t *testing.T) {
+	for _, value := range []string{"-1001234567890", "\"-1001234567890\"", "\" -1001234567890 \""} {
+		cfg, err := load(t, "[target.tg]\ntype = \"telegram\"\ntoken = \"1:a\"\nchat_id = "+value+"\n", nil)
+		if err != nil || cfg.Targets["tg"].ChatID != "-1001234567890" {
+			t.Errorf("chat_id = %s: err %v, ChatID %q", value, err, cfg.Targets["tg"].ChatID)
+		}
+	}
+	cfg, err := load(t, "[target.tg]\ntype = \"telegram\"\ntoken = \"1:a\"\nchat_id = \"@ops\"\n", nil)
+	if err != nil || cfg.Targets["tg"].ChatID != "@ops" {
+		t.Errorf("chat_id = @ops: err %v", err)
+	}
+}
+
 func TestReadmeExamplesLoad(t *testing.T) {
 	readme, err := os.ReadFile("../../README.md")
 	if err != nil {
@@ -287,7 +322,7 @@ func TestReadmeExamplesLoad(t *testing.T) {
 		t.Fatalf("README section %q has no toml block", readmeConfigHeading)
 	}
 	secrets := fstest.MapFS{}
-	for _, name := range []string{"etc/slendmail.d/hook.url"} {
+	for _, name := range []string{"etc/slendmail.d/hook.url", "etc/slendmail.d/tg.token"} {
 		secrets[name] = &fstest.MapFile{Data: []byte("https://hooks.example.org/in/secret\n")}
 	}
 	for i, block := range blocks {
