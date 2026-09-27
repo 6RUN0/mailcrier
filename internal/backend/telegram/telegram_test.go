@@ -392,3 +392,32 @@ func TestDeliverTelegramDocuments(t *testing.T) {
 		}
 	})
 }
+
+// FuzzTelegramText checks that any subject and body, fitted to the limit
+// of the target, give a text the Bot API parses and accepts: known tags
+// only, all closed, entities whole, at most 4096 UTF-16 units, as
+// MeasureTelegramHTML counts them.
+func FuzzTelegramText(f *testing.F) {
+	f.Add("disk <raid> & more", strings.Repeat("&<> ёжик 😀\n", 400))
+	f.Add("", "")
+	f.Add("&amp;", "<pre>&#128512;</pre>")
+	tmpl, err := render.Builtin(text.FormatTelegramHTML)
+	if err != nil {
+		f.Fatal(err)
+	}
+	caps := (&Sender{}).Caps()
+	f.Fuzz(func(t *testing.T, subject, body string) {
+		if !utf8.ValidString(subject) || !utf8.ValidString(body) {
+			return
+		}
+		d := render.Data{Subject: subject, Hostname: "h", Body: body, Strings: render.DefaultStrings()}
+		out, _, err := render.Fit(tmpl, d, caps.MaxText, caps.Measure)
+		if err != nil {
+			t.Fatal(err)
+		}
+		length, err := parseBotHTML(out)
+		if err != nil || length == 0 || length > caps.MaxText || length != caps.Measure(out) {
+			t.Errorf("Bot API would reject %q: length %d, measured %d, err %v", out, length, caps.Measure(out), err)
+		}
+	})
+}
