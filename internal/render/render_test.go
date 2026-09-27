@@ -98,6 +98,22 @@ func TestNewDataHidesBcc(t *testing.T) {
 	})
 }
 
+// TestNewDataBoundsFrom pins the cut of an endless sender, which Fit does
+// not shorten: the Telegram text still fits with the body.
+func TestNewDataBoundsFrom(t *testing.T) {
+	d := readData(t, "From: "+strings.Repeat("Cron Daemon ", 1000)+"<root@example.org>\nSubject: s\n\nbody\n")
+	if n := utf8.RuneCountInString(d.From.Name); n > maxFromLength || n < maxFromLength-len("Cron Daemon ") || d.From.Addr != "root@example.org" {
+		t.Fatalf("From = %d characters of name, address %q", n, d.From.Addr)
+	}
+	tmpl, err := Builtin(text.FormatTelegramHTML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, _, err := Fit(tmpl, d, 4096, text.MeasureTelegramHTML); err != nil || !strings.Contains(out, "body") {
+		t.Errorf("Fit() = %q, err %v", out, err)
+	}
+}
+
 func TestNewDataFromFallsBackToSender(t *testing.T) {
 	d := readData(t, "Subject: s\n\nbody\n")
 	if d.From != (message.Address{Addr: "root@host1.example.org"}) {

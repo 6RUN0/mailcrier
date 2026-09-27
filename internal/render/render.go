@@ -96,9 +96,17 @@ type Data struct {
 	Strings Strings
 }
 
+// maxFromLength bounds the name and the address of Data.From in
+// characters. Fit cuts subject, body and attachments but not the sender,
+// so an endless display name in From would leave no room for the rest,
+// and a strict format would lose the message to ErrLimitTooSmall. The
+// host name needs no bound: the kernel keeps it to 64 bytes.
+const maxFromLength = 256
+
 // NewData returns the data of msg for a template. The blind copies route
 // the message but appear nowhere in the data, not even among the
-// recipients, unless To, Cc, Resent-To or Resent-Cc name them too. The
+// recipients, unless To, Cc, Resent-To or Resent-Cc name them too. Name
+// and address of From are cut to maxFromLength characters at a word. The
 // caller sets Hostname, ReceivedAt, Target and Limit.
 func NewData(msg *message.Message, env message.Envelope, blind message.BlindCopies) Data {
 	visible := map[string]bool{}
@@ -125,6 +133,7 @@ func NewData(msg *message.Message, env message.Envelope, blind message.BlindCopi
 	if from == (message.Address{}) {
 		from = message.Address{Name: env.SenderName, Addr: env.Sender}
 	}
+	from.Name, from.Addr = text.CutAtWord(from.Name, maxFromLength), text.CutAtWord(from.Addr, maxFromLength)
 	attachments := make([]Attachment, 0, len(msg.Attachments))
 	for _, a := range msg.Attachments {
 		attachments = append(attachments, Attachment{Name: a.Name, ContentType: a.ContentType, Size: a.Size})
