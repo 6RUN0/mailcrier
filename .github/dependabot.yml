@@ -73,7 +73,9 @@ updates:
           - minor
           - patch
   - package-ecosystem: docker
-    directory: "/testdata/setgid-e2e"
+    directories:
+      - "/testdata/setgid-e2e"
+      - "/testdata/units-verify"
     schedule:
       interval: daily
     cooldown:

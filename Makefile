@@ -39,7 +39,13 @@ FUZZ_TARGETS := ./internal/app:FuzzSanitize ./internal/sendmail:FuzzParse ./inte
 E2E_DIR := $(CURDIR)/.e2e
 E2E_IMAGE := slendmail-setgid-e2e
 
-.PHONY: check lint lint-go lint-yaml lint-actions tidy test fuzz build licenses vuln check-refs check-commits snapshot setgid-e2e
+# units-verify runs systemd-analyze verify on the queue units with the
+# binary and the manual page in place, so that ExecStart and
+# Documentation are checked too; the image is testdata/units-verify.
+UNITS_IMAGE := slendmail-units-verify
+UNITS := slendmail-queue.service slendmail-queue.timer
+
+.PHONY: check lint lint-go lint-yaml lint-actions tidy test fuzz build licenses vuln check-refs check-commits snapshot setgid-e2e units-verify
 
 check: lint tidy test fuzz build licenses check-refs check-commits
 	-$(MAKE) vuln
@@ -93,3 +99,13 @@ setgid-e2e:
 	docker build -t $(E2E_IMAGE) testdata/setgid-e2e
 	docker run --rm --network none --cap-add SYS_PTRACE -v $(E2E_DIR):/e2e:ro $(E2E_IMAGE) \
 		/e2e/app.test -test.run '^TestSetgidReexec$$' -test.v -slendmail-binary /e2e/slendmail
+
+units-verify:
+	mkdir -p $(E2E_DIR)
+	CGO_ENABLED=0 $(GO) build -o $(E2E_DIR)/slendmail ./cmd/slendmail
+	docker build -t $(UNITS_IMAGE) testdata/units-verify
+	docker run --rm --network none \
+		-v $(E2E_DIR)/slendmail:/usr/sbin/slendmail:ro \
+		-v $(CURDIR)/docs/slendmail.8:/usr/share/man/man8/slendmail.8:ro \
+		$(foreach unit,$(UNITS),-v $(CURDIR)/packaging/systemd/$(unit):/etc/systemd/system/$(unit):ro) \
+		$(UNITS_IMAGE) systemd-analyze verify $(addprefix /etc/systemd/system/,$(UNITS))

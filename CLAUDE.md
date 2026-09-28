@@ -11,6 +11,7 @@ make lint         # other targets: tidy test fuzz build licenses vuln
                   # check-refs check-commits snapshot
 make fuzz FUZZTIME=10m   # longer fuzzing; check runs each target 10s
 make setgid-e2e   # needs docker: TestSetgidReexec in a root container
+make units-verify # needs docker: systemd-analyze verify of packaging/systemd
 go build -o slendmail ./cmd/slendmail   # the binary; the name is gitignored
 SLENDMAIL_TELEGRAM_ENV=/path/to/telegram.env \
   go test -run TestLiveTelegram ./internal/backend/telegram   # real Bot API
@@ -42,12 +43,12 @@ mandoc -T lint docs/slendmail.8         # man page; not part of make check
 - A manual run of the new binary reads `/etc/slendmail.conf`, or the file
   in `SLENDMAIL_CONFIG` or `--config` (honoured when not setgid-elevated).
 
-CI: `.github/workflows/ci.yml` runs `make check`, `make snapshot` and
-`make setgid-e2e` on push and PR to `develop` (the main branch) and a
-blocking `make vuln` daily; CodeQL runs on `develop`. Actions are pinned by
-commit SHA with the version in a comment, the e2e image
-(`testdata/setgid-e2e/Dockerfile`) by digest. Dependabot waits 7 days
-before proposing a new version.
+CI: `.github/workflows/ci.yml` runs `make check`, `make snapshot`,
+`make setgid-e2e` and `make units-verify` on push and PR to `develop` (the
+main branch) and a blocking `make vuln` daily; CodeQL runs on `develop`.
+Actions are pinned by commit SHA with the version in a comment, the e2e
+images (`testdata/setgid-e2e/Dockerfile`, `testdata/units-verify/Dockerfile`)
+by digest. Dependabot waits 7 days before proposing a new version.
 
 ## Architecture
 
