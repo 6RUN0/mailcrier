@@ -1,4 +1,4 @@
-.Dd September 27, 2026
+.Dd September 28, 2026
 .Dt SLENDMAIL 8
 .Os
 .Sh NAME
@@ -19,7 +19,7 @@
 .Op Fl -
 .Op Ar recipient ...
 .Nm
-.Fl -version | -help
+.Fl -version | -help | -status
 .Nm newaliases
 .Nm mailq
 .Sh DESCRIPTION
@@ -134,6 +134,62 @@ is cut, to 40000 characters.
 429 and 5xx answers, and any answer with a Retry-After header, are temporary
 failures; other rejections are permanent.
 A target that took the text but not all files counts as delivered.
+.Sh QUEUE
+Before the delivery the message is written to the spool,
+.Pa /var/spool/slendmail
+unless
+.Ic dir
+of the
+.Li "[spool]"
+table names another directory or is empty, which turns the spool off.
+The entry keeps the raw message and the state of each target; it is removed
+once every target has the message or has rejected it.
+A target that fails temporarily is tried again by a later queue run, one
+minute after the first failure, twice as long after each further failure, at
+most after 24 hours and never before the Retry-After of the service; later
+entries skip a target that asked for a delay until it ends.
+An entry older than 7 days moves to
+.Pa failed/ ,
+which keeps it 30 days; for a message that was held the 7 days count from
+its release.
+A retry renders the message with the configuration of the moment, to the
+targets fixed when it was queued; a target no longer configured fails for it.
+Delivery is at least once: a process killed after a service accepted the
+message, a timeout after that, or a power failure repeats the delivery.
+.Pp
+A message whose configuration is rejected is kept in
+.Pa hold/ ,
+in the default spool when the file cannot be read at all; the next queue run
+with a valid configuration sends it to every target, and
+.Fl q
+moves it from the default spool when the valid file names another
+.Ic dir .
+.Pp
+A call runs the queue briefly after its own message: the caller's entries
+only, at most 20 of them within 10 seconds, skipped when another call of the
+same user runs it.
+.Fl q
+runs it for up to 60 seconds: all entries for root, the
+.Li slendmail
+user and a caller without the setgid bit, the caller's own entries for
+everyone else.
+An entry another process is working on is skipped.
+The packages run
+.Fl q
+as
+.Li slendmail
+every 5 minutes, by a systemd timer or by cron.
+.Pp
+The spool holds at most 1000 messages and 256 MiB, and 200 messages and
+64 MiB per user; users other than root and
+.Li slendmail
+fill at most 80% of the totals.
+A message over a limit is delivered without an entry.
+The spool must be on a local file system: the locks do not work over NFS.
+Missing areas are created in an existing directory; with the setgid bit the
+packages create them, owned by root and the
+.Li slendmail
+group, mode 2770.
 .Sh OPTIONS
 .Bl -tag -width Ds
 .It Fl f Ar sender , Fl r Ar sender
@@ -164,7 +220,9 @@ lists the queue;
 .Cm s
 is refused with exit status 64; other modes are ignored with a warning.
 .It Fl q Ns Op Ar interval
-Runs the queue once; the interval is ignored.
+Runs the queue once, see
+.Sx QUEUE ;
+the interval is ignored.
 .It Fl I
 Does nothing, like
 .Fl bi .
@@ -184,13 +242,22 @@ bit of the binary applies to a caller other than root.
 Print the version.
 .It Fl -help
 Print a usage summary.
+.It Fl -status
+Print the numbers of queued, held and failed messages, the files in
+.Pa tmp/ ,
+the bytes of the spool and the age of the oldest entry as one logfmt line.
 .El
 .Pp
 Called as
 .Nm newaliases
 the program does nothing; called as
-.Nm mailq
-it lists the queue.
+.Nm mailq ,
+or with
+.Fl bp ,
+it lists the queue: every entry with the state of each target for root, the
+.Li slendmail
+user and a caller without the setgid bit, the numbers alone for everyone
+else; a spool directory that does not exist lists as empty.
 .Sh ENVIRONMENT
 .Bl -tag -width Ds
 .It Ev SLENDMAIL_CONFIG
@@ -206,12 +273,18 @@ applies.
 .Bl -tag -width Ds
 .It Pa /etc/slendmail.conf
 The configuration.
+.It Pa /var/spool/slendmail/queue/ , Pa hold/ , Pa failed/
+Entries: the message and its state beside it.
+.It Pa /var/spool/slendmail/tmp/
+Files being written; a queue run removes those older than one hour.
+.It Pa /var/spool/slendmail/locks/
+Queue run locks, one per user.
 .El
 .Sh EXIT STATUS
 .Bl -tag -width Ds
 .It 0
-At least one target accepted the message, or a mode without a message
-succeeded.
+At least one target accepted the message, the rest is queued, or a mode
+without a message succeeded.
 .It 64
 Usage error: a sender flag without a value, a line break in an address
 or in the full name,
@@ -220,13 +293,23 @@ or a mode that does not exist yet.
 .It 66
 Standard input cannot be read.
 .It 69
-No target accepted the message.
+No target accepted the message: one rejected it, or all failed temporarily
+with the spool off.
 .It 70
 Internal error.
+.It 73
+A target failed temporarily and the spool entry could not be created: the
+directory is missing or not writable, or a limit is reached.
+.It 74
+A target failed temporarily and the spool entry could not be written,
+.Fl q
+could not read the spool, or
+.Fl -status
+found no spool directory.
 .It 77
 A service mode requested by a caller without the right to it.
 .It 78
-The configuration cannot be read or is invalid.
+The configuration cannot be read or is invalid; the message is held.
 .El
 .Sh SEE ALSO
 .Xr syslog 3 ,

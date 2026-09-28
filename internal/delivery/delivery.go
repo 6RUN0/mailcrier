@@ -19,6 +19,8 @@ import (
 const (
 	exitOK          = 0
 	exitUnavailable = 69
+	exitCantCreate  = 73
+	exitIOErr       = 74
 )
 
 // Target is a configured destination.
@@ -85,11 +87,21 @@ type Result struct {
 // permanent failure of that target: the others still deliver, and the
 // value goes into the error, which the caller logs redacted.
 func Deliver(ctx context.Context, targets []Target, d render.Data, files []message.Attachment) []Result {
+	return DeliverEach(ctx, targets, d, files, nil)
+}
+
+// DeliverEach is Deliver that also passes each result to done as soon as
+// its target is finished, so that the caller can record it before the
+// slowest target returns. done is called from several goroutines at once.
+func DeliverEach(ctx context.Context, targets []Target, d render.Data, files []message.Attachment, done func(Result)) []Result {
 	results := make([]Result, len(targets))
 	var wg sync.WaitGroup
 	for i, target := range targets {
 		wg.Go(func() {
 			results[i] = deliverOne(ctx, target, d, files)
+			if done != nil {
+				done(results[i])
+			}
 		})
 	}
 	wg.Wait()
@@ -178,28 +190,63 @@ func statusOf(err error) Status {
 	}
 }
 
+// Queue is what happened to the spool entry of a message.
+type Queue uint8
+
+const (
+	// QueueOff means the spool is turned off.
+	QueueOff Queue = iota
+	// Queued means the entry was written before the delivery, so a target
+	// that failed temporarily gets the message on a later run.
+	Queued
+	// QueueNotCreated means no entry file could be created: the spool
+	// directory is missing or not writable, or a quota is exhausted.
+	QueueNotCreated
+	// QueueNotWritten means writing, syncing or renaming the entry failed.
+	QueueNotWritten
+)
+
 // ExitCode returns the process exit status for the results of one message
-// when no spool is available to keep temporary failures.
+// and what happened to its spool entry. The rules apply in order:
 //
-// One accepted delivery makes the whole call a success: a non-zero status
-// makes cron mail the failure report through this very program, which
-// multiplies the noise without delivering anything. A message suppressed
-// for every target is handled as intended and succeeds too. Without a
-// spool a temporary failure is as final as a permanent one, so when
-// nothing was delivered the status is 69 either way; 75 would claim the
-// message was queued.
-func ExitCode(results []Result) int {
-	suppressed := 0
+//   - a temporary failure without an entry exits 73 when the entry could
+//     not be created and 74 when it could not be written: the message is
+//     lost for that target, which the caller must learn;
+//   - one accepted delivery, or suppression for every target, exits 0: a
+//     non-zero status makes cron mail the failure report through this
+//     very program, which multiplies the noise without delivering
+//     anything;
+//   - a permanent failure exits 69;
+//   - temporary failures kept in the spool exit 0, as a classic MTA does
+//     for a queued message; 75 would make cron and smartd report a
+//     failure;
+//   - temporary failures without a spool exit 69 like permanent ones.
+func ExitCode(results []Result, queue Queue) int {
+	var ok, temp, perm, suppressed int
 	for _, r := range results {
 		switch r.Status {
 		case OK:
-			return exitOK
+			ok++
+		case Temp:
+			temp++
+		case Perm:
+			perm++
 		case Suppressed:
 			suppressed++
 		}
 	}
-	if suppressed > 0 && suppressed == len(results) {
+	switch {
+	case temp > 0 && queue == QueueNotCreated:
+		return exitCantCreate
+	case temp > 0 && queue == QueueNotWritten:
+		return exitIOErr
+	case ok > 0, suppressed > 0 && suppressed == len(results):
 		return exitOK
+	case perm > 0:
+		return exitUnavailable
+	case temp > 0 && queue == Queued:
+		return exitOK
+	default:
+		return exitUnavailable
 	}
-	return exitUnavailable
 }

@@ -98,7 +98,7 @@ setgid-e2e:
 	CGO_ENABLED=0 $(GO) test -c -tags setgid_e2e -o $(E2E_DIR)/app.test ./internal/app
 	docker build -t $(E2E_IMAGE) testdata/setgid-e2e
 	docker run --rm --network none --cap-add SYS_PTRACE -v $(E2E_DIR):/e2e:ro $(E2E_IMAGE) \
-		/e2e/app.test -test.run '^TestSetgidReexec$$' -test.v -slendmail-binary /e2e/slendmail
+		/e2e/app.test -test.run '^TestSetgid' -test.v -slendmail-binary /e2e/slendmail
 
 units-verify:
 	mkdir -p $(E2E_DIR)

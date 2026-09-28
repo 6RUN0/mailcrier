@@ -106,11 +106,42 @@ func TestDeliverInParallel(t *testing.T) {
 	go func() { done <- Deliver(context.Background(), targets, testData(), nil) }()
 	select {
 	case results := <-done:
-		if ExitCode(results) != 0 {
+		if ExitCode(results, QueueOff) != 0 {
 			t.Errorf("results = %+v", results)
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("Deliver calls the targets one after another")
+	}
+}
+
+// TestDeliverEachReportsEarly pins that the result of a finished target
+// reaches the caller while another target still runs: the spool records
+// it at once, so a crash later does not repeat that target.
+func TestDeliverEachReportsEarly(t *testing.T) {
+	fastDone := make(chan struct{})
+	fast := &fakeSender{send: func(context.Context, backend.Payload) error { return nil }}
+	slow := &fakeSender{send: func(ctx context.Context, _ backend.Payload) error {
+		select {
+		case <-fastDone:
+			return nil
+		case <-ctx.Done():
+			return &backend.Error{Class: backend.Temporary, Err: ctx.Err()}
+		}
+	}}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	var mu sync.Mutex
+	var order []string
+	results := DeliverEach(ctx, []Target{{ID: "slow", Sender: slow, Template: plainTemplate(t)}, {ID: "fast", Sender: fast, Template: plainTemplate(t)}}, testData(), nil, func(r Result) {
+		mu.Lock()
+		defer mu.Unlock()
+		order = append(order, r.TargetID)
+		if r.TargetID == "fast" {
+			close(fastDone)
+		}
+	})
+	if results[0].Status != OK || results[1].Status != OK || !slices.Equal(order, []string{"fast", "slow"}) {
+		t.Errorf("results = %+v, done order %v, want both OK, fast first", results, order)
 	}
 }
 
@@ -126,7 +157,7 @@ func TestDeliverRecoversPanic(t *testing.T) {
 		if results[0].Status != Perm || results[0].Err == nil || !strings.Contains(results[0].Err.Error(), "bug in sender") {
 			t.Errorf("panicking target: %+v", results[0])
 		}
-		if results[1].Status != OK || ExitCode(results) != 0 {
+		if results[1].Status != OK || ExitCode(results, QueueOff) != 0 {
 			t.Errorf("other target: %+v", results[1])
 		}
 	})
@@ -207,24 +238,33 @@ func TestDeliverSelectsFiles(t *testing.T) {
 	}
 }
 
-// TestExitCode has one subtest per row of the exit status matrix that
-// applies without a spool, named after the situation.
+// TestExitCode has one subtest per row of the exit status matrix, named
+// after the situation.
 func TestExitCode(t *testing.T) {
 	cases := []struct {
 		name     string
 		statuses []Status
+		queue    Queue
 		want     int
 	}{
-		{"all-ok", []Status{OK, OK}, 0},
-		{"ok-and-suppressed", []Status{Suppressed, OK}, 0},
-		{"all-suppressed", []Status{Suppressed, Suppressed}, 0},
-		{"ok-and-perm", []Status{OK, Perm}, 0},
-		{"ok-and-temp-without-spool", []Status{Temp, OK}, 0},
-		{"all-perm", []Status{Perm, Perm}, 69},
-		{"perm-and-temp", []Status{Temp, Perm}, 69},
-		{"suppressed-and-perm", []Status{Suppressed, Perm}, 69},
-		{"all-temp-without-spool", []Status{Temp, Temp}, 69},
-		{"no-results", nil, 69},
+		{"T-MTA-36/temp-and-entry-not-created", []Status{Temp, Temp}, QueueNotCreated, 73},
+		{"ok-temp-and-entry-not-created", []Status{OK, Temp}, QueueNotCreated, 73},
+		{"T-MTA-36/temp-and-entry-not-written", []Status{Temp, OK}, QueueNotWritten, 74},
+		{"ok-and-entry-not-created", []Status{OK, Perm}, QueueNotCreated, 0},
+		{"all-ok", []Status{OK, OK}, QueueOff, 0},
+		{"ok-and-suppressed", []Status{Suppressed, OK}, Queued, 0},
+		{"all-suppressed", []Status{Suppressed, Suppressed}, QueueOff, 0},
+		{"ok-and-temp-queued", []Status{Temp, OK}, Queued, 0},
+		{"ok-and-perm", []Status{OK, Perm}, Queued, 0},
+		{"perm-and-temp-queued", []Status{Temp, Perm}, Queued, 69},
+		{"all-perm", []Status{Perm, Perm}, Queued, 69},
+		{"suppressed-and-perm", []Status{Suppressed, Perm}, QueueOff, 69},
+		{"T-MTA-36/all-temp-queued", []Status{Temp, Temp}, Queued, 0},
+		{"temp-and-suppressed-queued", []Status{Temp, Suppressed}, Queued, 0},
+		{"all-temp-without-spool", []Status{Temp, Temp}, QueueOff, 69},
+		{"ok-and-temp-without-spool", []Status{Temp, OK}, QueueOff, 0},
+		{"perm-and-temp-without-spool", []Status{Temp, Perm}, QueueOff, 69},
+		{"no-results", nil, QueueOff, 69},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -232,8 +272,8 @@ func TestExitCode(t *testing.T) {
 			for i, s := range tc.statuses {
 				results[i] = Result{Status: s}
 			}
-			if got := ExitCode(results); got != tc.want {
-				t.Errorf("ExitCode(%v) = %d, want %d", tc.statuses, got, tc.want)
+			if got := ExitCode(results, tc.queue); got != tc.want {
+				t.Errorf("ExitCode(%v, %d) = %d, want %d", tc.statuses, tc.queue, got, tc.want)
 			}
 		})
 	}

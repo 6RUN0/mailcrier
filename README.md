@@ -11,6 +11,8 @@ an HTTP webhook instead.
 - Sends to all configured targets at the same time, each in the markup of
   its service with everything from the message escaped, cut to the length
   the service accepts, with the attachments it can take.
+- Keeps a message in a spool until every target has it: a service that is
+  down gets it on a later queue run.
 - One static binary, installed setgid so that the jobs of any user can
   send while only root reads the tokens; logs to syslog.
 
@@ -29,8 +31,10 @@ The manual page is `docs/slendmail.8`.
 
 The program reads `/etc/slendmail.conf`, a TOML file. Every run parses the
 file strictly: an unknown key, a key that the target type does not use, or
-an invalid value rejects the file, the message is not delivered and the
-exit status is 78.
+an invalid value rejects the file, the message is not delivered but held
+in the spool (see "Spool and queue"), and the exit status is 78. A package
+installs an example without targets, so until targets are configured every
+message is held with status 78; that is expected.
 
 ```toml
 [general]
@@ -89,7 +93,8 @@ preset = "generic-json"
   `retry_after` (the delay the service asked for) for a failed target.
   `text truncated for target` (info) names a target that got a cut text,
   `attachments not delivered` (warning) one that took the text but not
-  the files; the message counts as delivered there. Headers and body of
+  the files; the message counts as delivered there. Records about a spool
+  entry carry its `id`. Headers and body of
   the message are never logged, nor is the response body of a service.
 - Tokens and URLs, including the content of `*_file`, are replaced by `***`
   in every log record and in the debug output of the Go HTTP stack. A URL
@@ -214,13 +219,110 @@ Authorization = "Bearer api-token"
   `Bearer`, are masked in the log like tokens. A redirect is not followed
   and counts as a permanent failure.
 
+### Spool and queue
+
+```toml
+[spool]                         # optional; the values are the defaults
+dir = "/var/spool/slendmail"    # "" turns the spool off
+drain_budget = "10s"            # queue run after the own message of a call
+drain_max_messages = 20
+run_budget = "60s"              # queue run of -q
+queue_ttl = "168h"              # then queue/ -> failed/
+hold_ttl = "168h"               # then hold/ -> failed/
+failed_ttl = "720h"             # then deleted
+max_queue_messages = 1000
+max_queue_bytes = 268435456
+max_queue_messages_per_uid = 200
+max_queue_bytes_per_uid = 67108864
+
+[target.hook]
+type = "http"
+url_file = "/etc/slendmail.d/hook.url"
+preset = "generic-json"
+```
+
+- Every message is written to the spool before its delivery: the raw
+  message as `queue/<id>.eml` and its state per target as
+  `queue/<id>.json`, each first written to `tmp/`, synced and moved into
+  `queue/`. The state is rewritten after each target, and the entry
+  removed once no target waits for it. A target that fails temporarily
+  stays pending, and the call exits 0 with the warning `message queued` (or
+  `message queued for target` when another target has the message): the
+  message is accepted, as a classic MTA accepts it into its queue.
+- A queue run retries a pending target one minute after its first failure,
+  then after twice the previous delay, at most 24 hours, and never before
+  the delay a service asked for with `Retry-After`; when a service asks for
+  a delay, the rest of the run skips that target in the other entries. An
+  entry queued longer than `queue_ttl`, counted from its release for a
+  message that was held, moves to `failed/` with the error
+  `message failed`, and after `failed_ttl` there it is deleted. Files
+  older than one hour that a killed process left behind, in `tmp/` unless
+  a live process still holds them and sidecars without their message
+  elsewhere, are removed.
+- A retry renders the stored message with the configuration and templates
+  of the moment, to the targets fixed when it was queued. Renaming or
+  removing a target drops its pending messages: they fail for that target
+  with `target removed, message dropped for it`.
+- A message whose configuration is rejected goes to `hold/` (of the
+  default directory when the file cannot be read) and the call exits 78;
+  the first queue run with a valid configuration sends it to every
+  configured target. When the valid file names a `dir` other than the
+  default, `-q` also moves what `hold/` of the default directory keeps
+  into that queue. `hold_ttl` bounds the wait.
+- Each call runs the queue for at most `drain_budget` and
+  `drain_max_messages` entries after delivering its own message, only for
+  the entries of its caller's uid, and not at all while another call of the
+  same user is doing so (`locks/drain-<uid>.lock`). `slendmail -q` runs it
+  for at most `run_budget`: root, the `slendmail` user and a process
+  without the setgid bit take every entry, any other user only their own.
+  An entry is locked while a process works on it, and a run skips locked
+  entries, so parallel runs never deliver an entry twice.
+- The packages run `slendmail -q` as `slendmail` every 5 minutes: the
+  systemd timer `slendmail-queue.timer` (its service stops a run after 3
+  minutes, which covers `run_budget` of 60 seconds and the delivery under
+  way; a larger `run_budget` needs a larger `TimeoutStartSec` in a
+  drop-in), or where systemd is not running
+  `/etc/cron.d/slendmail`, or `/etc/crontabs/slendmail` on Alpine, all
+  with `MAILTO=""` since `-q` logs to syslog only. Without a running cron
+  daemon or timer, as in most containers, only the calls themselves run the
+  queue; a container that sends rarely runs `slendmail -q` from a
+  scheduler such as supercronic, a sidecar or a health check.
+- Limits: all entries in `tmp/`, `queue/` and `hold/` together stay within
+  `max_queue_messages` and `max_queue_bytes`, those of one uid within the
+  `_per_uid` limits; users other than root and `slendmail` fill at most 80%
+  of the totals, so root still gets its mail queued. Parallel calls never
+  exceed a limit together, but near it they may all be refused where one
+  would have fit. A message over a limit
+  is not queued (`spool entry not written`): it is delivered all the same,
+  and a temporary failure then exits 73.
+- Delivery is at least once: a process killed after a service accepted
+  the message, or a timeout after the service accepted it, repeats that
+  delivery on the next run, and so may a power failure, since the state
+  written after a delivery is not synced to disk before the next step.
+- The spool must be on a local file system: the locks (`flock`) do not
+  exclude processes over NFS. The directory must exist; the program creates
+  `tmp`, `queue`, `hold`, `failed` and `locks` in it when missing, which
+  suits a container. With the setgid install the packages create the
+  directory and all five as `root:slendmail 2770`: made by the program,
+  they would belong to whichever user sent first. Entries are created with
+  mode `0660`.
+- `mailq` and `-bp` list the entries of `queue/`, `hold/` and `failed/`
+  with the state, attempts, next attempt and last error of each target,
+  for root, the `slendmail` user and a process without the setgid bit;
+  anyone else sees one line of counts; a spool directory that does not
+  exist lists as `queue is empty`. `--status` prints one logfmt line for
+  monitoring,
+  `queued=1 held=0 failed=0 tmp=0 bytes=1432 oldest_age_seconds=75`, and
+  exits 74 when the directory does not exist. Neither creates anything in
+  the spool.
+
 ### Options, privileges and containers
 
 - `--config PATH` or the environment variable `SLENDMAIL_CONFIG` names
   another configuration file; `--config` wins. sendmail's `-C` is always
   ignored with a warning.
-- `--probe`, `--check-config` and `--status` are reserved and exit 64
-  (not implemented).
+- `--probe` and `--check-config` are reserved and exit 64 (not
+  implemented).
 - The intended install is setgid: binary `root:slendmail 2755`,
   configuration and `*_file` files `root:slendmail 0640`, so that cron jobs
   of any user can send while only root and the binary read the secrets.
@@ -248,7 +350,10 @@ Authorization = "Bearer api-token"
   `sendmail_path = /usr/sbin/sendmail -t -i` with `/usr/sbin/sendmail` a
   link to the binary, and pass the variable with
   `env[SLENDMAIL_CONFIG] = /run/secrets/slendmail.conf` in the pool
-  configuration.
+  configuration. The spool directory, `/var/spool/slendmail` unless
+  `[spool] dir` names another, must exist and be writable by the caller (a
+  volume, when queued messages must survive the container); without it a
+  temporary failure exits 73, and `dir = ""` turns the spool off.
 - On a host with the setgid install, a caller running under
   `NoNewPrivileges=yes` or `RestrictSUIDSGID=yes` does not get the group:
   the configuration is unreadable and the call exits 78.
@@ -287,8 +392,7 @@ option: `-f --probe` names a sender.
   slendmail does not never stops the call: refusing it would lose the
   message of a cron job.
 - Called as `newaliases` the binary does nothing and exits 0; called as
-  `mailq` it lists the queue. No message is queued: `mailq` and `-bp` print
-  `queue is empty`, and `-q` exits 0 at once. `/etc/aliases` and
+  `mailq` it lists the queue, see "Spool and queue". `/etc/aliases` and
   `.forward` are not read, and `-bv` and `-bt` are ignored like other
   unsupported `-b` modes; choosing targets by recipient is left to routes in
   the configuration.
@@ -349,21 +453,25 @@ option: `-f --probe` names a sender.
 
 | Situation | Status |
 |---|---|
-| at least one target accepted the message, or a rule suppressed it for every target | 0 |
-| `newaliases`, `-bi`, `-I`, `mailq`, `-bp`, `-q`, `--version`, `--help` | 0 |
-| no target accepted it: rejected, or a temporary failure with no queue to keep it | 69 |
+| at least one target accepted the message, or a rule suppressed it for every target; the targets that failed temporarily are queued | 0 |
+| every target failed temporarily and the message is queued | 0 |
+| `newaliases`, `-bi`, `-I`, `mailq`, `-bp`, `-q`, `--status`, `--version`, `--help` | 0 |
+| no target accepted it and one rejected it, or all failed temporarily with the spool off | 69 |
+| a target failed temporarily and the spool entry could not be created: directory missing or not writable, or a limit reached | 73 |
+| a target failed temporarily and the spool entry could not be written; `-q` or `--status` could not read the spool, `mailq` a spool that exists | 74 |
 | usage error: `-f` or `-r` without a value, a line break in the sender, the full name or a recipient, `-bs`, `--config` without a value; stdin is not read | 64 |
-| `--probe`, `--check-config`, `--status`: not implemented | 64 |
+| `--probe`, `--check-config`: not implemented | 64 |
 | stdin cannot be read | 66 |
 | panic in the main goroutine (a bug; the redacted record in the log carries the details) | 70 |
 | `--probe` or `--check-config` from an elevated caller other than root and the `slendmail` user | 77 |
-| the configuration cannot be read, parsed or validated, or defines no targets | 78 |
+| the configuration cannot be read, parsed or validated, or defines no targets; the message is held | 78 |
 
 The targets are sent to at the same time. A panic while rendering or
 sending for one target (a bug) fails that target permanently, logged
 redacted as `target failed`, and the others still deliver. A panic in any
 other goroutine ends the process with the Go runtime's own report on
 stderr and status 2; that report is not redacted. A target that failed is
-logged as `target failed`; without a queue a temporary failure is
-also logged as `message lost for target` when another target accepted the
-message, and as `message lost` when every target failed temporarily.
+logged as `target failed`; a temporary failure is also logged as
+`message queued for target` or `message queued`, or, without a spool
+entry, as `message lost for target` when another target accepted the
+message and as `message lost` when every target failed temporarily.

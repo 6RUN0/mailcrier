@@ -10,7 +10,7 @@ make check        # all CI checks of a push; govulncheck only warns here
 make lint         # other targets: tidy test fuzz build licenses vuln
                   # check-refs check-commits snapshot
 make fuzz FUZZTIME=10m   # longer fuzzing; check runs each target 10s
-make setgid-e2e   # needs docker: TestSetgidReexec in a root container
+make setgid-e2e   # needs docker: TestSetgid* in a root container
 make units-verify # needs docker: systemd-analyze verify of packaging/systemd
 go build -o slendmail ./cmd/slendmail   # the binary; the name is gitignored
 SLENDMAIL_TELEGRAM_ENV=/path/to/telegram.env \
@@ -59,8 +59,13 @@ with "no non-test Go files".
 - `internal/app.Run(ctx, Deps, args, stdin) int` handles one invocation;
   `Deps` carries the logger factory, config `fs.FS` rooted at `/`, HTTP
   client, host name, argv[0] (`Program`), stdout, stderr, uid/gid/egid,
-  environment, the error of a failed re-exec and a uid-to-login lookup; the
-  unexported `deliver` field lets tests replace delivery. `app.SystemDeps`
+  environment, the error of a failed re-exec, a uid-to-login lookup and
+  the default spool directory (`SpoolDir`, empty in tests unless set); the
+  unexported `deliver` field lets tests replace delivery, `spoolSaved` and
+  `entryLocked` let a helper process kill or stop itself at a spool state.
+  Everything time-dependent in the spool (ids, backoff, TTL, budgets, age
+  of `tmp/` files) reads `Deps.Now`; only the context deadlines use the
+  real clock. `app.SystemDeps`
   builds the real ones (syslog `LOG_MAIL`, `/etc/slendmail.conf`,
   environment proxies only without elevation).
 - Elevated means `egid != gid` and `uid != 0` (`internal/app/privilege.go`).
@@ -120,9 +125,38 @@ with "no non-test Go files".
 - `internal/delivery`: `Deliver` runs one goroutine per target that picks
   the files within `Caps`, fits the target's template with `render.Fit`
   and sends; a panic there is recovered into a permanent result, so a
-  target must not share mutable state with another. `ExitCode` is 0 when
-  any target accepted the message (an `IsPartial` error counts as
-  accepted) or every target was suppressed, else 69.
+  target must not share mutable state with another. `DeliverEach` also
+  hands each result to a callback as its target finishes (the spool marks
+  `Done` there). `ExitCode(results, queue)` is the exit status matrix, rules
+  in order: Temp without a spool entry 73/74, any OK or all suppressed 0,
+  any Perm 69, Temp queued 0, else 69.
+- `internal/spool` (imports only `message`): areas `tmp`, `queue`, `hold`,
+  `failed`, `locks` under the spool directory; an entry is `<id>.eml` (the
+  `message.Message.Raw` bytes, read back with `IgnoreDots`) and `<id>.json`
+  (sidecar: `Version` 1, `OwnerUID`, state per target). Create reserves
+  both files in `tmp/` (message truncated to its size) and only then scans
+  the usage and checks the quota without its own entry, so parallel calls
+  stay within the limits with no lock to wait for (a stopped caller holding
+  one would stop the mail of the host); it then writes and syncs both,
+  links the sidecar into the area, renames the message, and removes the
+  sidecar from `tmp/` last, so a `.eml` always has its sidecar beside it;
+  the message is flocked since `tmp/`. No spool lock is ever waited for:
+  every flock is `LOCK_NB`. Move writes the new sidecar into the target
+  area, renames the message, and removes the old sidecar last. So only
+  Remove (sidecar first) leaves a `.eml` without sidecar, and `Lock`
+  deletes such a file as finished; a stray `.json` without `.eml` is
+  harmless and `RemoveStale` deletes it after an hour. The entry lock is
+  `flock(LOCK_EX|LOCK_NB)` on the `.eml`, opened `O_NOFOLLOW`; after taking
+  it the sidecar is read again and the open inode compared with the path.
+  `locks/drain-<uid>.lock` is taken by the run after a call and by `-q` of
+  an elevated user; `-q` of root, the service user or an unelevated caller
+  takes none. `Save` and `Remove` do not fsync the directory (a lost rename
+  only repeats a delivery). Quota usage reads every sidecar for `OwnerUID`.
+  `OpenExisting` is for the listing modes and creates nothing.
+- `internal/app/queue.go`: own message (write-ahead, deliver, record each
+  result, remove), `hold/` on a rejected configuration, queue runs
+  (`hold/` released first, then `queue/`, oldest first), `mailq`,
+  `--status`. Errors stored in sidecars pass through the redactor.
 - `TestImportGraph` (`import_graph_test.go`) enforces the package graph: a
   new package needs an entry in `allowedImports`.
 
@@ -143,6 +177,17 @@ with "no non-test Go files".
   `TestIDsCovered` reads only literals in the `Run` call.
 - `TestReadmeExamplesLoad` loads the TOML blocks of the README section
   "Configuration" with `config.Load`.
+- Multi-process spool tests (`internal/app/spool_process_test.go`) start
+  the test binary itself as `-test.run=^TestSpoolHelper$` with
+  `SLENDMAIL_SPOOL_HELPER` set; the helper reports on fd 3 and waits on fd
+  4, the parent synchronizes on those pipes and on `wait4(WUNTRACED)`,
+  never on sleeps. Run them repeatedly with
+  `go test -race -count=5 -run 'TestSpool' ./internal/app`. Tests with
+  real uids and the setgid bit are in `setgid_e2e_test.go`
+  (`make setgid-e2e`).
+- `packaging/` holds the systemd unit and timer and the cron files of the
+  queue run; there is no nFPM configuration yet. `TestQueueRunnerFiles`
+  pins their key lines.
 
 ## Gotchas
 

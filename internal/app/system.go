@@ -15,6 +15,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/6RUN0/slendmail/internal/config"
 )
 
 // SystemConfigPath is the configuration file, relative to the root of
@@ -67,6 +69,7 @@ func SystemDeps() Deps {
 		Credentials:    creds,
 		Environ:        os.Environ(),
 		LookupUserName: lookupUserName,
+		SpoolDir:       config.DefaultSpoolDir,
 	}
 }
 

@@ -13,15 +13,15 @@ T-ADJ-11	high	done	Duplicate recipients from argv and To collapse into one	https
 T-ADJ-12	critical	done	-f without an argument exits 64	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/sendmail/parse.go#L124-L128
 T-ADJ-13	high	done	-- ends the flags and everything after it is a recipient	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/sendmail/parse.go#L110-L113
 T-ADJ-14	critical	done	Glued flag values -FCronDaemon, -froot, -oem, -odi, -B8BITMIME are parsed; -froot keeps the sender	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/sendmail/parse.go#L121-L156
-T-ADJ-15	high	todo	Spool: a successful delivery sends exactly once and leaves the queue empty	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/queue/spool_test.go#L33
-T-ADJ-16	high	todo	Spool: a temporary failure queues exactly one message and the call reports it as accepted	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/queue/spool_test.go#L63
-T-ADJ-17	high	todo	Spool: a permanent failure is reported and nothing stays in the queue	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/queue/spool_test.go#L96
-T-ADJ-18	high	todo	Spool: a queue run delivers due entries and leaves entries whose backoff has not expired	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/queue/spool_test.go#L120
-T-ADJ-19	high	todo	Spool: an entry past its TTL moves to failed/	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/queue/spool_test.go#L169
-T-ADJ-20	high	todo	Spool: a temporary failure followed by a success leaves the queue empty	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/queue/spool_test.go#L199
+T-ADJ-15	high	done	Spool: a successful delivery sends exactly once and leaves the queue empty	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/queue/spool_test.go#L33
+T-ADJ-16	high	done	Spool: a temporary failure queues exactly one message and the call reports it as accepted	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/queue/spool_test.go#L63
+T-ADJ-17	high	done	Spool: a permanent failure is reported and nothing stays in the queue	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/queue/spool_test.go#L96
+T-ADJ-18	high	done	Spool: a queue run delivers due entries and leaves entries whose backoff has not expired	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/queue/spool_test.go#L120
+T-ADJ-19	high	done	Spool: an entry past its TTL moves to failed/	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/queue/spool_test.go#L169
+T-ADJ-20	high	done	Spool: a temporary failure followed by a success leaves the queue empty	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/queue/spool_test.go#L199
 T-ADJ-21	high	done	Delivery errors are classified: 429, 5xx, timeout and network errors are temporary, other 4xx are permanent	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/queue/spool_test.go#L225
 T-ADJ-22	low	todo	Spool serialization rejects a stored message without a header/body separator	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/queue/spool_test.go#L238
-T-ADJ-23	high	todo	Spool constants and layout: 60 s backoff capped at 24 h, 7 day TTL, 60 s queue run, tmp/ then rename into queue/ with fsync, group-only permissions	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/queue/spool.go#L47-L51
+T-ADJ-23	high	done	Spool constants and layout: 60 s backoff capped at 24 h, 7 day TTL, 60 s queue run, tmp/ then rename into queue/ with fsync, group-only permissions	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/internal/queue/spool.go#L47-L51
 T-ADJ-24	critical	done	Process exit codes: 78 configuration error, 66 unreadable stdin, 73 spool entry not created; a malformed message is delivered as is	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/main.go#L79-L132
 T-ADJ-25	critical	done	A successful delivery exits 0	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L626
 T-ADJ-26	critical	done	A stdin read error exits 66	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L633
@@ -51,7 +51,7 @@ T-ADJ-49	high	todo	A 400 answer to sendMessage is retried once as a document	htt
 T-ADJ-50	low	done	An error response body is read at most 4 KiB and is not quoted in the error, so it cannot leak into the log	https://github.com/lucasew/telegram-sendmail/blob/a09038a8b57f/internal/telegram/client_test.go#L156-L200
 T-ADJ-51	critical	done	HTTP requests have a default timeout (15 s) and the whole call has a deadline (30 s)	https://github.com/lucasew/telegram-sendmail/blob/a09038a8b57f/internal/telegram/client_test.go#L202
 T-ADJ-52	critical	done	Subject header matched in any case, a default subject when missing, input without headers becomes the body, RFC 2047 B and Q decoded to UTF-8	https://github.com/lucasew/telegram-sendmail/blob/a09038a8b57f/cmd/telegram-sendmail/serve_test.go#L43-L118
-T-ADJ-53	high	todo	A queue run continues after one entry fails to send	https://github.com/lucasew/telegram-sendmail/blob/a09038a8b57f/cmd/telegram-sendmail/serve_test.go#L121
+T-ADJ-53	high	done	A queue run continues after one entry fails to send	https://github.com/lucasew/telegram-sendmail/blob/a09038a8b57f/cmd/telegram-sendmail/serve_test.go#L121
 T-ADJ-54	high	todo	Package tests: sendmail shim installed, newaliases is a no-op, postinstall keeps secrets and starts nothing, preremove does nothing on upgrade; the goreleaser package section is checked by a test	https://github.com/lucasew/telegram-sendmail/blob/a09038a8b57f/cmd/telegram-sendmail/packaging_test.go#L63-L171
 T-ADJ-55	critical	done	A header without a space after the colon is parsed; input without headers becomes the body	https://github.com/marionauta/imsendmail/blob/ac7f0f0e2c87/src/root.zig#L125-L202
 T-ADJ-56	high	todo	MarkdownV2 escaping covers the full special set including the backslash	https://github.com/marionauta/imsendmail/blob/ac7f0f0e2c87/src/root.zig#L257-L278
@@ -93,9 +93,9 @@ T-MTA-30	critical	done	-bm is the default mode: read stdin and deliver	https://w
 T-MTA-31	high	done	-bp and the mailq name list the queue and exit 0	https://www.postfix.org/sendmail.1.html
 T-MTA-32	critical	done	-bi, -I and the newaliases name are no-ops that exit 0	https://www.postfix.org/sendmail.1.html
 T-MTA-33	low	done	-bs is refused with exit 64 and a message	https://www.postfix.org/sendmail.1.html
-T-MTA-34	high	todo	-q and -q30m run the spool once	https://github.com/vdukhovni/postfix/blob/8e965decf941/postfix/src/sendmail/sendmail.c#L1415-L1430
+T-MTA-34	high	done	-q and -q30m run the spool once	https://github.com/vdukhovni/postfix/blob/8e965decf941/postfix/src/sendmail/sendmail.c#L1415-L1430
 T-MTA-35	critical	done	Exit codes follow sysexits.h values, declared as own constants	https://github.com/freebsd/freebsd-src/blob/5ccaab1797e5bdc404f2299ebaec1265547a4744/include/sysexits.h#L93-L113
-T-MTA-36	critical	todo	Exit 75 means the message is in the spool; if the spool fails the code is 73 or 74	https://ftp.sendmail.org/sendmail.8.18.2.tar.gz#sendmail/sendmail.8:638-671
+T-MTA-36	critical	done	A message queued for a later attempt exits 0, as a classic MTA does, not 75; a temporary failure without a spool entry exits 73 when the entry cannot be created and 74 when it cannot be written	https://ftp.sendmail.org/sendmail.8.18.2.tar.gz#sendmail/sendmail.8:638-671
 T-MTA-37	low	todo	A stdin read error has a dedicated exit code	https://github.com/vdukhovni/postfix/blob/8e965decf941/postfix/src/sendmail/sendmail.c#L1026-L1028
 T-MTA-38	high	done	Malformed headers (leading continuation, space before colon, missing colon) start the body; the message is delivered as is with a warning	https://github.com/bruceg/nullmailer/blob/79a8a45c4bd2/test/tests/inject/bad-headers#L1-L15
 T-MTA-39	high	done	When the first line is not a header the whole input is the body	https://github.com/OpenSMTPD/OpenSMTPD/blob/f073a73fe159/usr.sbin/smtpd/enqueue.c#L409-L413

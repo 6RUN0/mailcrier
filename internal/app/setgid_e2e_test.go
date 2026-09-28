@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/pem"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -15,7 +16,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -26,6 +29,7 @@ var slendmailBinary = flag.String("slendmail-binary", "", "path of the slendmail
 // Ids of the throwaway system user and group; nobody runs the binary.
 const (
 	serviceID  = 990
+	nobodyID   = 65534
 	nobodyUser = "nobody"
 )
 
@@ -75,9 +79,7 @@ func TestSetgidReexec(t *testing.T) {
 	defer evil.Close()
 	proxy, proxyConns := listenCounting(t)
 
-	appendFile(t, "/etc/group", fmt.Sprintf("slendmail:x:%d:\n", serviceID))
-	appendFile(t, "/etc/passwd", fmt.Sprintf("slendmail:x:%d:%d::/nonexistent:/usr/sbin/nologin\n", serviceID, serviceID))
-	installFile(t, *slendmailBinary, "/usr/sbin/slendmail", 0, serviceID, 0o755|os.ModeSetgid)
+	installSetgid(t)
 	ca := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: receiver.Certificate().Raw})
 	writeFile(t, "/etc/ssl/certs/ca-certificates.crt", ca, 0, 0, 0o644)
 	writeFile(t, "/etc/slendmail.conf", []byte(httpTargetConfig(receiver.URL+"/hook/"+secretToken)), 0, serviceID, 0o640)
@@ -163,6 +165,152 @@ func TestSetgidReexec(t *testing.T) {
 			t.Error("the configuration path from TZ was opened before the re-exec")
 		}
 	}
+}
+
+// installOnce guards installSetgid: the tests share the container.
+var installOnce sync.Once
+
+// installSetgid adds the service user and group, installs the binary
+// setgid and creates the spool as the packages lay it out, once.
+func installSetgid(t *testing.T) {
+	t.Helper()
+	installOnce.Do(func() {
+		appendFile(t, "/etc/group", fmt.Sprintf("slendmail:x:%d:\n", serviceID))
+		appendFile(t, "/etc/passwd", fmt.Sprintf("slendmail:x:%d:%d::/nonexistent:/usr/sbin/nologin\n", serviceID, serviceID))
+		installFile(t, *slendmailBinary, "/usr/sbin/slendmail", 0, serviceID, 0o755|os.ModeSetgid)
+		for _, dir := range []string{spoolDir, spoolDir + "/tmp", spoolDir + "/queue", spoolDir + "/hold", spoolDir + "/failed", spoolDir + "/locks"} {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chown(dir, 0, serviceID); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(dir, 0o770|os.ModeSetgid); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+}
+
+// spoolDir is the spool directory of the packages.
+const spoolDir = "/var/spool/slendmail"
+
+// TestSetgidSpool runs the spool with real ids, laid out as the packages
+// do. A message of an unprivileged user sent while the configuration is
+// broken is held; its files belong to the caller and the service group,
+// and the caller can neither look into the spool nor see more than the
+// counts in mailq. Once the configuration is fixed, -q as slendmail
+// delivers the entry of the other user. A temporary failure then queues
+// the next message and the call exits 0.
+func TestSetgidSpool(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Fatal("must run as root: it installs a setgid binary and a system group")
+	}
+	if *slendmailBinary == "" {
+		t.Fatal("-slendmail-binary is required")
+	}
+	var isUp atomic.Bool
+	delivered := make(chan string, 4)
+	receiver := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !isUp.Load() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		delivered <- r.URL.Path
+	}))
+	defer receiver.Close()
+	installSetgid(t)
+	nobody := &syscall.Credential{Uid: nobodyID, Gid: nobodyID}
+	service := &syscall.Credential{Uid: serviceID, Gid: serviceID}
+
+	writeFile(t, "/etc/slendmail.conf", []byte("[target.hook]\ntype = \"http\"\n"), 0, serviceID, 0o640)
+	out, err := runAs(t, nobody, "Subject: held\n\nbody\n", "/usr/sbin/slendmail", "-ti")
+	if code := exitCode(err); code != 78 {
+		t.Fatalf("call with a broken configuration = %d (%v), want 78\n%s", code, err, out)
+	}
+	checkEntryFiles(t, spoolDir+"/hold")
+	if out, err := runAs(t, nobody, "", "/bin/ls", spoolDir+"/hold"); err == nil {
+		t.Errorf("the caller lists the spool:\n%s", out)
+	}
+	if out, err := runAs(t, nobody, "", "/usr/sbin/slendmail", "-bp"); err != nil || !strings.HasPrefix(out, "0 queued, 1 held, 0 failed; oldest ") || strings.Count(out, "\n") != 1 {
+		t.Errorf("mailq as the caller = %v, output:\n%s\nwant the counts line only", err, out)
+	}
+
+	writeFile(t, "/etc/slendmail.conf", []byte(httpTargetConfig(receiver.URL+"/hook")), 0, serviceID, 0o640)
+	isUp.Store(true)
+	if out, err := runAs(t, service, "", "/usr/sbin/slendmail", "-q"); err != nil {
+		t.Fatalf("-q as slendmail failed: %v\n%s", err, out)
+	}
+	select {
+	case path := <-delivered:
+		if path != "/hook" {
+			t.Errorf("receiver got %s", path)
+		}
+	default:
+		t.Error("the queue run delivered nothing")
+	}
+	if out, err := runAs(t, service, "", "/usr/sbin/slendmail", "-bp"); err != nil || out != "queue is empty\n" {
+		t.Errorf("mailq as slendmail = %v, output %q, want an empty queue", err, out)
+	}
+
+	isUp.Store(false)
+	if out, err := runAs(t, nobody, "Subject: queued\n\nbody\n", "/usr/sbin/slendmail", "-ti"); err != nil {
+		t.Fatalf("call with the receiver down = %v, want 0 for a queued message\n%s", err, out)
+	}
+	checkEntryFiles(t, spoolDir+"/queue")
+}
+
+// checkEntryFiles checks that dir holds one entry, both files owned by
+// nobody and the service group with mode 0660.
+func checkEntryFiles(t *testing.T, dir string) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 2 {
+		t.Fatalf("%s = %v, %v, want one message and its sidecar", dir, entries, err)
+	}
+	for _, entry := range entries {
+		info, err := os.Stat(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		stat := info.Sys().(*syscall.Stat_t)
+		if stat.Uid != nobodyID || stat.Gid != serviceID || info.Mode().Perm() != 0o660 {
+			t.Errorf("%s: owner %d:%d mode %v, want %d:%d 0660", entry.Name(), stat.Uid, stat.Gid, info.Mode().Perm(), nobodyID, serviceID)
+		}
+	}
+}
+
+// exitCode returns the exit status of a finished command, -1 when it did
+// not exit normally.
+func exitCode(err error) int {
+	var exitErr *exec.ExitError
+	switch {
+	case err == nil:
+		return 0
+	case errors.As(err, &exitErr):
+		return exitErr.ExitCode()
+	default:
+		return -1
+	}
+}
+
+// runAs runs a command with cred and stdin and returns stdout.
+func runAs(t *testing.T, cred *syscall.Credential, stdin string, argv ...string) (string, error) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Credential: cred}
+	cmd.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin"}
+	cmd.Dir = "/"
+	cmd.Stdin = strings.NewReader(stdin)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	err := cmd.Run()
+	if stderr.Len() > 0 {
+		t.Logf("%s stderr:\n%s", argv, stderr.String())
+	}
+	return stdout.String(), err
 }
 
 // listenCounting accepts TCP connections on a loopback port, counts and

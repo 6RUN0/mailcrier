@@ -31,17 +31,20 @@ import (
 	"github.com/6RUN0/slendmail/internal/redact"
 	"github.com/6RUN0/slendmail/internal/render"
 	"github.com/6RUN0/slendmail/internal/sendmail"
+	"github.com/6RUN0/slendmail/internal/spool"
 	"github.com/6RUN0/slendmail/internal/text"
 )
 
 // Exit statuses from sysexits.h that Run produces itself.
 const (
-	exitOK       = 0
-	exitUsage    = 64
-	exitNoInput  = 66
-	exitSoftware = 70
-	exitNoPerm   = 77
-	exitConfig   = 78
+	exitOK          = 0
+	exitUsage       = 64
+	exitNoInput     = 66
+	exitUnavailable = 69
+	exitSoftware    = 70
+	exitIOErr       = 74
+	exitNoPerm      = 77
+	exitConfig      = 78
 )
 
 // envConfig names another configuration file, like --config.
@@ -88,11 +91,20 @@ type Deps struct {
 	// LookupUserName returns the login name of a uid from the user
 	// database; false when there is none.
 	LookupUserName func(uid int) (string, bool)
+	// SpoolDir is the spool directory when the configuration sets none,
+	// and where a message goes when the configuration is rejected; empty
+	// turns the spool off.
+	SpoolDir string
 
 	// deliver sends the message to the targets; nil means
 	// delivery.Deliver. Tests set it to observe the envelope and the
 	// template data and to choose outcomes.
 	deliver func(ctx context.Context, targets []delivery.Target, env message.Envelope, d render.Data, files []message.Attachment) []delivery.Result
+	// spoolSaved is called after every write of a sidecar during a
+	// delivery, and entryLocked after a queue run took an entry; tests
+	// kill or stop the process there.
+	spoolSaved  func(e *spool.Entry)
+	entryLocked func(id string)
 }
 
 // Run handles one invocation and returns the process exit status; args
@@ -147,7 +159,11 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 	if inv.HasEnvConfigMarker && d.Credentials.isElevated() {
 		log.Warn("configuration override ignored", "source", envConfig)
 	}
-	if inv.Mode != sendmail.Deliver {
+	switch inv.Mode {
+	case sendmail.Deliver:
+	case sendmail.RunQueue, sendmail.ListQueue, sendmail.Status:
+		return runQueueMode(ctx, d, log, newLogger, redactor, &client, inv)
+	default:
 		return runMode(d, log, inv.Mode)
 	}
 	configPath, err := selectConfigPath(d, inv, log)
@@ -174,6 +190,8 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 	cfg, err := config.Load(d.ConfigFS, configPath)
 	if err != nil {
 		log.Error("configuration rejected, message not delivered", "err", err)
+		q, openErr := newQueue(d, log, redactor, spoolSettings(d, nil), nil)
+		q.hold(msg, env, receivedAt, openErr)
 		return exitConfig
 	}
 	registerSecrets(redactor, cfg)
@@ -184,24 +202,92 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 	targets, err := buildTargets(cfg, &client)
 	if err != nil {
 		log.Error("configuration rejected, message not delivered", "err", err)
+		q, openErr := newQueue(d, log, redactor, spoolSettings(d, cfg), nil)
+		q.hold(msg, env, receivedAt, openErr)
 		return exitConfig
 	}
-	ctx, cancel := context.WithTimeout(ctx, cfg.General.Deadline.Duration)
+	q, openErr := newQueue(d, log, redactor, spoolSettings(d, cfg), targets)
+	q.deadline, q.notices = cfg.General.Deadline.Duration, notices(cfg.Strings)
+	data := render.NewData(msg, env, bcc)
+	data.Hostname, data.ReceivedAt, data.Strings = d.Hostname, receivedAt, q.notices
+	deliverCtx, cancel := context.WithTimeout(ctx, q.deadline)
 	defer cancel()
-	deliver := d.deliver
-	if deliver == nil {
-		deliver = func(ctx context.Context, targets []delivery.Target, _ message.Envelope, data render.Data, files []message.Attachment) []delivery.Result {
-			return delivery.Deliver(ctx, targets, data, files)
+	code = q.deliverOwn(deliverCtx, targets, msg, env, data, openErr)
+	// The own message goes first, the caller's queue after it, within its
+	// own budget: a failed service must not delay the next message.
+	q.drainOwn(ctx)
+	return code
+}
+
+// runQueueMode handles -q, mailq and --status, which need the spool
+// directory and, for -q, the targets from the configuration. A rejected
+// configuration leaves the default directory: -q then only moves expired
+// entries to failed/ and exits 78, mailq and --status list as usual. With
+// a valid file whose dir is not the default, -q also releases what the
+// default directory holds.
+func runQueueMode(ctx context.Context, d Deps, log *slog.Logger, newLogger func(tag string) *slog.Logger, redactor *redact.Redactor, client *http.Client, inv sendmail.Invocation) int {
+	var cfg *config.Config
+	var targets []delivery.Target
+	configPath, err := selectConfigPath(d, inv, log)
+	if err == nil {
+		cfg, err = config.Load(d.ConfigFS, configPath)
+	}
+	if err == nil {
+		registerSecrets(redactor, cfg)
+		if cfg.General.SyslogTag != config.DefaultSyslogTag {
+			log = newLogger(cfg.General.SyslogTag)
+		}
+		client.Timeout = cfg.General.HTTPTimeout.Duration
+		targets, err = buildTargets(cfg, client)
+	}
+	if err != nil {
+		log.Error("configuration rejected", "err", err)
+		cfg, targets = nil, nil
+	}
+	settings := spoolSettings(d, cfg)
+	if inv.Mode == sendmail.ListQueue || inv.Mode == sendmail.Status {
+		return listSpool(d, log, settings.Dir, inv.Mode)
+	}
+	q, openErr := newQueue(d, log, redactor, settings, targets)
+	if cfg != nil {
+		q.deadline, q.notices = cfg.General.Deadline.Duration, notices(cfg.Strings)
+	}
+	if openErr != nil {
+		log.Error("spool not opened", "err", openErr)
+		return exitIOErr
+	}
+	// A message held while the file was rejected went to the default
+	// directory; a file with a dir of its own would never see it.
+	if cfg != nil && d.SpoolDir != "" && settings.Dir != d.SpoolDir {
+		q.otherHold = d.SpoolDir
+	}
+	code := q.runQueue(ctx)
+	if cfg == nil {
+		return exitConfig
+	}
+	return code
+}
+
+// listSpool answers mailq, -bp and --status without creating anything in
+// the spool. A missing directory holds nothing for mailq, while --status,
+// read by monitoring, reports it as an error.
+func listSpool(d Deps, log *slog.Logger, dir string, mode sendmail.Mode) int {
+	q := &queue{d: d, log: log}
+	if dir != "" {
+		sp, err := spool.OpenExisting(dir)
+		switch {
+		case err == nil:
+			q.sp = sp
+		case errors.Is(err, fs.ErrNotExist) && mode == sendmail.ListQueue:
+		default:
+			log.Error("spool not opened", "err", err)
+			return exitIOErr
 		}
 	}
-	data := render.NewData(msg, env, bcc)
-	data.Hostname, data.ReceivedAt, data.Strings = d.Hostname, receivedAt, notices(cfg.Strings)
-	results := deliver(ctx, targets, env, data, msg.Attachments)
-	for _, r := range results {
-		logResult(log, r)
+	if mode == sendmail.ListQueue {
+		return q.listQueue(d.Stdout)
 	}
-	logOutcome(log, results)
-	return delivery.ExitCode(results)
+	return q.status(d.Stdout)
 }
 
 // notices returns the built-in notices with the configured ones in place.
@@ -243,9 +329,9 @@ func defaultSender(d Deps) string {
 	return ""
 }
 
-// logOutcome adds the records for the message as a whole. Without a spool
-// a temporary failure loses the message for that target.
-func logOutcome(log *slog.Logger, results []delivery.Result) {
+// logOutcome adds the records for the message as a whole: what was
+// queued for a later attempt and what was lost.
+func logOutcome(log *slog.Logger, results []delivery.Result, state delivery.Queue) {
 	var delivered, temporary []delivery.Result
 	for _, r := range results {
 		switch r.Status {
@@ -255,14 +341,22 @@ func logOutcome(log *slog.Logger, results []delivery.Result) {
 			temporary = append(temporary, r)
 		}
 	}
+	isAllTemporary := len(temporary) > 0 && len(temporary) == len(results)
 	switch {
-	case len(delivered) > 0:
+	case state == delivery.Queued && isAllTemporary:
+		log.Warn("message queued")
+	case state == delivery.Queued:
+		for _, r := range temporary {
+			log.Warn("message queued for target", "target", r.TargetID)
+		}
+	case len(delivered) > 0 || (state != delivery.QueueOff && !isAllTemporary):
 		for _, r := range temporary {
 			log.Error("message lost for target", "target", r.TargetID)
 		}
-	case len(temporary) > 0 && len(temporary) == len(results):
+	case isAllTemporary:
 		log.Error("message lost")
-	case delivery.ExitCode(results) != exitOK:
+	}
+	if len(delivered) == 0 && delivery.ExitCode(results, state) == exitUnavailable {
 		log.Error("message not delivered")
 	}
 }
@@ -272,12 +366,6 @@ func runMode(d Deps, log *slog.Logger, mode sendmail.Mode) int {
 	switch mode {
 	case sendmail.NewAliases:
 		return exitOK
-	case sendmail.ListQueue:
-		_, _ = fmt.Fprintln(d.Stdout, "queue is empty")
-		return exitOK
-	case sendmail.RunQueue:
-		log.Debug("queue is empty")
-		return exitOK
 	case sendmail.Version:
 		_, _ = fmt.Fprintln(d.Stdout, "slendmail", buildVersion())
 		return exitOK
@@ -285,11 +373,9 @@ func runMode(d Deps, log *slog.Logger, mode sendmail.Mode) int {
 		_, _ = io.WriteString(d.Stdout, usage)
 		return exitOK
 	case sendmail.Probe:
-		return refuseMode(d, log, sendmail.OptionProbe, true)
-	case sendmail.CheckConfig:
-		return refuseMode(d, log, sendmail.OptionCheckConfig, true)
+		return refuseMode(d, log, sendmail.OptionProbe)
 	default:
-		return refuseMode(d, log, sendmail.OptionStatus, false)
+		return refuseMode(d, log, sendmail.OptionCheckConfig)
 	}
 }
 
@@ -298,7 +384,8 @@ const usage = `usage: slendmail [flags] [--] [recipient ...]
        slendmail --version | --help | --config PATH
 Reads a message on stdin and delivers it to the targets of
 /etc/slendmail.conf. sendmail flags: -t -i -oi -f ADDR -r ADDR -F NAME;
--bi, -I and newaliases do nothing; -bp and mailq list the queue; -q runs it.
+-bi, -I and newaliases do nothing; -bp and mailq list the queue; -q runs it;
+--status prints the queue counts.
 Other sendmail flags are accepted and ignored. See slendmail(8).
 `
 
@@ -334,12 +421,12 @@ func newCallID() string {
 	return hex.EncodeToString(id)
 }
 
-// refuseMode answers --probe, --check-config and --status, which do not
-// exist yet. The first two read the whole configuration or send to every
-// target, so with isRestricted an elevated caller other than root and the
-// slendmail user gets 77; everyone else gets a usage error.
-func refuseMode(d Deps, log *slog.Logger, mode string, isRestricted bool) int {
-	if isRestricted && !d.Credentials.isPrivilegedCaller() {
+// refuseMode answers --probe and --check-config, which do not exist yet.
+// Both read the whole configuration or send to every target, so an
+// elevated caller other than root and the slendmail user gets 77; everyone
+// else gets a usage error.
+func refuseMode(d Deps, log *slog.Logger, mode string) int {
+	if !d.Credentials.isPrivilegedCaller() {
 		_, _ = fmt.Fprintf(d.Stderr, "slendmail: %s: permission denied\n", mode)
 		log.Error("mode refused, caller not privileged", "option", mode, "uid", d.Credentials.UID)
 		return exitNoPerm

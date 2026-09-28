@@ -20,6 +20,7 @@ import (
 	"github.com/6RUN0/slendmail/internal/delivery"
 	"github.com/6RUN0/slendmail/internal/message"
 	"github.com/6RUN0/slendmail/internal/render"
+	"github.com/6RUN0/slendmail/internal/spool"
 )
 
 // invocation is one Run call against an in-memory configuration with the
@@ -50,6 +51,13 @@ type invocation struct {
 	stdout  bytes.Buffer
 	// deliver replaces the delivery to the configured targets.
 	deliver func(ctx context.Context, targets []delivery.Target, env message.Envelope, d render.Data, files []message.Attachment) []delivery.Result
+	// spoolDir is Deps.SpoolDir, empty for no spool; now replaces the
+	// clock, testNow when nil.
+	spoolDir string
+	now      func() time.Time
+	// spoolSaved and entryLocked are the spool hooks of Deps.
+	spoolSaved  func(e *spool.Entry)
+	entryLocked func(id string)
 }
 
 // execCall is one attempt to replace the process image.
@@ -92,6 +100,10 @@ func (inv *invocation) run(t *testing.T) int {
 			environ = env
 		},
 	})
+	now := inv.now
+	if now == nil {
+		now = func() time.Time { return testNow }
+	}
 	deps := Deps{
 		NewLogger: func(tag string) *slog.Logger {
 			buf := &bytes.Buffer{}
@@ -102,7 +114,7 @@ func (inv *invocation) run(t *testing.T) int {
 		ConfigPath:   SystemConfigPath,
 		HTTP:         client,
 		Hostname:     "host1.example.org",
-		Now:          func() time.Time { return testNow },
+		Now:          now,
 		Program:      program,
 		Stdout:       &inv.stdout,
 		Stderr:       &inv.stderr,
@@ -114,7 +126,10 @@ func (inv *invocation) run(t *testing.T) int {
 			name, ok := testUsers[uid]
 			return name, ok
 		},
-		deliver: inv.deliver,
+		SpoolDir:    inv.spoolDir,
+		deliver:     inv.deliver,
+		spoolSaved:  inv.spoolSaved,
+		entryLocked: inv.entryLocked,
 	}
 	return Run(context.Background(), deps, args, inv.stdin)
 }

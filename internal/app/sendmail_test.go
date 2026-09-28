@@ -73,8 +73,8 @@ const twoTargets = "[target.a]\ntype = \"http\"\npreset = \"generic-json\"\nurl 
 // are its own constants rather than an import.
 func TestExitStatusValues(t *testing.T) {
 	t.Run("T-MTA-35/sysexits-values", func(t *testing.T) {
-		got := []int{exitOK, exitUsage, exitNoInput, exitSoftware, exitNoPerm, exitConfig}
-		want := []int{0, 64, 66, 70, 77, 78}
+		got := []int{exitOK, exitUsage, exitUnavailable, exitNoInput, exitSoftware, exitIOErr, exitNoPerm, exitConfig}
+		want := []int{0, 64, 69, 66, 70, 74, 77, 78}
 		if !slices.Equal(got, want) {
 			t.Errorf("exit statuses = %v, want %v", got, want)
 		}
@@ -183,7 +183,7 @@ func TestRunModes(t *testing.T) {
 	t.Run("T-MTA-34/q-interval", runModesCase{"", []string{"-q30m"}, 0, ""}.check)
 	t.Run("version", runModesCase{"", []string{"--version"}, 0, "slendmail "}.check)
 	t.Run("help", runModesCase{"", []string{"--help"}, 0, "usage: slendmail"}.check)
-	t.Run("status-not-implemented", runModesCase{"", []string{"--status"}, 64, ""}.check)
+	t.Run("status-without-spool", runModesCase{"", []string{"--status"}, 0, "queued=0 held=0 failed=0 tmp=0 bytes=0 oldest_age_seconds=0\n"}.check)
 }
 
 type runModesCase struct {
