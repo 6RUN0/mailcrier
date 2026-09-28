@@ -104,9 +104,9 @@ func (p *bodyParts) walk(e entity, depth int) {
 	isAttachment := disposition == "attachment" || name != "" && mediaType != "text/plain"
 	switch {
 	case mediaType == "text/plain" && !isAttachment:
-		p.plain = append(p.plain, decodeText(normalizeLineEnds(data), params["charset"]))
+		p.plain = append(p.plain, normalizeLineEnds(decodeText(data, params["charset"])))
 	case mediaType == "text/html" && !isAttachment && p.html == "":
-		p.html = decodeText(normalizeLineEnds(data), params["charset"])
+		p.html = normalizeLineEnds(decodeText(data, params["charset"]))
 	default:
 		p.attachments = append(p.attachments, Attachment{
 			Name:        attachmentName(name),

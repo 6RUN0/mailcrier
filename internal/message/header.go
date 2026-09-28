@@ -1,7 +1,6 @@
 package message
 
 import (
-	"bytes"
 	"io"
 	"mime"
 	"net/textproto"
@@ -201,11 +200,23 @@ func collapseSpace(s string) string {
 	return b.String()
 }
 
-// normalizeLineEnds replaces CRLF by LF: text decoded from base64 or
-// quoted-printable keeps the line ends of the sender.
-func normalizeLineEnds(data []byte) []byte {
-	if !bytes.Contains(data, []byte("\r\n")) {
-		return data
+// normalizeLineEnds removes every CR before an LF, a run of them
+// included, and leaves a lone CR alone: text decoded from base64 or
+// quoted-printable keeps the line ends of the sender. It works on decoded
+// text: in UTF-16 the bytes of CR and LF occur inside other characters.
+func normalizeLineEnds(text string) string {
+	if !strings.Contains(text, "\r\n") {
+		return text
 	}
-	return bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
+	var b strings.Builder
+	b.Grow(len(text))
+	for line := range strings.SplitAfterSeq(text, "\n") {
+		if content, ok := strings.CutSuffix(line, "\n"); ok {
+			b.WriteString(strings.TrimRight(content, "\r"))
+			b.WriteByte('\n')
+			continue
+		}
+		b.WriteString(line)
+	}
+	return b.String()
 }

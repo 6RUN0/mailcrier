@@ -23,6 +23,17 @@ func TestRead(t *testing.T) {
 	t.Run("T-MTA-07/empty-input-with-i", readCase{"", true, "", "", ""}.check)
 	t.Run("T-ADJ-01/crlf-headers", readCase{"From: bob@example.com\r\nTo: alice@example.com\r\nSubject: Test\r\n\r\nHello, world.\n", false, "Test", "", "Hello, world.\n"}.check)
 	t.Run("T-MTA-11/crlf-everywhere", readCase{"Subject: s\r\n\r\nline 1\r\nline 2\r\n", false, "s", "", "line 1\nline 2\n"}.check)
+	t.Run("T-MTA-11/quoted-printable-cr-run-without-header-end", func(t *testing.T) {
+		msg, _, _, err := Read(strings.NewReader("Content-TrAnsfer-EnCoding:quoted-printABle\n=0D=0D\n"), ReadOptions{IgnoreDots: true})
+		if err != nil || msg.Body != "\n" {
+			t.Errorf("Body = %q, %v, want %q", msg.Body, err, "\n")
+		}
+	})
+	t.Run("T-MTA-11/quoted-printable-cr-run", readCase{"Content-Transfer-Encoding: quoted-printable\n\na=0D=0D=0Ab\n", false, "", "", "a\nb\n"}.check)
+	t.Run("T-MTA-11/base64-cr-run", readCase{"Content-Transfer-Encoding: base64\n\nYQ0NCmI=\n", false, "", "", "a\nb"}.check)
+	t.Run("T-MTA-11/utf-16le-crlf", readCase{"Content-Type: text/plain; charset=utf-16le\nContent-Transfer-Encoding: base64\n\nYQANAAoAYgA=\n", false, "", "", "a\nb"}.check)
+	t.Run("utf-16be-cr-lf-bytes-inside-a-character", readCase{"Content-Type: text/plain; charset=utf-16be\nContent-Transfer-Encoding: base64\n\nDQoAIA==\n", false, "", "", "\u0d0a "}.check)
+	t.Run("lone-cr-kept", readCase{"Content-Transfer-Encoding: quoted-printable\n\na=0Db=0D=0A\n", false, "", "", "a\rb\n\n"}.check)
 	t.Run("T-MTA-08/headers-only", readCase{"To: root\nSubject: Output from your job 7\n", false, "Output from your job 7", "", ""}.check)
 	t.Run("T-MTA-08/headers-only-no-final-newline", readCase{"Subject: s", false, "s", "", ""}.check)
 	t.Run("T-MTA-09/last-line-without-newline", readCase{"Subject: s\n\nline 1\nlast", false, "s", "", "line 1\nlast"}.check)
