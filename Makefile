@@ -32,7 +32,7 @@ BASE ?= $(shell git rev-parse -q --verify origin/develop >/dev/null && echo orig
 FUZZTIME ?= 10s
 FUZZ_TARGETS := ./internal/app:FuzzSanitize ./internal/sendmail:FuzzParse ./internal/message:FuzzRead \
 	./internal/message:FuzzHTMLToText ./internal/text:FuzzEscapeTelegram ./internal/text:FuzzEscapeChat \
-	./internal/render:FuzzFit ./internal/backend/telegram:FuzzTelegramText
+	./internal/render:FuzzFit ./internal/backend/telegram:FuzzTelegramText ./internal/spool:FuzzDecode
 
 # setgid-e2e installs the binary setgid inside a throwaway container and
 # needs docker; the image is testdata/setgid-e2e/Dockerfile.
