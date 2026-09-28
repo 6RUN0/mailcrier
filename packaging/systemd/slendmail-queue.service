@@ -1,0 +1,14 @@
+[Unit]
+Description=Deliver the slendmail queue
+Documentation=man:slendmail(8)
+
+[Service]
+Type=oneshot
+User=slendmail
+Group=slendmail
+ExecStart=/usr/sbin/slendmail -q
+TimeoutStartSec=3min
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=yes
