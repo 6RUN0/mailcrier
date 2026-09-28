@@ -35,6 +35,25 @@ const (
 	DefaultDeadline    = 30 * time.Second
 )
 
+// Defaults of the [spool] table. The run budgets bound how long a call
+// works on the queue: a caller such as cron waits for the mailer, so the
+// run that follows the own message of a call is short and small, and the
+// periodic queue run gets more. max_queue_messages_per_uid times four
+// fills the share of max_queue_messages left after the reserve of root.
+const (
+	DefaultSpoolDir         = "/var/spool/slendmail"
+	DefaultDrainBudget      = 10 * time.Second
+	DefaultDrainMaxMessages = 20
+	DefaultRunBudget        = 60 * time.Second
+	DefaultQueueTTL         = 7 * 24 * time.Hour
+	DefaultHoldTTL          = 7 * 24 * time.Hour
+	DefaultFailedTTL        = 30 * 24 * time.Hour
+	DefaultMaxMessages      = 1000
+	DefaultMaxBytes         = 256 << 20
+	DefaultMaxMessagesUID   = 200
+	DefaultMaxBytesUID      = 64 << 20
+)
+
 // Target types.
 const (
 	TypeTelegram = "telegram"
@@ -64,6 +83,8 @@ const (
 type Config struct {
 	// General holds process-wide settings.
 	General General `toml:"general"`
+	// Spool holds the settings of the queue.
+	Spool Spool `toml:"spool"`
 	// Strings overrides the notices written in place of missing content;
 	// an empty field keeps the built-in English text.
 	Strings Strings `toml:"strings"`
@@ -81,6 +102,43 @@ type General struct {
 	HTTPTimeout Duration `toml:"http_timeout"`
 	// Deadline bounds the delivery of the message to all targets.
 	Deadline Duration `toml:"deadline"`
+}
+
+// Spool is the [spool] table.
+type Spool struct {
+	// Dir is the spool directory, an absolute path; empty turns the spool
+	// off. Without the key the caller picks the directory, see HasDir.
+	Dir string `toml:"dir"`
+	// HasDir records whether the file sets dir.
+	HasDir bool `toml:"-"`
+	// DrainBudget bounds the queue run that follows the own message of a
+	// call, and DrainMaxMessages the entries it delivers.
+	DrainBudget      Duration `toml:"drain_budget"`
+	DrainMaxMessages int      `toml:"drain_max_messages"`
+	// RunBudget bounds a queue run started with -q.
+	RunBudget Duration `toml:"run_budget"`
+	// QueueTTL and HoldTTL bound the age of an entry in queue/ and hold/,
+	// after which it moves to failed/; FailedTTL bounds the time in
+	// failed/, after which it is deleted.
+	QueueTTL  Duration `toml:"queue_ttl"`
+	HoldTTL   Duration `toml:"hold_ttl"`
+	FailedTTL Duration `toml:"failed_ttl"`
+	// MaxMessages and MaxBytes bound the whole spool, the per-uid limits
+	// the entries of one user.
+	MaxMessages       int   `toml:"max_queue_messages"`
+	MaxBytes          int64 `toml:"max_queue_bytes"`
+	MaxMessagesPerUID int   `toml:"max_queue_messages_per_uid"`
+	MaxBytesPerUID    int64 `toml:"max_queue_bytes_per_uid"`
+}
+
+// DefaultSpool returns the [spool] settings of a file without the table.
+func DefaultSpool() Spool {
+	return Spool{
+		Dir: DefaultSpoolDir, DrainBudget: Duration{DefaultDrainBudget}, DrainMaxMessages: DefaultDrainMaxMessages,
+		RunBudget: Duration{DefaultRunBudget}, QueueTTL: Duration{DefaultQueueTTL}, HoldTTL: Duration{DefaultHoldTTL},
+		FailedTTL: Duration{DefaultFailedTTL}, MaxMessages: DefaultMaxMessages, MaxBytes: DefaultMaxBytes,
+		MaxMessagesPerUID: DefaultMaxMessagesUID, MaxBytesPerUID: DefaultMaxBytesUID,
+	}
 }
 
 // Strings is the [strings] table.
@@ -257,6 +315,7 @@ func Load(fsys fs.FS, path string) (*Config, error) {
 	if !keys.has("general", "deadline") {
 		cfg.General.Deadline.Duration = DefaultDeadline
 	}
+	setSpoolDefaults(&cfg.Spool, keys)
 	return &cfg, nil
 }
 
@@ -278,15 +337,66 @@ func decodeError(path string, err error) *Error {
 	return &Error{Path: path, Msg: err.Error()}
 }
 
+// setSpoolDefaults fills the keys the file leaves out with DefaultSpool.
+func setSpoolDefaults(spool *Spool, keys keyIndex) {
+	defaults := DefaultSpool()
+	spool.HasDir = keys.has("spool", "dir")
+	if !spool.HasDir {
+		spool.Dir = defaults.Dir
+	}
+	for _, field := range []struct {
+		key         string
+		value, dflt *Duration
+	}{
+		{"drain_budget", &spool.DrainBudget, &defaults.DrainBudget}, {"run_budget", &spool.RunBudget, &defaults.RunBudget},
+		{"queue_ttl", &spool.QueueTTL, &defaults.QueueTTL}, {"hold_ttl", &spool.HoldTTL, &defaults.HoldTTL},
+		{"failed_ttl", &spool.FailedTTL, &defaults.FailedTTL},
+	} {
+		if !keys.has("spool", field.key) {
+			*field.value = *field.dflt
+		}
+	}
+	for _, field := range []struct {
+		key         string
+		value, dflt *int
+	}{
+		{"drain_max_messages", &spool.DrainMaxMessages, &defaults.DrainMaxMessages},
+		{"max_queue_messages", &spool.MaxMessages, &defaults.MaxMessages},
+		{"max_queue_messages_per_uid", &spool.MaxMessagesPerUID, &defaults.MaxMessagesPerUID},
+	} {
+		if !keys.has("spool", field.key) {
+			*field.value = *field.dflt
+		}
+	}
+	if !keys.has("spool", "max_queue_bytes") {
+		spool.MaxBytes = defaults.MaxBytes
+	}
+	if !keys.has("spool", "max_queue_bytes_per_uid") {
+		spool.MaxBytesPerUID = defaults.MaxBytesPerUID
+	}
+}
+
 func validate(cfg *Config, keys keyIndex) *Error {
+	sp := cfg.Spool
 	for _, limit := range []struct {
-		key   string
-		value time.Duration
-	}{{"http_timeout", cfg.General.HTTPTimeout.Duration}, {"deadline", cfg.General.Deadline.Duration}} {
-		if keys.has("general", limit.key) && limit.value <= 0 {
-			pos := keys.position("general", limit.key)
+		table, key string
+		isPositive bool
+	}{
+		{"general", "http_timeout", cfg.General.HTTPTimeout.Duration > 0}, {"general", "deadline", cfg.General.Deadline.Duration > 0},
+		{"spool", "drain_budget", sp.DrainBudget.Duration > 0}, {"spool", "run_budget", sp.RunBudget.Duration > 0},
+		{"spool", "queue_ttl", sp.QueueTTL.Duration > 0}, {"spool", "hold_ttl", sp.HoldTTL.Duration > 0},
+		{"spool", "failed_ttl", sp.FailedTTL.Duration > 0}, {"spool", "drain_max_messages", sp.DrainMaxMessages > 0},
+		{"spool", "max_queue_messages", sp.MaxMessages > 0}, {"spool", "max_queue_bytes", sp.MaxBytes > 0},
+		{"spool", "max_queue_messages_per_uid", sp.MaxMessagesPerUID > 0}, {"spool", "max_queue_bytes_per_uid", sp.MaxBytesPerUID > 0},
+	} {
+		if keys.has(limit.table, limit.key) && !limit.isPositive {
+			pos := keys.position(limit.table, limit.key)
 			return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("value of key %q must be positive", limit.key)}
 		}
+	}
+	if dir := cfg.Spool.Dir; keys.has("spool", "dir") && dir != "" && !strings.HasPrefix(dir, "/") {
+		pos := keys.position("spool", "dir")
+		return &Error{Line: pos.Line, Column: pos.Column, Msg: `value of key "dir" must be an absolute path or empty`}
 	}
 	for _, notice := range []struct{ key, value string }{
 		{"no_subject", cfg.Strings.NoSubject}, {"empty_body", cfg.Strings.EmptyBody}, {"truncated", cfg.Strings.Truncated},

@@ -97,8 +97,8 @@ func TestLoadRejects(t *testing.T) {
 		},
 		{
 			name: "unknown-top-level-table",
-			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\n\n[spool]\ndir = \"/var/spool/slendmail\"\n",
-			want: `:6:2: unknown key "spool"`,
+			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\n\n[daemon]\nlisten = \"127.0.0.1:25\"\n",
+			want: `:6:2: unknown key "daemon"`,
 		},
 		{
 			name: "key-of-other-target-type",
@@ -405,6 +405,62 @@ func TestLoadTimeLimits(t *testing.T) {
 			t.Errorf("http_timeout = %v, deadline = %v, want 2s and 1m", cfg.General.HTTPTimeout, cfg.General.Deadline)
 		}
 	})
+}
+
+func TestLoadSpool(t *testing.T) {
+	const target = "\n[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\n"
+	t.Run("T-ADJ-23/defaults", func(t *testing.T) {
+		cfg, err := load(t, target, nil)
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+		want := Spool{
+			Dir: "/var/spool/slendmail", DrainBudget: Duration{10 * time.Second}, DrainMaxMessages: 20,
+			RunBudget: Duration{time.Minute}, QueueTTL: Duration{7 * 24 * time.Hour}, HoldTTL: Duration{7 * 24 * time.Hour},
+			FailedTTL: Duration{30 * 24 * time.Hour}, MaxMessages: 1000, MaxBytes: 256 << 20,
+			MaxMessagesPerUID: 200, MaxBytesPerUID: 64 << 20,
+		}
+		if cfg.Spool != want {
+			t.Errorf("Spool = %+v, want %+v", cfg.Spool, want)
+		}
+	})
+	t.Run("configured", func(t *testing.T) {
+		doc := "[spool]\ndir = \"/srv/spool\"\ndrain_budget = \"5s\"\ndrain_max_messages = 3\nrun_budget = \"2m\"\n" +
+			"queue_ttl = \"48h\"\nhold_ttl = \"24h\"\nfailed_ttl = \"72h\"\nmax_queue_messages = 10\nmax_queue_bytes = 1000\n" +
+			"max_queue_messages_per_uid = 2\nmax_queue_bytes_per_uid = 100\n" + target
+		cfg, err := load(t, doc, nil)
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+		want := Spool{
+			Dir: "/srv/spool", HasDir: true, DrainBudget: Duration{5 * time.Second}, DrainMaxMessages: 3,
+			RunBudget: Duration{2 * time.Minute}, QueueTTL: Duration{48 * time.Hour}, HoldTTL: Duration{24 * time.Hour},
+			FailedTTL: Duration{72 * time.Hour}, MaxMessages: 10, MaxBytes: 1000, MaxMessagesPerUID: 2, MaxBytesPerUID: 100,
+		}
+		if cfg.Spool != want {
+			t.Errorf("Spool = %+v, want %+v", cfg.Spool, want)
+		}
+	})
+	t.Run("off", func(t *testing.T) {
+		cfg, err := load(t, "[spool]\ndir = \"\"\n"+target, nil)
+		if err != nil || cfg.Spool.Dir != "" || !cfg.Spool.HasDir {
+			t.Errorf("Spool = %+v, err = %v, want an empty dir that is set", cfg.Spool, err)
+		}
+	})
+	for name, tc := range map[string]struct{ doc, want string }{
+		"relative-dir":      {"[spool]\ndir = \"spool\"\n", `:2:1: value of key "dir" must be an absolute path or empty`},
+		"zero-budget":       {"[spool]\ndrain_budget = \"0s\"\n", `:2:1: value of key "drain_budget" must be positive`},
+		"negative-limit":    {"[spool]\nmax_queue_bytes = -1\n", `:2:1: value of key "max_queue_bytes" must be positive`},
+		"zero-max-messages": {"[spool]\ndrain_max_messages = 0\n", `:2:1: value of key "drain_max_messages" must be positive`},
+		"unknown-key":       {"[spool]\nttl = \"1h\"\n", `:2:1: unknown key "spool.ttl"`},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := load(t, tc.doc+target, nil)
+			if err == nil || err.Error() != configPath+tc.want {
+				t.Errorf("Load() error = %v, want %s", err, configPath+tc.want)
+			}
+		})
+	}
 }
 
 func TestLoadStrings(t *testing.T) {
