@@ -14,7 +14,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -29,9 +28,6 @@ const (
 	serviceID  = 990
 	nobodyUser = "nobody"
 )
-
-// successfulExec matches a completed execve line of strace -f output.
-var successfulExec = regexp.MustCompile(`(?m)^\d+ +execve\("([^"]+)".*= 0$`)
 
 // TestSetgidReexec installs the binary setgid in a throwaway root file
 // system (the setgid-e2e make target runs it in a container) and runs it
@@ -154,16 +150,15 @@ func TestSetgidReexec(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("strace:\n%s", traced)
-	execs := successfulExec.FindAllStringSubmatch(string(traced), -1)
-	if len(execs) != 2 || execs[0][1] != "/usr/sbin/slendmail" || execs[1][1] != selfExe {
-		t.Errorf("successful execve calls %q, want the start and exactly one re-exec through %s", execs, selfExe)
+	execs := successfulExecs(string(traced))
+	if len(execs) != 2 || execs[0].path != "/usr/sbin/slendmail" || execs[1].path != selfExe {
+		t.Errorf("successful execve calls %+v, want the start and exactly one re-exec through %s", execs, selfExe)
 	}
 	if !strings.Contains(string(traced), "umask(007)") {
 		t.Error("umask(007) not called")
 	}
-	lastExec := successfulExec.FindAllStringIndex(string(traced), -1)
-	if len(lastExec) > 0 {
-		beforeReexec := string(traced)[:lastExec[len(lastExec)-1][0]]
+	if len(execs) > 0 {
+		beforeReexec := string(traced)[:execs[len(execs)-1].offset]
 		if strings.Contains(beforeReexec, `openat(AT_FDCWD, "/etc/slendmail.conf"`) {
 			t.Error("the configuration path from TZ was opened before the re-exec")
 		}
