@@ -102,6 +102,10 @@ type Message struct {
 	// Size is the number of bytes read from the input, including any part
 	// over the limit.
 	Size int64
+	// Raw is the input as kept: line ends and dots rewritten, anything
+	// over the size limit left out. Read with IgnoreDots, it yields this
+	// message again, which is how a spooled message is delivered later.
+	Raw []byte
 }
 
 // BlindCopies are the addresses of the Bcc and Resent-Bcc headers: they
@@ -168,6 +172,7 @@ func Read(r io.Reader, opt ReadOptions) (*Message, BlindCopies, []string, error)
 	}
 	msg := &Message{Header: Header{}, Size: int64(len(raw)) + discarded}
 	raw = normalize(raw, opt.IgnoreDots)
+	msg.Raw = raw
 	if bytes.HasPrefix(raw, []byte("From ")) {
 		raw = raw[lineEnd(raw, 0):]
 	}

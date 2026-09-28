@@ -1,6 +1,7 @@
 package message
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"math"
@@ -273,6 +274,14 @@ func FuzzRead(f *testing.F) {
 					t.Errorf("header %s is not valid UTF-8: %q", name, value)
 				}
 			}
+		}
+		again, _, _, err := Read(bytes.NewReader(msg.Raw), ReadOptions{IgnoreDots: true, MaxSize: 1 << 16})
+		if err != nil {
+			t.Fatal(err)
+		}
+		msg.Size, again.Size = 0, 0
+		if !reflect.DeepEqual(again, msg) {
+			t.Errorf("Raw read again differs:\n%+v\nwant\n%+v", again, msg)
 		}
 	})
 }
