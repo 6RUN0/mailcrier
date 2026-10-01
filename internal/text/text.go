@@ -7,6 +7,7 @@ package text
 
 import (
 	"strings"
+	"unicode"
 	"unicode/utf16"
 	"unicode/utf8"
 )
@@ -290,6 +291,123 @@ func numericEntity(name string) bool {
 		}
 	}
 	return true
+}
+
+// CutTelegramHTML returns the longest prefix of the parse_mode HTML text s
+// that ends between two tags, entities or characters, but not right after
+// a start tag, followed by the end tags of the elements still open there,
+// innermost first, such that measure of the result is at most limit;
+// empty when nothing fits. A tag or an entity is never split, so the Bot
+// API parses the result as long as it parses s.
+//
+// The prefix length is found by binary search over the boundaries; the
+// end tags count nothing for MeasureTelegramHTML, so the result grows with
+// the prefix there, and for any other measure the search still returns a
+// result that fits.
+func CutTelegramHTML(s string, limit int, measure func(string) int) string {
+	if measure(s) <= limit {
+		return s
+	}
+	boundaries := telegramHTMLBoundaries(s)
+	low, high := 0, len(boundaries)-1
+	for low < high {
+		middle := low + (high-low+1)/2
+		if measure(closeTelegramHTML(s[:boundaries[middle]])) <= limit {
+			low = middle
+		} else {
+			high = middle - 1
+		}
+	}
+	for low > 0 && isStartTag(s[boundaries[low-1]:boundaries[low]]) {
+		low--
+	}
+	cut := closeTelegramHTML(s[:boundaries[low]])
+	if measure(cut) > limit {
+		return ""
+	}
+	return cut
+}
+
+// telegramHTMLBoundaries returns the byte offsets of s at which a cut
+// splits no tag, entity or character, 0 first, len(s) excluded. A < with
+// no > after it is a character, as MeasureTelegramHTML takes it.
+func telegramHTMLBoundaries(s string) []int {
+	boundaries := []int{0}
+	for i := 0; i < len(s); {
+		next := i + 1
+		switch s[i] {
+		case '<':
+			if end := strings.IndexByte(s[i:], '>'); end >= 0 {
+				next = i + end + 1
+			}
+		case '&':
+			if length := entityAt(s[i:]); length > 0 {
+				next = i + length
+			}
+		default:
+			_, size := utf8.DecodeRuneInString(s[i:])
+			next = i + size
+		}
+		i = next
+		if i < len(s) {
+			boundaries = append(boundaries, i)
+		}
+	}
+	return boundaries
+}
+
+// isStartTag reports whether token is a start tag such as <b>.
+func isStartTag(token string) bool {
+	return len(token) > 2 && token[0] == '<' && token[1] != '/' && token[len(token)-1] == '>'
+}
+
+// closeTelegramHTML returns prefix followed by the end tags of the
+// elements open at its end. An end tag closes the innermost open element
+// of its name, in any case, and every element opened inside it.
+func closeTelegramHTML(prefix string) string {
+	var open []string
+	for i := 0; i < len(prefix); {
+		if prefix[i] != '<' {
+			i++
+			continue
+		}
+		end := strings.IndexByte(prefix[i:], '>')
+		if end < 0 {
+			break
+		}
+		tag := prefix[i+1 : i+end]
+		i += end + 1
+		if name, isEnd := strings.CutPrefix(tag, "/"); isEnd {
+			name = tagName(name)
+			for at := len(open) - 1; at >= 0; at-- {
+				if strings.EqualFold(open[at], name) {
+					open = open[:at]
+					break
+				}
+			}
+			continue
+		}
+		open = append(open, tagName(tag))
+	}
+	if len(open) == 0 {
+		return prefix
+	}
+	var b strings.Builder
+	b.WriteString(prefix)
+	for i := len(open) - 1; i >= 0; i-- {
+		b.WriteString("</" + open[i] + ">")
+	}
+	return b.String()
+}
+
+// tagName returns the name of tag, the text between < and >: up to the
+// first white space, which may be a tab or a line break.
+func tagName(tag string) string {
+	tag = strings.TrimLeftFunc(tag, unicode.IsSpace)
+	if end := strings.IndexFunc(tag, unicode.IsSpace); end >= 0 {
+		return tag[:end]
+	}
+	return tag
 }
 
 // TruncateRunes returns the first n characters of s; empty for n <= 0.

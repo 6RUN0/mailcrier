@@ -266,3 +266,107 @@ func FuzzEscapeChat(f *testing.F) {
 		}
 	})
 }
+
+func TestCutTelegramHTML(t *testing.T) {
+	cases := []struct {
+		name  string
+		in    string
+		limit int
+		want  string
+	}{
+		{"fits-unchanged", "<b>a &amp; b</b>", 5, "<b>a &amp; b</b>"},
+		{"T-LIM-05/entity-kept-whole", "<b>a &amp; b</b>", 3, "<b>a &amp;</b>"},
+		{"T-LIM-05/entity-not-split", "<b>a &amp; b</b>", 2, "<b>a </b>"},
+		{"T-LIM-05/open-tags-closed-innermost-first", "<blockquote expandable><b>xyz</b>abc</blockquote>", 2, "<blockquote expandable><b>xy</b></blockquote>"},
+		{"T-LIM-05/closed-element-stays-closed", "<b>x</b><i>yz</i>", 2, "<b>x</b><i>y</i>"},
+		{"character-outside-bmp-whole", "<pre>😀😀</pre>", 1, "<pre>😀</pre>"},
+		{"no-empty-element-at-the-end", "<b>x</b><i>yz</i>", 1, "<b>x</b>"},
+		{"nothing-fits", "<b>abc</b>", 0, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := CutTelegramHTML(tc.in, tc.limit, MeasureTelegramHTML)
+			if got != tc.want {
+				t.Errorf("CutTelegramHTML(%q, %d) = %q, want %q", tc.in, tc.limit, got, tc.want)
+			}
+			if err := validTelegramHTML(got); err != "" {
+				t.Error(err)
+			}
+		})
+	}
+	// The validator knows only the tags of the built-in template, so these
+	// two compare the result alone.
+	for _, tc := range []struct{ name, in, want string }{
+		{"name-ends-at-any-space", "<a\thref=\"https://example.org\">link</a>", "<a\thref=\"https://example.org\">li</a>"},
+		{"end-tag-in-other-case-closes", "<B>x</b><i>yz</i>", "<B>x</b><i>y</i>"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := CutTelegramHTML(tc.in, 2, MeasureTelegramHTML); got != tc.want {
+				t.Errorf("CutTelegramHTML(%q, 2) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+	t.Run("byte-measure", func(t *testing.T) {
+		got := CutTelegramHTML("<pre>abcdef</pre>", 15, ByteLen)
+		if got != "<pre>abcd</pre>" {
+			t.Errorf("got %q, want %q", got, "<pre>abcd</pre>")
+		}
+	})
+}
+
+// telegramMarkup matches a tag or an entity of the HTML parse mode as the
+// built-in template writes them.
+var telegramMarkup = regexp.MustCompile(`</?[a-z]+(?: expandable)?>|&(?:amp|lt|gt|quot|#[0-9]+|#x[0-9a-fA-F]+);`)
+
+// validTelegramHTML returns why the Bot API would not parse s, or "":
+// every tag closed in order, no <, > or & outside a tag or an entity.
+func validTelegramHTML(s string) string {
+	var open []string
+	for _, markup := range telegramMarkup.FindAllString(s, -1) {
+		switch {
+		case strings.HasPrefix(markup, "&"):
+		case strings.HasPrefix(markup, "</"):
+			if len(open) == 0 || open[len(open)-1] != strings.Trim(markup, "</>") {
+				return "unbalanced " + markup + " in " + s
+			}
+			open = open[:len(open)-1]
+		default:
+			name, _, _ := strings.Cut(strings.Trim(markup, "<>"), " ")
+			open = append(open, name)
+		}
+	}
+	if len(open) > 0 {
+		return "unclosed " + strings.Join(open, ",") + " in " + s
+	}
+	if strings.ContainsAny(telegramMarkup.ReplaceAllString(s, ""), "<>&") {
+		return "bare markup character in " + s
+	}
+	return ""
+}
+
+// FuzzCutTelegramHTML checks that a cut of escaped text inside nested
+// elements measures at most the limit, is a prefix of the input up to the
+// end tags it adds, and parses.
+func FuzzCutTelegramHTML(f *testing.F) {
+	f.Add("a & b < c > d", 5)
+	f.Add("😀&amp;ёжик", 2)
+	f.Add("", 0)
+	f.Fuzz(func(t *testing.T, body string, limit int) {
+		if !utf8.ValidString(body) {
+			return
+		}
+		limit %= 200
+		in := "<b>" + EscapeTelegramHTML(body) + "</b>\n<blockquote expandable>" + EscapeTelegramHTML(body) + "</blockquote>"
+		got := CutTelegramHTML(in, limit, MeasureTelegramHTML)
+		if n := MeasureTelegramHTML(got); n > max(limit, 0) {
+			t.Errorf("CutTelegramHTML(%q, %d) measures %d", in, limit, n)
+		}
+		if err := validTelegramHTML(got); err != "" {
+			t.Error(err)
+		}
+		trimmed := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(got, "</blockquote>"), "</b>"), "</b>")
+		if !strings.HasPrefix(in, trimmed) {
+			t.Errorf("CutTelegramHTML(%q, %d) = %q is no prefix of the input", in, limit, got)
+		}
+	})
+}
