@@ -25,7 +25,7 @@ T-ADJ-23	high	done	Spool constants and layout: 60 s backoff capped at 24 h, 7 da
 T-ADJ-24	critical	done	Process exit codes: 78 configuration error, 66 unreadable stdin, 73 spool entry not created; a malformed message is delivered as is	https://github.com/crooy/send-matrix-mail/blob/d3195036b560/main.go#L79-L132
 T-ADJ-25	critical	done	A successful delivery exits 0	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L626
 T-ADJ-26	critical	done	A stdin read error exits 66	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L633
-T-ADJ-27	critical	done	HTTP 429, 500, 502 queue the message and exit 75, or exit 69 without a spool; other 4xx and nothing delivered exit 69	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L650
+T-ADJ-27	critical	done	HTTP 429, 500, 502 queue the message and exit 0, or exit 69 with the spool off; other 4xx and nothing delivered exit 69	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L650
 T-ADJ-28	critical	done	A configuration error exits 78 after logging the error	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L1101
 T-ADJ-29	low	todo	stdin attached to a terminal without a mode flag exits with a usage hint on stderr	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L1113
 T-ADJ-30	low	todo	-s SUBJECT adds a Subject only when the message has none, header name case-insensitive	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L728
