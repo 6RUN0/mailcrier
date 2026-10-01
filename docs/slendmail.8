@@ -109,7 +109,8 @@ Bot API
 in the HTML parse mode, text of at most 4096 characters after entities, an
 emoji counted once, and one
 .Cm sendDocument
-per attachment, up to 10 files of 50 MB.
+per attachment, up to 10 files of 50 MB; a text of at most 1024 characters
+goes as the caption of the first document instead.
 .It Cm discord
 One webhook execution with wait=true and no mention allowed, text of at most
 2000 characters, up to 10 files of 20 MiB and 25 MiB together.

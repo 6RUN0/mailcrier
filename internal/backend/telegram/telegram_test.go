@@ -156,6 +156,8 @@ type botAPI struct {
 	server *httptest.Server
 	// failDocuments makes sendDocument answer 413.
 	failDocuments bool
+	// rejectTexts makes sendMessage answer 400 to any text.
+	rejectTexts bool
 
 	mu        sync.Mutex
 	texts     []string
@@ -164,7 +166,7 @@ type botAPI struct {
 }
 
 type document struct {
-	chatID, name, contentType, content string
+	chatID, name, contentType, content, caption string
 }
 
 func newBotAPI(t *testing.T) *botAPI {
@@ -199,6 +201,11 @@ func (api *botAPI) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		length, err := parseBotHTML(msg.Text)
 		switch {
+		case api.rejectTexts:
+			api.rejected = append(api.rejected, "text")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, `{"ok":false,"error_code":400,"description":"Bad Request: can't parse entities"}`)
+			return
 		case err != nil:
 			api.rejected = append(api.rejected, err.Error())
 			w.WriteHeader(http.StatusBadRequest)
@@ -223,7 +230,17 @@ func (api *botAPI) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		content, _ := io.ReadAll(file)
-		api.documents = append(api.documents, document{r.FormValue("chat_id"), header.Filename, header.Header.Get("Content-Type"), string(content)})
+		caption := r.FormValue("caption")
+		if length, err := parseBotHTML(caption); caption != "" && (err != nil || length > 1024 || r.FormValue("parse_mode") != "HTML") {
+			api.rejected = append(api.rejected, fmt.Sprintf("caption of %d characters, err %v", length, err))
+			http.Error(w, `{"ok":false,"error_code":400,"description":"Bad Request: message caption is too long"}`, http.StatusBadRequest)
+			return
+		}
+		if len(content) == 0 {
+			http.Error(w, `{"ok":false,"error_code":400,"description":"Bad Request: file must be non-empty"}`, http.StatusBadRequest)
+			return
+		}
+		api.documents = append(api.documents, document{r.FormValue("chat_id"), header.Filename, header.Header.Get("Content-Type"), string(content), caption})
 	default:
 		http.Error(w, `{"ok":false,"error_code":404,"description":"Not Found"}`, http.StatusNotFound)
 		return
@@ -372,30 +389,143 @@ func TestDeliverTelegramDocuments(t *testing.T) {
 	for _, f := range files {
 		d.Attachments = append(d.Attachments, render.Attachment{Name: f.Name, ContentType: f.ContentType, Size: int64(len(f.Data))})
 	}
+	long := d
+	long.Body = strings.Repeat("a long line of the body\n", 50)
 	t.Run("T-LIM-07/file-over-50-mb-noted", func(t *testing.T) {
 		api := newBotAPI(t)
 		result := deliverTo(t, api.sender(Options{ChatID: "@ops"}), d, files)
-		if result.Status != delivery.OK || result.Err != nil || len(api.texts) != 1 {
+		if result.Status != delivery.OK || result.Err != nil || len(api.documents) != 2 {
 			t.Fatalf("result = %+v, rejected %q", result, api.rejected)
 		}
-		if !strings.Contains(api.texts[0], "dump.bin (application/octet-stream, 47.7 MiB) [not sent]") || strings.Count(api.texts[0], "[not sent]") != 1 {
-			t.Errorf("text does not note the skipped file: %q", api.texts[0])
+		caption := api.documents[0].caption
+		if !strings.Contains(caption, "dump.bin (application/octet-stream, 47.7 MiB) [not sent]") || strings.Count(caption, "[not sent]") != 1 {
+			t.Errorf("text does not note the skipped file: %q", caption)
 		}
-		want := []document{{"@ops", `report "1".log`, "text/plain", "report one"}, {"@ops", "attachment-3", "application/octet-stream", "unnamed"}}
+		api.documents[0].caption = ""
+		want := []document{{"@ops", `report "1".log`, "text/plain", "report one", ""}, {"@ops", "attachment-3", "application/octet-stream", "unnamed", ""}}
 		if fmt.Sprint(api.documents) != fmt.Sprint(want) {
 			t.Errorf("documents = %q, want %q", api.documents, want)
+		}
+	})
+	t.Run("T-LIM-06/short-text-as-caption", func(t *testing.T) {
+		api := newBotAPI(t)
+		result := deliverTo(t, api.sender(Options{}), d, files)
+		if result.Status != delivery.OK || len(api.texts) != 0 || len(api.documents) != 2 || !strings.HasPrefix(api.documents[0].caption, "<b>s</b>") || api.documents[1].caption != "" {
+			t.Errorf("result = %+v, texts %q, documents %q", result, api.texts, api.documents)
+		}
+	})
+	t.Run("T-LIM-06/long-text-then-documents-without-caption", func(t *testing.T) {
+		api := newBotAPI(t)
+		result := deliverTo(t, api.sender(Options{}), long, files)
+		if result.Status != delivery.OK || len(api.texts) != 1 || len(api.documents) != 2 || api.documents[0].caption != "" || api.documents[1].caption != "" {
+			t.Errorf("result = %+v, texts %q, documents %q", result, api.texts, api.documents)
+		}
+	})
+	// The caption limit counts characters like the text limit: an emoji,
+	// two UTF-16 units, counts once.
+	for _, tc := range []struct {
+		name        string
+		length      int
+		wantCaption bool
+	}{
+		{"T-LIM-06/caption-of-1024-characters", maxCaption, true},
+		{"T-LIM-06/text-of-1025-characters-by-sendMessage", maxCaption + 1, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			api := newBotAPI(t)
+			file := backend.Attachment{Name: "a.log", ContentType: "text/plain", Data: []byte("a")}
+			payload := backend.Payload{Text: strings.Repeat("\U0001F600", tc.length), Attachments: []backend.Attachment{file}}
+			if err := api.sender(Options{}).Send(context.Background(), payload); err != nil {
+				t.Fatalf("Send() = %v", err)
+			}
+			isCaption := len(api.texts) == 0 && len(api.documents) == 1 && api.documents[0].caption == payload.Text
+			isMessage := len(api.texts) == 1 && len(api.documents) == 1 && api.documents[0].caption == ""
+			if tc.wantCaption && !isCaption || !tc.wantCaption && !isMessage {
+				var captions []int
+				for _, doc := range api.documents {
+					captions = append(captions, utf8.RuneCountInString(doc.caption))
+				}
+				t.Errorf("texts %d, captions of %v characters", len(api.texts), captions)
+			}
+		})
+	}
+	t.Run("empty-first-file-without-caption", func(t *testing.T) {
+		api := newBotAPI(t)
+		empty := []message.Attachment{{Name: "empty.log", ContentType: "text/plain"}, files[0]}
+		result := deliverTo(t, api.sender(Options{}), render.Data{Subject: "s", Hostname: "h", Body: "b\n"}, empty)
+		var deliveryErr *backend.Error
+		if result.Status != delivery.OK || len(api.texts) != 1 || !errors.As(result.Err, &deliveryErr) || !deliveryErr.IsPartial {
+			t.Errorf("result = %+v, texts %q, documents %q", result, api.texts, api.documents)
 		}
 	})
 	t.Run("document-failure-is-partial", func(t *testing.T) {
 		api := newBotAPI(t)
 		api.failDocuments = true
-		result := deliverTo(t, api.sender(Options{}), d, files)
+		result := deliverTo(t, api.sender(Options{}), long, files)
 		var deliveryErr *backend.Error
 		if result.Status != delivery.OK || !errors.As(result.Err, &deliveryErr) || !deliveryErr.IsPartial || deliveryErr.Status != 413 || len(api.texts) != 1 {
 			t.Errorf("result = %+v", result)
 		}
 		if !strings.Contains(result.Err.Error(), "document 1 of 2") {
 			t.Errorf("error %q does not name the document", result.Err)
+		}
+	})
+	t.Run("caption-failure-is-not-partial", func(t *testing.T) {
+		api := newBotAPI(t)
+		api.failDocuments = true
+		result := deliverTo(t, api.sender(Options{}), d, files)
+		var deliveryErr *backend.Error
+		if result.Status != delivery.Perm || !errors.As(result.Err, &deliveryErr) || deliveryErr.IsPartial || deliveryErr.IsTextRejected {
+			t.Errorf("result = %+v", result)
+		}
+	})
+}
+
+// TestSendRejectedText pins which failures of the request with the text
+// are IsTextRejected: 400, from sendMessage or from the document with the
+// caption, and nothing else; and that an empty text sends the documents
+// alone.
+func TestSendRejectedText(t *testing.T) {
+	file := backend.Attachment{Name: "message.txt", ContentType: "text/plain", Data: []byte("full text")}
+	t.Run("T-ADJ-49/400-on-sendMessage", func(t *testing.T) {
+		api := newBotAPI(t)
+		api.rejectTexts = true
+		err := api.sender(Options{}).Send(context.Background(), backend.Payload{Text: strings.Repeat("x", 2000), Attachments: []backend.Attachment{file}})
+		var deliveryErr *backend.Error
+		if !errors.As(err, &deliveryErr) || !deliveryErr.IsTextRejected || deliveryErr.IsPartial || len(api.documents) != 0 {
+			t.Errorf("err = %+v, documents %q", err, api.documents)
+		}
+	})
+	t.Run("400-on-caption", func(t *testing.T) {
+		api := newBotAPI(t)
+		err := api.sender(Options{}).Send(context.Background(), backend.Payload{Text: "<b>open", Attachments: []backend.Attachment{file}})
+		var deliveryErr *backend.Error
+		if !errors.As(err, &deliveryErr) || !deliveryErr.IsTextRejected {
+			t.Errorf("err = %+v", err)
+		}
+	})
+	t.Run("other-status-not-text-rejected", func(t *testing.T) {
+		api := newBotAPI(t)
+		err := New(Options{Token: "wrong", ChatID: "1", APIURL: api.server.URL, Client: api.server.Client()}).Send(context.Background(), backend.Payload{Text: "x"})
+		var deliveryErr *backend.Error
+		if !errors.As(err, &deliveryErr) || deliveryErr.Status != 404 || deliveryErr.IsTextRejected {
+			t.Errorf("err = %+v", err)
+		}
+	})
+	t.Run("empty-text-sends-documents-alone", func(t *testing.T) {
+		api := newBotAPI(t)
+		err := api.sender(Options{}).Send(context.Background(), backend.Payload{Attachments: []backend.Attachment{file, file}})
+		if err != nil || len(api.texts) != 0 || len(api.documents) != 2 || api.documents[0].caption != "" {
+			t.Errorf("err = %v, texts %q, documents %q", err, api.texts, api.documents)
+		}
+	})
+	t.Run("empty-text-first-document-failure-not-partial", func(t *testing.T) {
+		api := newBotAPI(t)
+		api.failDocuments = true
+		err := api.sender(Options{}).Send(context.Background(), backend.Payload{Attachments: []backend.Attachment{file}})
+		var deliveryErr *backend.Error
+		if !errors.As(err, &deliveryErr) || deliveryErr.IsPartial || deliveryErr.IsTextRejected {
+			t.Errorf("err = %+v", err)
 		}
 	})
 }

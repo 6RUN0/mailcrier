@@ -43,7 +43,9 @@ type Payload struct {
 	// the notice for a missing one.
 	Title string
 	// Text is the notification in the markup of the target, within
-	// Caps.MaxText.
+	// Caps.MaxText. It is empty only when the target rejected the text
+	// with IsTextRejected and the full text goes again as an attachment:
+	// the target then sends the attachments alone.
 	Text string
 	// Attachments are the files to send, within the file limits of Caps.
 	Attachments []Attachment
@@ -98,6 +100,11 @@ type Error struct {
 	// attachments failed: sending the message again would repeat the
 	// text, so the delivery counts as done.
 	IsPartial bool
+	// IsTextRejected reports that the service refused the request that
+	// carries the text, as the Bot API does with 400 for markup it cannot
+	// parse or a text over its limit, and nothing arrived: the full text
+	// may still go as a file.
+	IsTextRejected bool
 }
 
 // Error returns the class, the status when known, and the cause.

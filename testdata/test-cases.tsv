@@ -152,7 +152,7 @@ T-LIM-02	critical	done	Telegram: the limit counts visible characters after entit
 T-LIM-03	high	done	Telegram: the text limit counts characters, one per character outside the BMP, as the live Bot API does; the unit is pinned by a test	https://core.telegram.org/bots/api#messageentity
 T-LIM-04	high	todo	Telegram HTML length: &lt; counts as one, an unknown &foo; as five, numeric entities as one	https://github.com/prometheus/alertmanager/blob/6a79679/notify/telegram/telegram.go#L180-L240
 T-LIM-05	critical	done	Telegram truncation never splits a tag or an entity and the result passes the tag validator	https://github.com/caronc/apprise/blob/68f0eaf/apprise/plugins/base.py#L1276-L1296
-T-LIM-06	high	todo	A document caption is at most 1024; longer text goes as sendMessage followed by sendDocument without caption	https://core.telegram.org/bots/api#senddocument
+T-LIM-06	high	done	A document caption is at most 1024; longer text goes as sendMessage followed by sendDocument without caption	https://core.telegram.org/bots/api#senddocument
 T-LIM-07	high	done	An attachment over 50 MB is not sent to Telegram and the text notes the skipped file and its size	https://core.telegram.org/bots/api#senddocument
 T-LIM-08	critical	todo	Discord: content over 2000 characters is truncated and the full text goes as message.txt	https://github.com/discord/discord-api-docs/blob/ce076f0/developers/resources/webhook.mdx#L237
 T-LIM-09	high	done	Discord: a file over 20 MiB or a request over 25 MiB skips the file with a note; at most 10 files per request	https://github.com/discord/discord-api-docs/blob/ce076f0/developers/reference.mdx#L438

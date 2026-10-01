@@ -1,5 +1,6 @@
 // Package telegram implements the telegram target type: the Bot API
-// methods sendMessage for the text and sendDocument for each attachment.
+// methods sendMessage for the text and sendDocument for each attachment,
+// the first one with the text as caption when it is short enough.
 package telegram
 
 import (
@@ -29,6 +30,7 @@ const DefaultAPIURL = "https://api.telegram.org"
 // a group.
 const (
 	maxText     = 4096
+	maxCaption  = 1024
 	maxFiles    = 10
 	maxFileSize = 50 * 1000 * 1000
 )
@@ -78,19 +80,37 @@ func (s *Sender) Caps() backend.Caps {
 	return backend.Caps{MaxText: maxText, Measure: text.MeasureTelegramHTML, MaxFiles: maxFiles, MaxFileSize: maxFileSize}
 }
 
-// Send sends the text, then each attachment as a document. When the text
-// arrived and a document did not, the error is partial: sending the
-// message again would repeat the text.
+// Send sends the text and each attachment as a document. A text of at
+// most maxCaption characters goes as the caption of the first document,
+// unless that one is empty, which the Bot API refuses; a longer one goes
+// by sendMessage first, the documents after it without caption. An empty
+// text sends the documents alone. A 400 answer to the request with the
+// text is IsTextRejected. When a document fails after the text arrived,
+// the error is partial: sending the message again would repeat the text.
 func (s *Sender) Send(ctx context.Context, p backend.Payload) error {
-	req, err := buildRequest(ctx, s.opts, p)
-	if err != nil {
-		return &backend.Error{Class: backend.Permanent, Err: err}
+	files := p.Attachments
+	isCaption := p.Text != "" && len(files) > 0 && len(files[0].Data) > 0 && text.MeasureTelegramHTML(p.Text) <= maxCaption
+	switch {
+	case isCaption:
+		req, err := buildDocumentRequest(ctx, s.opts, files[0], p.Text)
+		if err != nil {
+			return &backend.Error{Class: backend.Permanent, Err: err}
+		}
+		if err := s.do(req); err != nil {
+			return rejectedText(err)
+		}
+		files = files[1:]
+	case p.Text != "":
+		req, err := buildRequest(ctx, s.opts, p)
+		if err != nil {
+			return &backend.Error{Class: backend.Permanent, Err: err}
+		}
+		if err := s.do(req); err != nil {
+			return rejectedText(err)
+		}
 	}
-	if err := s.do(req); err != nil {
-		return err
-	}
-	for i, file := range p.Attachments {
-		req, err := buildDocumentRequest(ctx, s.opts, file)
+	for i, file := range files {
+		req, err := buildDocumentRequest(ctx, s.opts, file, "")
 		if err == nil {
 			err = s.do(req)
 		} else {
@@ -99,12 +119,27 @@ func (s *Sender) Send(ctx context.Context, p backend.Payload) error {
 		if err != nil {
 			var deliveryErr *backend.Error
 			errors.As(err, &deliveryErr)
-			deliveryErr.IsPartial = true
-			deliveryErr.Err = fmt.Errorf("document %d of %d: %w", i+1, len(p.Attachments), deliveryErr.Err)
+			number := i + 1 + len(p.Attachments) - len(files)
+			deliveryErr.IsPartial = p.Text != "" || number > 1
+			deliveryErr.Err = fmt.Errorf("document %d of %d: %w", number, len(p.Attachments), deliveryErr.Err)
 			return deliveryErr
 		}
 	}
 	return nil
+}
+
+// rejectedText marks err, the failure of the request with the text, as
+// IsTextRejected when the Bot API answered 400: it refuses a text it
+// cannot parse or one over the limit that way, and for a caption it does
+// not say whether the text or the file was at fault. The description is
+// not matched: its wording is not part of the API, and a missed one would
+// lose the retry, while a 400 for another cause costs one more request.
+func rejectedText(err error) error {
+	var deliveryErr *backend.Error
+	if errors.As(err, &deliveryErr) && deliveryErr.Status == http.StatusBadRequest {
+		deliveryErr.IsTextRejected = true
+	}
+	return err
 }
 
 // do performs one Bot API request.
@@ -154,11 +189,15 @@ func buildRequest(ctx context.Context, opts Options, p backend.Payload) (*http.R
 	return req, nil
 }
 
-// buildDocumentRequest returns the sendDocument request for file.
-func buildDocumentRequest(ctx context.Context, opts Options, file backend.Attachment) (*http.Request, error) {
+// buildDocumentRequest returns the sendDocument request for file, with
+// caption in the HTML parse mode unless it is empty.
+func buildDocumentRequest(ctx context.Context, opts Options, file backend.Attachment, caption string) (*http.Request, error) {
 	var body bytes.Buffer
 	form := multipart.NewWriter(&body)
 	fields := [][2]string{{"chat_id", opts.ChatID}}
+	if caption != "" {
+		fields = append(fields, [2]string{"caption", caption}, [2]string{"parse_mode", "HTML"})
+	}
 	if opts.MessageThreadID != 0 {
 		fields = append(fields, [2]string{"message_thread_id", strconv.FormatInt(opts.MessageThreadID, 10)})
 	}
