@@ -149,7 +149,7 @@ T-ESC-10	high	done	Discord code blocks survive triple backquotes in the body; Di
 T-ESC-11	high	done	CR and LF in an ntfy title become spaces so the request stays valid	https://github.com/binwiederhier/ntfy/blob/6560158/docs/publish.md#L353
 T-LIM-01	critical	todo	Telegram: 4096 characters go as is; 4097 go truncated plus a file	https://core.telegram.org/bots/api#sendmessage
 T-LIM-02	critical	done	Telegram: the limit counts visible characters after entities, so 4096 Cyrillic characters pass	https://github.com/nicholas-fedor/shoutrrr/blob/c19db02256c2/pkg/services/chat/telegram/telegram.go#L27
-T-LIM-03	high	todo	Telegram: characters outside the BMP count as two UTF-16 units; the chosen unit is pinned by a test	https://core.telegram.org/bots/api#messageentity
+T-LIM-03	high	done	Telegram: the text limit counts characters, one per character outside the BMP, as the live Bot API does; the unit is pinned by a test	https://core.telegram.org/bots/api#messageentity
 T-LIM-04	high	todo	Telegram HTML length: &lt; counts as one, an unknown &foo; as five, numeric entities as one	https://github.com/prometheus/alertmanager/blob/6a79679/notify/telegram/telegram.go#L180-L240
 T-LIM-05	critical	todo	Telegram truncation never splits a tag or an entity and the result passes the tag validator	https://github.com/caronc/apprise/blob/68f0eaf/apprise/plugins/base.py#L1276-L1296
 T-LIM-06	high	todo	A document caption is at most 1024; longer text goes as sendMessage followed by sendDocument without caption	https://core.telegram.org/bots/api#senddocument

@@ -212,9 +212,12 @@ func ByteLen(s string) int {
 const maxEntityLength = 10
 
 // MeasureTelegramHTML returns the length of a parse_mode HTML text as
-// Telegram counts it after parsing entities, in UTF-16 code units: tags
-// count nothing, &lt; &gt; &amp; &quot; and numeric entities count as the
-// character they stand for, anything else counts as written.
+// Telegram counts it after parsing entities, in characters: tags count
+// nothing, &lt; &gt; &amp; &quot; and numeric entities count as the one
+// character they stand for, anything else counts as written. The limit
+// of sendMessage counts characters, not the UTF-16 units of the entity
+// offsets: the Bot API takes 4096 characters outside the BMP and rejects
+// 4097 (TestLiveTelegramLimitUnit).
 func MeasureTelegramHTML(s string) int {
 	n := 0
 	hasClosingBracket := true
@@ -229,43 +232,43 @@ func MeasureTelegramHTML(s string) int {
 				hasClosingBracket = false
 			}
 		case '&':
-			if length, units := entityAt(s[i:]); length > 0 {
-				n += units
+			if length := entityAt(s[i:]); length > 0 {
+				n++
 				i += length
 				continue
 			}
 		}
-		r, size := utf8.DecodeRuneInString(s[i:])
-		n += utf16.RuneLen(r)
+		_, size := utf8.DecodeRuneInString(s[i:])
+		n++
 		i += size
 	}
 	return n
 }
 
-// entityAt returns the length of the entity at the start of s and the
-// UTF-16 units of the character it stands for; 0 when there is none that
-// Telegram decodes.
-func entityAt(s string) (length, units int) {
+// entityAt returns the length of the entity at the start of s; 0 when
+// there is none that Telegram decodes.
+func entityAt(s string) int {
 	end := strings.IndexByte(s[:min(len(s), maxEntityLength+2)], ';')
 	if end < 0 {
-		return 0, 0
+		return 0
 	}
 	name := s[1:end]
 	switch name {
 	case "lt", "gt", "amp", "quot":
-		return end + 1, 1
+		return end + 1
 	}
-	if r, ok := numericEntity(name); ok {
-		return end + 1, utf16.RuneLen(r)
+	if numericEntity(name) {
+		return end + 1
 	}
-	return 0, 0
+	return 0
 }
 
-// numericEntity decodes "#123" or "#x7B".
-func numericEntity(name string) (rune, bool) {
+// numericEntity reports whether name is a numeric entity, "#123" or
+// "#x7B", of a value up to utf8.MaxRune.
+func numericEntity(name string) bool {
 	digits, base := strings.TrimPrefix(name, "#"), 10
 	if len(digits) == len(name) || digits == "" {
-		return 0, false
+		return false
 	}
 	if hex, ok := strings.CutPrefix(digits, "x"); ok {
 		digits, base = hex, 16
@@ -273,23 +276,20 @@ func numericEntity(name string) (rune, bool) {
 		digits, base = hex, 16
 	}
 	if digits == "" {
-		return 0, false
+		return false
 	}
 	value := 0
 	for _, c := range digits {
 		d := strings.IndexRune("0123456789abcdef", c|0x20)
 		if d < 0 || d >= base {
-			return 0, false
+			return false
 		}
 		value = value*base + d
 		if value > utf8.MaxRune {
-			return 0, false
+			return false
 		}
 	}
-	if utf16.RuneLen(rune(value)) < 0 {
-		return utf8.RuneError, true
-	}
-	return rune(value), true
+	return true
 }
 
 // TruncateRunes returns the first n characters of s; empty for n <= 0.

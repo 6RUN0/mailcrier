@@ -13,7 +13,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-	"unicode/utf16"
 	"unicode/utf8"
 
 	"github.com/6RUN0/slendmail/internal/backend"
@@ -151,8 +150,8 @@ func TestSendTransportErrors(t *testing.T) {
 
 // botAPI is a fake Bot API server. It checks the text of sendMessage the
 // way Telegram does: only the tags and entities of the HTML parse mode,
-// every tag closed, at most 4096 characters after entity parsing, counted
-// in UTF-16 units. A text that fails gets 400 with ok false.
+// every tag closed, at most 4096 characters after entity parsing. A text
+// that fails gets 400 with ok false.
 type botAPI struct {
 	server *httptest.Server
 	// failDocuments makes sendDocument answer 413.
@@ -241,7 +240,7 @@ var botTags = map[string]bool{
 // botEntities are the named entities of the HTML parse mode.
 var botEntities = map[string]rune{"lt": '<', "gt": '>', "amp": '&', "quot": '"'}
 
-// parseBotHTML returns the length of the visible text in UTF-16 units, or
+// parseBotHTML returns the length of the visible text in characters, or
 // the error Telegram would report. It is written independently of
 // text.MeasureTelegramHTML, which it checks.
 func parseBotHTML(s string) (int, error) {
@@ -274,21 +273,21 @@ func parseBotHTML(s string) (int, error) {
 				return 0, fmt.Errorf("unterminated entity at byte offset %d", i)
 			}
 			name := s[i+1 : i+end]
-			r, ok := botEntities[name]
+			_, ok := botEntities[name]
 			if code, found := strings.CutPrefix(name, "#"); found {
-				n, err := strconv.ParseUint(code, 10, 32)
-				r, ok = rune(n), err == nil
+				_, err := strconv.ParseUint(code, 10, 32)
+				ok = err == nil
 			}
 			if !ok {
 				return 0, fmt.Errorf("unsupported entity %q", name)
 			}
-			length += utf16.RuneLen(r)
+			length++
 			i += end + 1
 		case '>':
 			return 0, fmt.Errorf("bare > at byte offset %d", i)
 		default:
-			r, size := utf8.DecodeRuneInString(s[i:])
-			length += utf16.RuneLen(r)
+			_, size := utf8.DecodeRuneInString(s[i:])
+			length++
 			i += size
 		}
 	}
@@ -322,7 +321,7 @@ func TestDeliverTelegramHTML(t *testing.T) {
 			t.Fatalf("result = %+v, rejected: %q", result, api.rejected)
 		}
 		if n, _ := parseBotHTML(api.texts[0]); n > 4096 || n < 4000 || n != text.MeasureTelegramHTML(api.texts[0]) {
-			t.Errorf("text of %d UTF-16 units, MeasureTelegramHTML %d; want the same, close to 4096", n, text.MeasureTelegramHTML(api.texts[0]))
+			t.Errorf("text of %d characters, MeasureTelegramHTML %d; want the same, close to 4096", n, text.MeasureTelegramHTML(api.texts[0]))
 		}
 	})
 	t.Run("T-ESC-06/tags-outside-whitelist-literal", func(t *testing.T) {
@@ -343,6 +342,14 @@ func TestDeliverTelegramHTML(t *testing.T) {
 			if !strings.Contains(api.texts[0], want) {
 				t.Errorf("text lacks %q: %q", want, api.texts[0])
 			}
+		}
+	})
+	t.Run("T-LIM-03/character-outside-bmp-counts-once", func(t *testing.T) {
+		api := newBotAPI(t)
+		body := strings.Repeat("😀", 4000)
+		result := deliverTo(t, api.sender(Options{}), render.Data{Subject: "s", Hostname: "h", Body: body}, nil)
+		if result.Status != delivery.OK || result.IsTruncated || len(api.texts) != 1 || !strings.Contains(api.texts[0], body) {
+			t.Errorf("result = %+v, %d texts, rejected %q", result, len(api.texts), api.rejected)
 		}
 	})
 	t.Run("T-LIM-02/limit-counts-characters-not-bytes", func(t *testing.T) {
@@ -395,7 +402,7 @@ func TestDeliverTelegramDocuments(t *testing.T) {
 
 // FuzzTelegramText checks that any subject and body, fitted to the limit
 // of the target, give a text the Bot API parses and accepts: known tags
-// only, all closed, entities whole, at most 4096 UTF-16 units, as
+// only, all closed, entities whole, at most 4096 characters, as
 // MeasureTelegramHTML counts them.
 func FuzzTelegramText(f *testing.F) {
 	f.Add("disk <raid> & more", strings.Repeat("&<> ёжик 😀\n", 400))

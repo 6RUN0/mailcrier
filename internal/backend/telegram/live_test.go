@@ -2,12 +2,15 @@ package telegram
 
 import (
 	"bufio"
+	"context"
+	"errors"
 	"net/http"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/6RUN0/slendmail/internal/backend"
 	"github.com/6RUN0/slendmail/internal/delivery"
 	"github.com/6RUN0/slendmail/internal/message"
 	"github.com/6RUN0/slendmail/internal/render"
@@ -22,16 +25,7 @@ const liveEnv = "SLENDMAIL_TELEGRAM_ENV"
 // a URL, and one document, to the real Bot API, which checks
 // the HTML parse mode and link_preview_options for real.
 func TestLiveTelegram(t *testing.T) {
-	path := os.Getenv(liveEnv)
-	if path == "" {
-		t.Skip(liveEnv + " is not set")
-	}
-	env := readEnvFile(t, path)
-	token, chatID := env["TELEGRAM_BOT_TOKEN"], env["TELEGRAM_CHAT_ID"]
-	if token == "" || chatID == "" {
-		t.Fatalf("%s lacks TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID", path)
-	}
-	sender := New(Options{Token: token, ChatID: chatID, DisableNotification: true, Client: &http.Client{Timeout: 15 * time.Second}})
+	sender := liveSender(t)
 	files := []message.Attachment{{Name: "report.log", ContentType: "text/plain", Data: []byte("slendmail live test\n")}}
 	d := render.Data{
 		Subject:  "slendmail live test <b> & ёжик",
@@ -48,8 +42,47 @@ func TestLiveTelegram(t *testing.T) {
 	}
 }
 
+// TestLiveTelegramLimitUnit pins the unit of the 4096 limit of sendMessage
+// against the real Bot API: 4096 characters outside the BMP, 8192 UTF-16
+// units, are accepted, and 4097 of them are rejected. The limit thus
+// counts characters, as Caps.Measure does.
+func TestLiveTelegramLimitUnit(t *testing.T) {
+	t.Run("T-LIM-03/limit-counts-characters", func(t *testing.T) {
+		sender := liveSender(t)
+		atLimit := strings.Repeat("😀", maxText)
+		if err := sender.Send(context.Background(), backend.Payload{Text: atLimit}); err != nil {
+			t.Fatalf("%d characters outside the BMP: %v", maxText, err)
+		}
+		err := sender.Send(context.Background(), backend.Payload{Text: atLimit + "😀"})
+		var deliveryErr *backend.Error
+		if !errors.As(err, &deliveryErr) || deliveryErr.Status != http.StatusBadRequest {
+			t.Fatalf("%d characters outside the BMP: err = %v, want 400", maxText+1, err)
+		}
+		if n := sender.Caps().Measure(atLimit); n != maxText {
+			t.Errorf("Measure = %d, want %d", n, maxText)
+		}
+	})
+}
+
+// liveSender returns a sender to the chat of liveEnv, or skips the test
+// when liveEnv is not set.
+func liveSender(t *testing.T) *Sender {
+	t.Helper()
+	path := os.Getenv(liveEnv)
+	if path == "" {
+		t.Skip(liveEnv + " is not set")
+	}
+	env := readEnvFile(t, path)
+	token, chatID := env["TELEGRAM_BOT_TOKEN"], env["TELEGRAM_CHAT_ID"]
+	if token == "" || chatID == "" {
+		t.Fatalf("%s lacks TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID", path)
+	}
+	return New(Options{Token: token, ChatID: chatID, DisableNotification: true, Client: &http.Client{Timeout: 15 * time.Second}})
+}
+
 // readEnvFile returns the KEY=VALUE lines of path; the values are never
-// printed.
+// printed. A file that others than its owner may read fails the test: it
+// holds a bot token.
 func readEnvFile(t *testing.T, path string) map[string]string {
 	t.Helper()
 	file, err := os.Open(path)
@@ -57,6 +90,13 @@ func readEnvFile(t *testing.T, path string) map[string]string {
 		t.Fatal(err)
 	}
 	defer func() { _ = file.Close() }()
+	info, err := file.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		t.Fatalf("%s has mode %v, want 0600", path, info.Mode().Perm())
+	}
 	env := map[string]string{}
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {

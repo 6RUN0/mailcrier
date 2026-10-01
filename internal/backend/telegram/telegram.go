@@ -24,8 +24,7 @@ const DefaultAPIURL = "https://api.telegram.org"
 
 // Limits of the Bot API (https://core.telegram.org/bots/api): the text of
 // sendMessage is 1-4096 characters after entity parsing, which
-// text.MeasureTelegramHTML counts in UTF-16 units, as the entity offsets
-// are; sendDocument takes files up to 50 MB. maxFiles keeps a message with
+// text.MeasureTelegramHTML counts; sendDocument takes files up to 50 MB. maxFiles keeps a message with
 // many attachments from running into the limit of 20 messages a minute in
 // a group.
 const (

@@ -115,9 +115,9 @@ func TestMeasure(t *testing.T) {
 		{"&#39;&#x41;&quot;", 3},
 		{"&foo; &", 7},
 		{"a < b", 5},
-		{"😀", 2},
+		{"😀", 1},
 		{"<pre>привет</pre>", 6},
-		{"&#128512;", 2},
+		{"&#128512;", 1},
 	}
 	for _, tc := range cases {
 		if got := MeasureTelegramHTML(tc.text); got != tc.want {
@@ -210,7 +210,7 @@ func FuzzEscapeTelegram(f *testing.F) {
 		if strings.ContainsAny(escapedHTML, "<>") || htmlUnescaper.Replace(escapedHTML) != s {
 			t.Errorf("EscapeTelegramHTML(%q) = %q", s, escapedHTML)
 		}
-		if got, want := MeasureTelegramHTML(escapedHTML), UTF16Len(s); got != want {
+		if got, want := MeasureTelegramHTML(escapedHTML), RuneCount(s); got != want {
 			t.Errorf("MeasureTelegramHTML(EscapeTelegramHTML(%q)) = %d, want %d", s, got, want)
 		}
 		for name, escape := range map[string]func(string) string{"MarkdownV2": EscapeTelegramMarkdownV2, "MarkdownV2Code": EscapeTelegramMarkdownV2Code} {
