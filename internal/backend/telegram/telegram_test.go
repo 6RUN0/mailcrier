@@ -530,6 +530,108 @@ func TestSendRejectedText(t *testing.T) {
 	})
 }
 
+// deliverTarget sends d through delivery to target, whose template is the
+// built-in telegram-html one.
+func deliverTarget(t *testing.T, target delivery.Target, d render.Data, files []message.Attachment) delivery.Result {
+	t.Helper()
+	tmpl, err := render.Builtin(text.FormatTelegramHTML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target.ID, target.Template, d.Strings = "tg", tmpl, render.DefaultStrings()
+	return delivery.Deliver(context.Background(), []delivery.Target{target}, d, files)[0]
+}
+
+// TestDeliverTelegramLongText pins the long text policy with the Bot API:
+// what goes as text, what as message.txt, and the retry as a document.
+func TestDeliverTelegramLongText(t *testing.T) {
+	tmpl, err := render.Builtin(text.FormatTelegramHTML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	empty := render.Data{Subject: "s", Hostname: "h", Strings: render.DefaultStrings()}
+	wrapper, err := tmpl.Execute(empty)
+	if err != nil {
+		t.Fatal(err)
+	}
+	atLimit := strings.Repeat("x", maxText-text.MeasureTelegramHTML(wrapper)+text.RuneCount(empty.Strings.EmptyBody))
+	t.Run("T-LIM-01/4096-characters-as-they-are", func(t *testing.T) {
+		api := newBotAPI(t)
+		result := deliverTo(t, api.sender(Options{}), render.Data{Subject: "s", Hostname: "h", Body: atLimit}, nil)
+		if result.Status != delivery.OK || result.IsTruncated || len(api.texts) != 1 || len(api.documents) != 0 || text.MeasureTelegramHTML(api.texts[0]) != maxText {
+			t.Errorf("result = %+v, %d texts, %d documents", result, len(api.texts), len(api.documents))
+		}
+	})
+	t.Run("T-LIM-01/4097-characters-cut-and-file", func(t *testing.T) {
+		api := newBotAPI(t)
+		result := deliverTo(t, api.sender(Options{}), render.Data{Subject: "s", Hostname: "h", Body: atLimit + "y"}, nil)
+		if result.Status != delivery.OK || !result.IsTruncated || len(api.texts) != 1 || len(api.documents) != 1 {
+			t.Fatalf("result = %+v, %d texts, %d documents, rejected %q", result, len(api.texts), len(api.documents), api.rejected)
+		}
+		if doc := api.documents[0]; doc.name != "message.txt" || doc.caption != "" || !strings.Contains(doc.content, atLimit+"y") {
+			t.Errorf("document %q of %d bytes, caption %q", doc.name, len(doc.content), doc.caption)
+		}
+		if !strings.Contains(api.texts[0], "[truncated]</pre>\nmessage.txt (text/plain") {
+			t.Errorf("text ends %q", api.texts[0][max(0, len(api.texts[0])-80):])
+		}
+	})
+	t.Run("T-CALL-26/2-mb-log-as-file", func(t *testing.T) {
+		api := newBotAPI(t)
+		body := strings.Repeat("Sep 27 03:00:01 host CRON[1234]: (root) CMD (run-parts /etc/cron.daily)\n", 2<<20/72)
+		result := deliverTo(t, api.sender(Options{}), render.Data{Subject: "logwatch", Hostname: "h", Body: body}, nil)
+		if result.Status != delivery.OK || !result.IsTruncated || len(api.texts) != 1 || len(api.documents) != 1 {
+			t.Fatalf("result = %+v, %d texts, %d documents", result, len(api.texts), len(api.documents))
+		}
+		if doc := api.documents[0]; len(doc.content) < 2<<20-100 || !strings.Contains(doc.content, strings.TrimSpace(body)) {
+			t.Errorf("message.txt of %d bytes, want the full log", len(doc.content))
+		}
+	})
+	t.Run("T-ADJ-49/400-retried-once-as-document", func(t *testing.T) {
+		api := newBotAPI(t)
+		api.rejectTexts = true
+		result := deliverTo(t, api.sender(Options{}), render.Data{Subject: "s", Hostname: "h", Body: "b\n"}, nil)
+		var rejected *backend.Error
+		if result.Status != delivery.OK || result.Err != nil || !errors.As(result.TextRejected, &rejected) || rejected.Status != 400 {
+			t.Fatalf("result = %+v", result)
+		}
+		if len(api.rejected) != 1 || len(api.documents) != 1 || api.documents[0].name != "message.txt" || api.documents[0].caption != "" || !strings.Contains(api.documents[0].content, "s\nh: ") {
+			t.Errorf("rejected %q, documents %q", api.rejected, api.documents)
+		}
+	})
+	t.Run("T-ADJ-49/retry-fails-once", func(t *testing.T) {
+		api := newBotAPI(t)
+		api.rejectTexts, api.failDocuments = true, true
+		files := []message.Attachment{{Name: "a.log", Data: []byte("a")}}
+		result := deliverTo(t, api.sender(Options{}), render.Data{Subject: "s", Hostname: "h", Body: strings.Repeat("b ", 1000)}, files)
+		var deliveryErr *backend.Error
+		if result.Status != delivery.Perm || !errors.As(result.Err, &deliveryErr) || deliveryErr.Status != 413 || deliveryErr.IsPartial || result.TextRejected == nil || len(api.rejected) != 1 {
+			t.Errorf("result = %+v, rejected %q", result, api.rejected)
+		}
+	})
+	t.Run("blockquote-collapses-the-cut-body", func(t *testing.T) {
+		api := newBotAPI(t)
+		result := deliverTarget(t, delivery.Target{Sender: api.sender(Options{}), OnLong: delivery.OnLongBlockquote}, render.Data{Subject: "s", Hostname: "h", Body: atLimit + "y"}, nil)
+		if result.Status != delivery.OK || len(api.texts) != 1 || len(api.documents) != 1 || !strings.Contains(api.texts[0], "<blockquote expandable>xxx") || !strings.Contains(api.texts[0], "[truncated]</blockquote>") {
+			t.Errorf("result = %+v, texts %q", result, api.texts)
+		}
+	})
+	t.Run("T-LIM-16/wrapper-over-max-text-cut-hard-and-file", func(t *testing.T) {
+		api := newBotAPI(t)
+		d := render.Data{Subject: "s", Hostname: strings.Repeat("host-&-", 100), Body: "b\n"}
+		result := deliverTarget(t, delivery.Target{Sender: api.sender(Options{}), MaxText: 300}, d, nil)
+		if result.Status != delivery.OK || !result.IsTruncated || len(api.texts) != 0 || len(api.documents) != 1 {
+			t.Fatalf("result = %+v, rejected %q", result, api.rejected)
+		}
+		caption := api.documents[0].caption
+		if n := text.MeasureTelegramHTML(caption); n > 300 || n < 250 || !strings.HasSuffix(caption, "</i>") {
+			t.Errorf("caption of %d characters: %q", n, caption)
+		}
+		if !strings.Contains(api.documents[0].content, d.Hostname) {
+			t.Errorf("message.txt lacks the host: %q", api.documents[0].content)
+		}
+	})
+}
+
 // FuzzTelegramText checks that any subject and body, fitted to the limit
 // of the target, give a text the Bot API parses and accepts: known tags
 // only, all closed, entities whole, at most 4096 characters, as

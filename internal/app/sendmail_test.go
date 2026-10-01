@@ -470,12 +470,42 @@ func TestRunCronieCommandLine(t *testing.T) {
 // TestNotices pins that every configured notice replaces its built-in
 // one and an absent one keeps it.
 func TestNotices(t *testing.T) {
-	got := notices(config.Strings{NoSubject: "a", EmptyBody: "b", Truncated: "c", MoreAttachments: "%d d", NotSent: "e"})
-	want := render.Strings{NoSubject: "a", EmptyBody: "b", Truncated: "c", TruncatedSize: render.DefaultStrings().TruncatedSize, MoreAttachments: "%d d", NotSent: "e"}
+	got := notices(config.Strings{NoSubject: "a", EmptyBody: "b", Truncated: "c", TruncatedSize: "%s f", MoreAttachments: "%d d", NotSent: "e"})
+	want := render.Strings{NoSubject: "a", EmptyBody: "b", Truncated: "c", TruncatedSize: "%s f", MoreAttachments: "%d d", NotSent: "e"}
 	if got != want {
 		t.Errorf("notices = %+v, want %+v", got, want)
 	}
 	if got := notices(config.Strings{}); got != render.DefaultStrings() {
 		t.Errorf("notices of nothing = %+v", got)
+	}
+}
+
+// TestRunKeepsConfiguredTruncated pins that a configured truncated
+// without truncated_size ends a cut text that goes without its full
+// text, in place of the English default with the size.
+func TestRunKeepsConfiguredTruncated(t *testing.T) {
+	bodies := make(chan map[string]string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("receiver: %v", err)
+		}
+		bodies <- body
+	}))
+	defer server.Close()
+	inv := &invocation{
+		config: httpTargetConfig(server.URL) + "max_text = 300\n[strings]\ntruncated = \"[обрезано]\"\n",
+		stdin:  strings.NewReader("Subject: t\n\n" + strings.Repeat("строка\n", 100)),
+	}
+	if code := inv.run(t); code != 0 {
+		t.Fatalf("Run() = %d, want 0; log:\n%s", code, inv.log("slendmail"))
+	}
+	select {
+	case body := <-bodies:
+		if !strings.HasSuffix(body["body"], "строка\n[обрезано]") {
+			t.Errorf("body = %q, want it to end with the configured notice", body["body"])
+		}
+	default:
+		t.Fatal("receiver got no request")
 	}
 }

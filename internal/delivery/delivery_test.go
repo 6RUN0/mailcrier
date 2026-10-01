@@ -1,6 +1,7 @@
 package delivery
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -132,7 +133,7 @@ func TestDeliverEachReportsEarly(t *testing.T) {
 	defer cancel()
 	var mu sync.Mutex
 	var order []string
-	results := DeliverEach(ctx, []Target{{ID: "slow", Sender: slow, Template: plainTemplate(t)}, {ID: "fast", Sender: fast, Template: plainTemplate(t)}}, testData(), nil, func(r Result) {
+	results := DeliverEach(ctx, []Target{{ID: "slow", Sender: slow, Template: plainTemplate(t)}, {ID: "fast", Sender: fast, Template: plainTemplate(t)}}, testData(), nil, nil, func(r Result) {
 		mu.Lock()
 		defer mu.Unlock()
 		order = append(order, r.TargetID)
@@ -179,7 +180,7 @@ func TestDeliverFitsText(t *testing.T) {
 	if !results[0].IsTruncated || len(sender.sent) != 1 {
 		t.Fatalf("result = %+v", results[0])
 	}
-	if out := sender.sent[0].Text; len(out) > 200 || !strings.HasSuffix(out, "[truncated]") {
+	if out := sender.sent[0].Text; len(out) > 200 || !strings.HasSuffix(out, "[truncated, 1.8 KiB in full]") {
 		t.Errorf("text of %d bytes: %q", len(out), out)
 	}
 	sender = &fakeSender{caps: backend.Caps{MaxText: 100}}
@@ -187,6 +188,156 @@ func TestDeliverFitsText(t *testing.T) {
 	if results[0].IsTruncated {
 		t.Errorf("short text marked as truncated: %+v", results[0])
 	}
+}
+
+// TestDeliverLongText pins the policies for a text over the limit: what
+// the text says and which file goes along.
+func TestDeliverLongText(t *testing.T) {
+	withFiles := backend.Caps{MaxText: 300, MaxFiles: 10}
+	raw := []byte("To: a@example.org\nBcc: hidden@example.org\nSubject: s\n\n" + longBody)
+	t.Run("T-LIM-16/file-ahead-of-attachments", longTextCase{Target{}, withFiles, nil, []string{"message.txt", "a.log"}, "[truncated]\nmessage.txt (text/plain; charset=utf-8, 1.9 KiB)\na.log"}.check)
+	t.Run("truncate-notes-full-size", longTextCase{Target{OnLong: OnLongTruncate}, withFiles, nil, []string{"a.log"}, "[truncated, 1.9 KiB in full]\na.log"}.check)
+	t.Run("text-only-target-notes-full-size", longTextCase{Target{}, backend.Caps{MaxText: 300}, nil, nil, "[truncated, 1.9 KiB in full]"}.check)
+	t.Run("file-over-size-notes-full-size", longTextCase{Target{}, backend.Caps{MaxText: 300, MaxFiles: 10, MaxFileSize: 1000}, nil, []string{"a.log"}, "[truncated, 1.9 KiB in full]"}.check)
+	t.Run("eml-without-bcc", longTextCase{Target{LongFile: LongFileMessage}, withFiles, raw, []string{"message.eml", "a.log"}, "message.eml (message/rfc822"}.check)
+	t.Run("eml-unknown-gives-text", longTextCase{Target{LongFile: LongFileMessage}, withFiles, nil, []string{"message.txt", "a.log"}, "message.txt"}.check)
+	t.Run("max-text-replaces-the-limit", longTextCase{Target{MaxText: 200}, backend.Caps{MaxText: 4000, MaxFiles: 10}, nil, []string{"message.txt", "a.log"}, "message.txt"}.check)
+	t.Run("T-LIM-19/max-lines-then-file", longTextCase{Target{MaxLines: 3}, backend.Caps{MaxText: 4000, MaxFiles: 10}, nil, []string{"message.txt", "a.log"}, "a line of the body\na line of the body\na line of the body\n[truncated]\nmessage.txt"}.check)
+}
+
+// TestDeliverSharesLongFile pins that the full text is built once for
+// all targets: every target gets the same bytes, not a copy each.
+func TestDeliverSharesLongFile(t *testing.T) {
+	d := testData()
+	d.Body = longBody
+	senders := []*fakeSender{{caps: backend.Caps{MaxText: 300, MaxFiles: 10}}, {caps: backend.Caps{MaxText: 200, MaxFiles: 1}}}
+	var targets []Target
+	for i, sender := range senders {
+		targets = append(targets, Target{ID: fmt.Sprint(i), Sender: sender, Template: plainTemplate(t)})
+	}
+	Deliver(context.Background(), targets, d, nil)
+	first, second := senders[0].sent[0].Attachments, senders[1].sent[0].Attachments
+	if len(first) != 1 || len(second) != 1 || &first[0].Data[0] != &second[0].Data[0] {
+		t.Errorf("files %d and %d, want one message.txt shared", len(first), len(second))
+	}
+}
+
+// TestDeliverBuildsOnlyNeededLongFile pins that a target builds only the
+// long file it uses: message.eml sent leaves message.txt unbuilt, and a
+// cut text without its file builds no message.eml.
+func TestDeliverBuildsOnlyNeededLongFile(t *testing.T) {
+	raw := []byte("To: a@example.org\nSubject: s\n\n" + longBody)
+	for _, tc := range []struct {
+		name                  string
+		target                Target
+		caps                  backend.Caps
+		wantText, wantMessage bool
+	}{
+		{"eml-sent-without-text-file", Target{LongFile: LongFileMessage}, backend.Caps{MaxText: 300, MaxFiles: 10}, false, true},
+		{"truncate-without-eml", Target{LongFile: LongFileMessage, OnLong: OnLongTruncate}, backend.Caps{MaxText: 300, MaxFiles: 10}, true, false},
+		{"text-only-target-without-eml", Target{LongFile: LongFileMessage}, backend.Caps{MaxText: 300}, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := testData()
+			d.Body = longBody
+			long := newLongFiles(d, raw)
+			buildText, buildMessage := long.text, long.message
+			isTextBuilt, isMessageBuilt := false, false
+			long.text = func() (*backend.Attachment, error) { isTextBuilt = true; return buildText() }
+			long.message = func() *backend.Attachment { isMessageBuilt = true; return buildMessage() }
+			tc.target.ID, tc.target.Sender, tc.target.Template = "t", &fakeSender{caps: tc.caps}, plainTemplate(t)
+			if result := deliverOne(context.Background(), tc.target, d, nil, long); result.Status != OK || !result.IsTruncated {
+				t.Fatalf("result = %+v", result)
+			}
+			if isTextBuilt != tc.wantText || isMessageBuilt != tc.wantMessage {
+				t.Errorf("message.txt built %v, message.eml built %v; want %v, %v", isTextBuilt, isMessageBuilt, tc.wantText, tc.wantMessage)
+			}
+		})
+	}
+}
+
+// longBody is a body of 1900 bytes.
+var longBody = strings.Repeat("a line of the body\n", 100)
+
+// longTextCase delivers longBody with one attachment to target with caps
+// and the raw message raw, and wants the files wantFiles and wantText in
+// the text.
+type longTextCase struct {
+	target    Target
+	caps      backend.Caps
+	raw       []byte
+	wantFiles []string
+	wantText  string
+}
+
+func (tc longTextCase) check(t *testing.T) {
+	d := testData()
+	d.Body = longBody
+	d.Attachments = []render.Attachment{{Name: "a.log", ContentType: "text/plain", Size: 8}}
+	files := []message.Attachment{{Name: "a.log", ContentType: "text/plain", Data: []byte("attached")}}
+	sender := &fakeSender{caps: tc.caps}
+	tc.target.ID, tc.target.Sender, tc.target.Template = "t", sender, plainTemplate(t)
+	result := DeliverEach(context.Background(), []Target{tc.target}, d, files, tc.raw, nil)[0]
+	if result.Status != OK || !result.IsTruncated || len(sender.sent) != 1 {
+		t.Fatalf("result = %+v", result)
+	}
+	p := sender.sent[0]
+	var names []string
+	for _, file := range p.Attachments {
+		names = append(names, file.Name)
+	}
+	if !slices.Equal(names, tc.wantFiles) {
+		t.Errorf("files %q, want %q", names, tc.wantFiles)
+	}
+	if limit := cmp.Or(tc.target.MaxText, tc.caps.MaxText); text.RuneCount(p.Text) > limit {
+		t.Errorf("text of %d characters, limit %d", text.RuneCount(p.Text), limit)
+	}
+	if !strings.Contains(p.Text, tc.wantText) {
+		t.Errorf("text lacks %q:\n%s", tc.wantText, p.Text)
+	}
+	if len(p.Attachments) > 1 {
+		full := string(p.Attachments[0].Data)
+		if !strings.Contains(full, longBody) || strings.Contains(full, "hidden@example.org") {
+			t.Errorf("%s of %d bytes lacks the body or keeps the Bcc", names[0], len(full))
+		}
+	}
+}
+
+// TestDeliverRetriesRejectedText pins the retry after a rejected text:
+// once, with the full text as a file and no text, and only for a target
+// that takes files.
+func TestDeliverRetriesRejectedText(t *testing.T) {
+	rejected := &backend.Error{Class: backend.Permanent, Status: 400, Err: errors.New("can't parse entities"), IsTextRejected: true}
+	rejectText := func(_ context.Context, p backend.Payload) error {
+		if p.Text != "" {
+			return rejected
+		}
+		return nil
+	}
+	t.Run("T-ADJ-49/retried-once-as-file", func(t *testing.T) {
+		sender := &fakeSender{caps: backend.Caps{MaxFiles: 10}, send: rejectText}
+		result := Deliver(context.Background(), []Target{{ID: "t", Sender: sender, Template: plainTemplate(t), OnLong: OnLongTruncate}}, testData(), nil)[0]
+		if result.Status != OK || result.Err != nil || result.TextRejected != rejected || len(sender.sent) != 2 {
+			t.Fatalf("result = %+v, %d sends", result, len(sender.sent))
+		}
+		if retry := sender.sent[1]; retry.Text != "" || len(retry.Attachments) != 1 || retry.Attachments[0].Name != "message.txt" || retry.Title != "s" {
+			t.Errorf("retry = %+v", retry)
+		}
+	})
+	t.Run("T-ADJ-49/second-rejection-not-retried", func(t *testing.T) {
+		sender := &fakeSender{caps: backend.Caps{MaxFiles: 10}, err: rejected}
+		result := Deliver(context.Background(), []Target{{ID: "t", Sender: sender, Template: plainTemplate(t)}}, testData(), nil)[0]
+		if result.Status != Perm || len(sender.sent) != 2 {
+			t.Errorf("result = %+v, %d sends", result, len(sender.sent))
+		}
+	})
+	t.Run("text-only-target-not-retried", func(t *testing.T) {
+		sender := &fakeSender{err: rejected}
+		result := Deliver(context.Background(), []Target{{ID: "t", Sender: sender, Template: plainTemplate(t)}}, testData(), nil)[0]
+		if result.Status != Perm || result.TextRejected != nil || len(sender.sent) != 1 {
+			t.Errorf("result = %+v, %d sends", result, len(sender.sent))
+		}
+	})
 }
 
 // TestDeliverSelectsFiles pins which attachments a target sends: in order,

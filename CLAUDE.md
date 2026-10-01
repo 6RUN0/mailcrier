@@ -107,8 +107,8 @@ with "no non-test Go files".
   `shoutrrr`: any URL with a scheme), tokens non-blank, `chat_id` an
   integer or a non-blank string, `channel` non-blank (both trimmed).
   Targets are `[target.<name>]` tables; keys per type are in
-  `allowedKeys`, which lists only implemented keys (`on_long` excepted),
-  required ones in `requiredKeys`. Types `exec` and `shoutrrr` are parsed
+  `allowedKeys`, which lists only implemented keys, required ones in
+  `requiredKeys`. Types `exec` and `shoutrrr` are parsed
   but rejected by `app` as not implemented.
 - `internal/backend`: `Sender`, `Caps`, `Payload`, `*Error` with `Class`,
   `IsPartial` (text arrived, files did not: counts as delivered),
@@ -125,9 +125,14 @@ with "no non-test Go files".
   `config.Load`; a new secret-bearing config key must be registered in
   `app.registerSecrets`.
 - `internal/delivery`: `Deliver` runs one goroutine per target that picks
-  the files within `Caps`, fits the target's template with `render.Fit`
-  and sends; a panic there is recovered into a permanent result, so a
-  target must not share mutable state with another. `DeliverEach` also
+  the files within `Caps`, fits the target's template with
+  `render.FitLines` (`Target.MaxText` over `Caps.MaxText`, `MaxLines`),
+  puts the full text first among the files of a cut text per `OnLong`
+  (`message.txt` in the plain template, or `message.eml` from
+  `message.WithoutBlindCopies`), and sends; after a `backend.Error` with
+  `IsTextRejected` it sends that file alone once more. A panic there is
+  recovered into a permanent result, so a target must not share mutable
+  state with another. `DeliverEach` also
   hands each result to a callback as its target finishes (the spool marks
   `Done` there). `ExitCode(results, queue)` is the exit status matrix, rules
   in order: Temp without a spool entry 73/74, any OK or all suppressed 0,

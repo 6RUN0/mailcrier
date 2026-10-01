@@ -132,6 +132,21 @@ func TestDeliverSlack(t *testing.T) {
 			t.Errorf("uploads %v, completed %v; want %s and %s", api.uploads, api.completed, wantUploads, wantCompleted)
 		}
 	})
+	t.Run("T-LIM-11/long-text-cut-full-text-as-file", func(t *testing.T) {
+		api := newWebAPI(t)
+		body := strings.Repeat("a line of a long cron report\n", 2000)
+		result := deliverTo(t, api.sender(), render.Data{Subject: "s", Body: body}, nil)
+		if result.Status != delivery.OK || result.Err != nil || !result.IsTruncated || len(api.posts) != 1 {
+			t.Fatalf("result = %+v", result)
+		}
+		got, _ := api.posts[0]["text"].(string)
+		if n := text.UTF16Len(got); n > maxText || n < maxText-200 || !strings.Contains(got, "[truncated]") {
+			t.Errorf("text of %d units", n)
+		}
+		if len(api.uploads) != 1 || !strings.HasPrefix(api.uploads[0], "/upload/F1 s\n") || !strings.Contains(api.uploads[0], strings.TrimSpace(body)) || !strings.Contains(fmt.Sprint(api.completed), `"title":"message.txt"`) {
+			t.Errorf("%d uploads, completed %v; want message.txt with the full body", len(api.uploads), api.completed)
+		}
+	})
 	t.Run("upload-failure-is-partial", func(t *testing.T) {
 		api := newWebAPI(t)
 		api.failUpload = true

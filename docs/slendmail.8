@@ -1,4 +1,4 @@
-.Dd September 28, 2026
+.Dd October 1, 2026
 .Dt SLENDMAIL 8
 .Os
 .Sh NAME
@@ -96,6 +96,28 @@ When the rest of the text alone is too long, the text is cut hard, for
 Telegram between tags and entities with the open tags closed.
 An attachment the target sends files but not this one, over its size or number
 of files, stays in the list with a notice.
+.Pp
+With the default
+.Ic on_long No = Qq file
+of a target that sends files, a cut text is followed by the full text as
+.Pa message.txt ,
+the first file of the message, or with
+.Ic long_file No = Qq eml
+by the message itself without its Bcc fields as
+.Pa message.eml .
+.Ic on_long No = Qq truncate ,
+or a target without files, ends the cut body with the size of the full text
+instead;
+.Qq blockquote
+is
+.Qq file
+with the cut body in an expandable blockquote in Telegram.
+.Ic max_text
+replaces the limit of the service and
+.Ic max_lines
+cuts the body after that many lines.
+A target that rejects the text with 400, as Telegram does with markup it cannot
+parse, gets the full text once more as a file alone.
 .Sh TARGETS
 Each
 .Li "[target.NAME]"
@@ -131,7 +153,9 @@ or
 extra headers override the Content-Type of the preset.
 Only
 .Cm slack-webhook
-is cut, to 40000 characters.
+is cut, to 40000 characters, unless
+.Ic max_text
+sets a limit.
 .El
 .Pp
 429 and 5xx answers, and any answer with a Retry-After header, are temporary

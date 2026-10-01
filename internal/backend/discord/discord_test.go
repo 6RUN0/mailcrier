@@ -183,3 +183,37 @@ func TestDeliverDiscordFiles(t *testing.T) {
 		}
 	})
 }
+
+// TestDeliverDiscordLongText pins the long text policy for Discord: the
+// content is cut to 2000 characters and the full text goes as message.txt
+// in the same request.
+func TestDeliverDiscordLongText(t *testing.T) {
+	t.Run("T-LIM-08/long-content-cut-full-text-as-file", func(t *testing.T) {
+		body := strings.Repeat("disk full on /var ", 300)
+		var content string
+		var files map[string]string
+		server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			var msg map[string]any
+			msg, files = decodeRequest(t, r)
+			content, _ = msg["content"].(string)
+		}))
+		defer server.Close()
+		tmpl, err := render.Builtin(text.FormatDiscord)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sender := New(Options{URL: server.URL + "/api/webhooks/1/T", Client: server.Client()})
+		d := render.Data{Subject: "s", Hostname: "h", Body: body, Strings: render.DefaultStrings()}
+		result := delivery.Deliver(context.Background(), []delivery.Target{{ID: "dc", Sender: sender, Template: tmpl}}, d, nil)[0]
+		if result.Status != delivery.OK || !result.IsTruncated {
+			t.Fatalf("result = %+v", result)
+		}
+		if n := text.UTF16Len(content); n > maxText || n < maxText-200 || !strings.Contains(content, "[truncated]\n```") || !strings.Contains(content, "message.txt (text/plain") {
+			t.Errorf("content of %d units: %q", n, content[max(0, len(content)-120):])
+		}
+		full := files["files[0] message.txt text/plain; charset=utf-8"]
+		if len(files) != 1 || !strings.Contains(full, strings.TrimSpace(body)) {
+			t.Errorf("files %d, message.txt of %d bytes, want the full body", len(files), len(full))
+		}
+	})
+}

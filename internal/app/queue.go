@@ -135,7 +135,7 @@ func (q *queue) deliverOwn(ctx context.Context, targets []delivery.Target, msg *
 			state = delivery.QueueNotCreated
 		}
 	}
-	results := q.send(ctx, targets, env, data, msg.Attachments, rec)
+	results := q.send(ctx, targets, env, data, msg.Attachments, msg.Raw, rec)
 	for _, r := range results {
 		logResult(q.log, r)
 	}
@@ -155,8 +155,9 @@ func (q *queue) deliverOwn(ctx context.Context, targets []delivery.Target, msg *
 }
 
 // send delivers to targets and records each result in rec, when not nil,
-// as soon as the target is finished.
-func (q *queue) send(ctx context.Context, targets []delivery.Target, env message.Envelope, data render.Data, files []message.Attachment, rec *spool.Record) []delivery.Result {
+// as soon as the target is finished. raw is the kept input of the
+// message, for a target that sends it as a file.
+func (q *queue) send(ctx context.Context, targets []delivery.Target, env message.Envelope, data render.Data, files []message.Attachment, raw []byte, rec *spool.Record) []delivery.Result {
 	done := func(r delivery.Result) {
 		q.mu.Lock()
 		defer q.mu.Unlock()
@@ -175,7 +176,7 @@ func (q *queue) send(ctx context.Context, targets []delivery.Target, env message
 		}
 	}
 	if q.d.deliver == nil {
-		return delivery.DeliverEach(ctx, targets, data, files, done)
+		return delivery.DeliverEach(ctx, targets, data, files, raw, done)
 	}
 	results := q.d.deliver(ctx, targets, env, data, files)
 	for _, r := range results {
@@ -494,7 +495,7 @@ func (q *queue) deliverEntry(ctx context.Context, rec *spool.Record) bool {
 	data.Hostname, data.ReceivedAt, data.Strings = q.d.Hostname, e.ReceivedAt, q.notices
 	ctx, cancel := context.WithTimeout(ctx, q.deadline)
 	defer cancel()
-	results := q.send(ctx, due, e.Envelope, data, msg.Attachments, rec)
+	results := q.send(ctx, due, e.Envelope, data, msg.Attachments, msg.Raw, rec)
 	for _, r := range results {
 		logResult(log, r)
 	}

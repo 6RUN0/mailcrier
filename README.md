@@ -46,6 +46,7 @@ deadline = "30s"                # optional, delivery to all targets
 no_subject = "(no subject)"
 empty_body = "(empty body)"
 truncated = "[truncated]"
+truncated_size = "[truncated, %s in full]"
 more_attachments = "... and %d more"
 not_sent = "[not sent]"
 
@@ -64,21 +65,25 @@ preset = "generic-json"
 - `[strings]` replaces the English notices that stand in for missing
   content: `no_subject` for a message without a subject, `empty_body` for
   a body without visible text, `truncated` at the end of a body cut to the
-  length limit of a target, `more_attachments` after a list of
-  attachments cut to that limit, with `%d` for the number left out (exactly
-  one `%d` and no other `%`, else exit status 78), `not_sent` after an
-  attachment listed in the text but not sent because it exceeds a file
-  limit of the target. Each is optional and
-  must not be blank; the values above are the defaults. The
-  `generic-json` preset uses none of them: it carries subject and body as
-  they are, empty when the message has none, and has no length limit.
+  length limit of a target, `truncated_size` in its place when the full
+  text does not go along as a file, with `%s` for its size (exactly one
+  `%s` and no other `%`, else exit status 78; when only `truncated` is set,
+  it stands there too, without the size), `more_attachments` after a
+  list of attachments cut to that limit, with `%d` for the number left out
+  (exactly one `%d` and no other `%`, else exit status 78), `not_sent` after
+  an attachment listed in the text but not sent because it exceeds a file
+  limit of the target. Each is optional and must not be blank; the values
+  above are the defaults. The `generic-json` preset uses none of them: it
+  carries subject and body as they are, empty when the message has none,
+  and has no length limit.
 - A text longer than the target accepts is cut: first a subject longer
   than a quarter of the limit (at least 64 units of the target) is cut at
   a word and ends with `...`, then the list of attachments, then the body,
   which ends with the `truncated` notice. The limit is counted the way the
   service counts it, after escaping. When the rest of the text, host and
   sender included, is too long on its own, the text is cut hard; for
-  Telegram between tags and entities, with the open tags closed.
+  Telegram between tags and entities, with the open tags closed. What goes
+  along with a cut text is set per target, see "Long messages".
 - Exit status: see "Exit status" below.
 - Logging goes to syslog, facility `mail`. Where no syslog socket exists (a
   container without `/dev/log`) the records go to stderr, with time and
@@ -94,10 +99,12 @@ preset = "generic-json"
   `perm`), `status` (the HTTP status, when the service answered) and
   `retry_after` (the delay the service asked for) for a failed target.
   `text truncated for target` (info) names a target that got a cut text,
-  `attachments not delivered` (warning) one that took the text but not
-  the files; the message counts as delivered there. Records about a spool
-  entry carry its `id`. Headers and body of
-  the message are never logged, nor is the response body of a service.
+  `text rejected, sent as file` (warning) one that refused the text and
+  got it as a file, `text rejected, file failed too` (warning) one that
+  took neither, `attachments not delivered` (warning) one that took
+  the text but not the files; the message counts as delivered there.
+  Records about a spool entry carry its `id`. Headers and body of the
+  message are never logged, nor is the response body of a service.
 - Tokens and URLs, including the content of `*_file`, are replaced by `***`
   in every log record and in the debug output of the Go HTTP stack. A URL
   is masked whole, and so are its host, host labels, request URI, path
@@ -214,7 +221,8 @@ Authorization = "Bearer api-token"
   `{"text": ...}` with subject, host, sender and body in Markdown,
   `@channel`, `@all` and `@here` disarmed, and `username` and `channel`
   added when set; a set `channel` must not be blank, white space around
-  it is dropped. `slack-webhook` posts `{"text": ...}` in Slack mrkdwn
+  it is dropped. `max_text` and `max_lines` (see "Long messages") apply to
+  every preset. `slack-webhook` posts `{"text": ...}` in Slack mrkdwn
   with `&`, `<` and `>` escaped; `generic-json` posts
   `{"subject": ..., "body": ..., "hostname": ...}`.
   `[target.<name>.headers]` adds request headers after the Content-Type of
@@ -223,6 +231,52 @@ Authorization = "Bearer api-token"
   8 characters or more, and the credential after a scheme such as
   `Bearer`, are masked in the log like tokens. A redirect is not followed
   and counts as a permanent failure.
+
+### Long messages
+
+```toml
+[target.ops-telegram]
+type = "telegram"
+token_file = "/etc/slendmail.d/tg.token"
+chat_id = -1001234567890
+on_long = "file"        # optional: file | truncate | blockquote
+long_file = "text"      # optional: text (message.txt) | eml (message.eml)
+max_text = 2000         # optional, below the limit of the service
+max_lines = 40          # optional, lines of the body in the text
+```
+
+- A text over the limit of a target is cut as described under
+  "Configuration". With `on_long = "file"`, the default, a target that
+  sends files gets the full text as `message.txt` (`text/plain`, UTF-8,
+  the message in the plain layout without a limit) as its first file,
+  listed first among the attachments of the text, which ends the cut body
+  with the `truncated` notice. `long_file = "eml"` sends the message itself
+  as `message.eml` instead, as it was read, without its `Bcc` and
+  `Resent-Bcc` fields; a queued message is sent the same way.
+- `on_long = "truncate"` sends the cut text alone; so does a target without
+  files (`http`) and a target whose file limit the full text exceeds. The
+  body then ends with the `truncated_size` notice, such as
+  `[truncated, 1.9 MiB in full]`, with the size of `message.txt`.
+- `on_long = "blockquote"` is `file` with the cut body in an expandable
+  blockquote in Telegram, which shows a few lines until opened; the other
+  targets have no such block and treat it as `file`.
+- `max_text` replaces the text limit of the service, in its unit: the
+  characters of Telegram and of the `mattermost` and `generic-json`
+  documents, the UTF-16 units of Discord, Slack and the `slack-webhook`
+  document, the bytes of ntfy. A value above the limit of the service is
+  taken as it is, and the service rejects a longer text. For `http` the
+  limit covers the whole JSON document: one too small for the document
+  without body and subject fails the target permanently.
+  `max_lines` cuts a body of more lines after that many and treats the
+  text as cut; trailing empty lines do not count. Both must be positive;
+  `long_file`, like `on_long`, is not a key of `http`.
+- A Telegram target that answers 400 to the text, for markup it cannot
+  parse or a text over its limit, gets the full text once more as a file
+  alone, without text or caption, whatever its `on_long`; the log records
+  `text rejected, sent as file` (warning). When that fails too, the record
+  is `text rejected, file failed too` (warning) and the target fails with
+  the error of the second attempt. Every 400 counts, a wrong `chat_id`
+  included, which costs one more request.
 
 ### Spool and queue
 

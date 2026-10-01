@@ -79,6 +79,12 @@ const (
 	OnLongBlockquote = "blockquote"
 )
 
+// Files that carry a long text in full.
+const (
+	LongFileText    = "text"
+	LongFileMessage = "eml"
+)
+
 // Config is the whole configuration file.
 type Config struct {
 	// General holds process-wide settings.
@@ -149,6 +155,9 @@ type Strings struct {
 	EmptyBody string `toml:"empty_body"`
 	// Truncated ends a body cut to the length limit of a target.
 	Truncated string `toml:"truncated"`
+	// TruncatedSize replaces Truncated when the full text does not go
+	// along as a file; its one %s is the size of the full text.
+	TruncatedSize string `toml:"truncated_size"`
 	// MoreAttachments follows a list of attachments cut to the length
 	// limit of a target; its one %d is the number left out.
 	MoreAttachments string `toml:"more_attachments"`
@@ -211,19 +220,26 @@ type Target struct {
 	Preset string `toml:"preset"`
 	// OnLong is the policy for text longer than the target accepts.
 	OnLong string `toml:"on_long"`
+	// LongFile selects the file that carries a long text in full.
+	LongFile string `toml:"long_file"`
+	// MaxText replaces the text limit of the service, in its unit.
+	MaxText int `toml:"max_text"`
+	// MaxLines bounds the lines of the body in the text.
+	MaxLines int `toml:"max_lines"`
 	// Argv is the command line of the exec target.
 	Argv []string `toml:"argv"`
 }
 
-// allowedKeys lists, per target type, the keys it uses besides "type". The
-// http target lists only what its implementation honours, so that a key it
-// would ignore rejects the file instead.
+// allowedKeys lists, per target type, the keys it uses besides "type". A
+// type lists only what its implementation honours, so that a key it would
+// ignore rejects the file instead: the http target sends no files, so the
+// keys about the file of a long text are not among its keys.
 var allowedKeys = map[string][]string{
-	TypeTelegram: {"token", "token_file", "chat_id", "message_thread_id", "disable_notification", "on_long"},
-	TypeDiscord:  {"url", "url_file", "on_long"},
-	TypeSlack:    {"token", "token_file", "channel", "on_long"},
-	TypeNtfy:     {"url", "url_file", "on_long"},
-	TypeHTTP:     {"url", "url_file", "preset", "username", "channel", "headers"},
+	TypeTelegram: {"token", "token_file", "chat_id", "message_thread_id", "disable_notification", "on_long", "long_file", "max_text", "max_lines"},
+	TypeDiscord:  {"url", "url_file", "on_long", "long_file", "max_text", "max_lines"},
+	TypeSlack:    {"token", "token_file", "channel", "on_long", "long_file", "max_text", "max_lines"},
+	TypeNtfy:     {"url", "url_file", "on_long", "long_file", "max_text", "max_lines"},
+	TypeHTTP:     {"url", "url_file", "preset", "username", "channel", "headers", "max_text", "max_lines"},
 	TypeExec:     {"argv"},
 	TypeShoutrrr: {"url", "url_file"},
 }
@@ -242,6 +258,7 @@ var mattermostKeys = []string{"username", "channel"}
 var (
 	presets        = []string{PresetMattermost, PresetSlackWebhook, PresetGenericJSON}
 	onLongPolicies = []string{OnLongFile, OnLongTruncate, OnLongBlockquote}
+	longFiles      = []string{LongFileText, LongFileMessage}
 	validName      = regexp.MustCompile(`^[a-z0-9-]+$`)
 )
 
@@ -400,16 +417,20 @@ func validate(cfg *Config, keys keyIndex) *Error {
 	}
 	for _, notice := range []struct{ key, value string }{
 		{"no_subject", cfg.Strings.NoSubject}, {"empty_body", cfg.Strings.EmptyBody}, {"truncated", cfg.Strings.Truncated},
-		{"more_attachments", cfg.Strings.MoreAttachments}, {"not_sent", cfg.Strings.NotSent},
+		{"truncated_size", cfg.Strings.TruncatedSize}, {"more_attachments", cfg.Strings.MoreAttachments}, {"not_sent", cfg.Strings.NotSent},
 	} {
 		if keys.has("strings", notice.key) && strings.TrimSpace(notice.value) == "" {
 			pos := keys.position("strings", notice.key)
 			return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("value of key %q must not be blank", notice.key)}
 		}
 	}
-	if keys.has("strings", "more_attachments") && (strings.Count(cfg.Strings.MoreAttachments, "%d") != 1 || strings.Count(cfg.Strings.MoreAttachments, "%") != 1) {
-		pos := keys.position("strings", "more_attachments")
-		return &Error{Line: pos.Line, Column: pos.Column, Msg: `value of key "more_attachments" must hold one %d and no other %`}
+	for _, notice := range []struct{ key, value, verb string }{
+		{"more_attachments", cfg.Strings.MoreAttachments, "%d"}, {"truncated_size", cfg.Strings.TruncatedSize, "%s"},
+	} {
+		if keys.has("strings", notice.key) && (strings.Count(notice.value, notice.verb) != 1 || strings.Count(notice.value, "%") != 1) {
+			pos := keys.position("strings", notice.key)
+			return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("value of key %q must hold one %s and no other %%", notice.key, notice.verb)}
+		}
 	}
 	if len(cfg.Targets) == 0 {
 		return &Error{Msg: "no targets configured"}
@@ -492,6 +513,17 @@ func validateTarget(name string, target Target, keys keyIndex) *Error {
 	}
 	if keys.has("target", name, "on_long") && !slices.Contains(onLongPolicies, target.OnLong) {
 		return fail("on_long", "unknown policy, want one of %s", strings.Join(onLongPolicies, ", "))
+	}
+	if keys.has("target", name, "long_file") && !slices.Contains(longFiles, target.LongFile) {
+		return fail("long_file", "unknown file, want one of %s", strings.Join(longFiles, ", "))
+	}
+	for _, limit := range []struct {
+		key   string
+		value int
+	}{{"max_text", target.MaxText}, {"max_lines", target.MaxLines}} {
+		if keys.has("target", name, limit.key) && limit.value <= 0 {
+			return fail(limit.key, "value of key %q must be positive", limit.key)
+		}
 	}
 	return nil
 }

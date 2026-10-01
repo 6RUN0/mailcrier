@@ -219,6 +219,16 @@ func (t *Template) Execute(d Data) (string, error) {
 	return b.String(), nil
 }
 
+// ExecuteBytes renders d as bytes, for a text that goes as a file: a
+// conversion of the string of Execute would copy the text once more.
+func (t *Template) ExecuteBytes(d Data) ([]byte, error) {
+	var b bytes.Buffer
+	if err := t.tmpl.Execute(&b, d); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
+}
+
 // funcs returns the template functions.
 func funcs() template.FuncMap {
 	return template.FuncMap{

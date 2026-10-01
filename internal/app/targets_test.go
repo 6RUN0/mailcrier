@@ -2,8 +2,10 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -12,7 +14,9 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/6RUN0/slendmail/internal/backend"
 	"github.com/6RUN0/slendmail/internal/config"
+	"github.com/6RUN0/slendmail/internal/delivery"
 	"github.com/6RUN0/slendmail/internal/redact"
 )
 
@@ -176,11 +180,69 @@ func TestRunSlackWebhookLimit(t *testing.T) {
 	if code := inv.run(t); code != 0 {
 		t.Fatalf("Run() = %d, want 0", code)
 	}
-	if n := len([]rune(body["text"])); n > 40000 || n < 30000 || !strings.HasSuffix(body["text"], "[truncated]```") {
+	if n := len([]rune(body["text"])); n > 40000 || n < 30000 || !strings.HasSuffix(body["text"], "[truncated, 52.8 KiB in full]```") {
 		t.Errorf("text of %d characters, ends %q", n, body["text"][max(0, len(body["text"])-30):])
 	}
 	if !strings.Contains(inv.log("slendmail"), `msg="text truncated for target" target=sw`) {
 		t.Errorf("log lacks the truncation record:\n%s", inv.log("slendmail"))
+	}
+}
+
+// TestRunLongTextAsMessage pins the keys of a long text from the file to
+// the service: max_lines cuts the body, and long_file = "eml" sends the
+// message itself, without its Bcc field, as message.eml.
+func TestRunLongTextAsMessage(t *testing.T) {
+	var mu sync.Mutex
+	var published, file string
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		data, _ := io.ReadAll(r.Body)
+		if r.Method == http.MethodPut {
+			file = r.URL.Query().Get("filename") + "\n" + string(data)
+			return
+		}
+		published = string(data)
+	}))
+	defer server.Close()
+	config := "[target.phone]\ntype = \"ntfy\"\nurl = \"" + server.URL + "/alerts\"\nlong_file = \"eml\"\nmax_lines = 1\n"
+	input := "Subject: s\nTo: a@example.org\nBcc: hidden@example.org\n\nfirst line\nsecond line\n"
+	inv := &invocation{config: config, args: []string{"-t"}, stdin: strings.NewReader(input)}
+	if code := inv.run(t); code != 0 {
+		t.Fatalf("Run() = %d, want 0", code)
+	}
+	if !strings.Contains(published, `first line\n[truncated]\nmessage.eml (message/rfc822`) || strings.Contains(published, "second line") {
+		t.Errorf("published %s", published)
+	}
+	if want := "message.eml\nSubject: s\nTo: a@example.org\n\nfirst line\nsecond line\n"; file != want {
+		t.Errorf("file %q, want %q", file, want)
+	}
+}
+
+// TestLogTextRejected pins the warning for a target that rejected the
+// text: sent as file only when the file went through, so that a failed
+// retry does not claim a delivery.
+func TestLogTextRejected(t *testing.T) {
+	rejected := &backend.Error{Class: backend.Permanent, Status: 400, Err: errors.New("can't parse entities"), IsTextRejected: true}
+	for _, tc := range []struct {
+		name   string
+		result delivery.Result
+		want   string
+	}{
+		{"file-sent", delivery.Result{TargetID: "tg", Status: delivery.OK, TextRejected: rejected}, `level=WARN msg="text rejected, sent as file" target=tg err="permanent failure, status 400: can't parse entities"`},
+		{"file-failed", delivery.Result{TargetID: "tg", Status: delivery.Perm, Err: rejected, TextRejected: rejected}, `level=WARN msg="text rejected, file failed too" target=tg err="permanent failure, status 400: can't parse entities"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var b strings.Builder
+			logResult(slog.New(slog.NewTextHandler(&b, nil)), tc.result)
+			got := b.String()
+			if !strings.Contains(got, tc.want) {
+				t.Errorf("log %q, want %q", got, tc.want)
+			}
+			if tc.result.Status != delivery.OK && strings.Contains(got, "sent as file") {
+				t.Errorf("log of a failed retry claims the file: %q", got)
+			}
+		})
 	}
 }
 

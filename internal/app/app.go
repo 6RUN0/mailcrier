@@ -291,6 +291,8 @@ func listSpool(d Deps, log *slog.Logger, dir string, mode sendmail.Mode) int {
 }
 
 // notices returns the built-in notices with the configured ones in place.
+// A configured truncated without truncated_size stands for both: the
+// English default with the size would replace a translated notice.
 func notices(configured config.Strings) render.Strings {
 	strs := render.DefaultStrings()
 	for _, notice := range []struct {
@@ -298,11 +300,14 @@ func notices(configured config.Strings) render.Strings {
 		dst   *string
 	}{
 		{configured.NoSubject, &strs.NoSubject}, {configured.EmptyBody, &strs.EmptyBody}, {configured.Truncated, &strs.Truncated},
-		{configured.MoreAttachments, &strs.MoreAttachments}, {configured.NotSent, &strs.NotSent},
+		{configured.TruncatedSize, &strs.TruncatedSize}, {configured.MoreAttachments, &strs.MoreAttachments}, {configured.NotSent, &strs.NotSent},
 	} {
 		if notice.value != "" {
 			*notice.dst = notice.value
 		}
+	}
+	if configured.Truncated != "" && configured.TruncatedSize == "" {
+		strs.TruncatedSize = ""
 	}
 	return strs
 }
@@ -471,6 +476,12 @@ func logResult(log *slog.Logger, r delivery.Result) {
 		log.Info("text truncated for target", "target", r.TargetID)
 	}
 	switch {
+	case r.TextRejected != nil && r.Status == delivery.OK:
+		log.Warn("text rejected, sent as file", "target", r.TargetID, "err", r.TextRejected)
+	case r.TextRejected != nil:
+		log.Warn("text rejected, file failed too", "target", r.TargetID, "err", r.TextRejected)
+	}
+	switch {
 	case r.Status == delivery.OK && r.Err != nil:
 		log.Warn("attachments not delivered", "target", r.TargetID, "err", r.Err)
 		return
@@ -570,7 +581,19 @@ func buildTargets(cfg *config.Config, client *http.Client) ([]delivery.Target, e
 		if err != nil {
 			return nil, fmt.Errorf("target %q: %w", name, err)
 		}
-		targets = append(targets, delivery.Target{ID: name, Sender: sender, Template: tmpl})
+		targets = append(targets, delivery.Target{
+			ID: name, Sender: sender, Template: tmpl, OnLong: onLongPolicies[target.OnLong], LongFile: longFiles[target.LongFile],
+			MaxText: target.MaxText, MaxLines: target.MaxLines,
+		})
 	}
 	return targets, nil
 }
+
+// onLongPolicies and longFiles map the values of on_long and long_file;
+// an absent key, the empty string, gives the zero value, the default.
+var (
+	onLongPolicies = map[string]delivery.OnLong{
+		config.OnLongFile: delivery.OnLongFile, config.OnLongTruncate: delivery.OnLongTruncate, config.OnLongBlockquote: delivery.OnLongBlockquote,
+	}
+	longFiles = map[string]delivery.LongFile{config.LongFileText: delivery.LongFileText, config.LongFileMessage: delivery.LongFileMessage}
+)

@@ -35,7 +35,10 @@ preset = "generic-json"
 type = "telegram"
 token = "123:abc"
 chat_id = "-100123"
-on_long = "file"
+on_long = "blockquote"
+long_file = "eml"
+max_text = 1000
+max_lines = 40
 `
 	secret := fstest.MapFS{"etc/slendmail.d/hook.url": {Data: []byte("https://example.org/hooks/secret\n")}}
 	cfg, err := load(t, doc, secret)
@@ -52,7 +55,7 @@ on_long = "file"
 	if hook.URL != "https://example.org/hooks/secret" {
 		t.Errorf("hook.URL = %q, want the trimmed content of url_file", hook.URL)
 	}
-	if tg := cfg.Targets["ops-telegram"]; tg.Token != "123:abc" || tg.ChatID != "-100123" || tg.OnLong != OnLongFile {
+	if tg := cfg.Targets["ops-telegram"]; tg.Token != "123:abc" || tg.ChatID != "-100123" || tg.OnLong != OnLongBlockquote || tg.LongFile != LongFileMessage || tg.MaxText != 1000 || tg.MaxLines != 40 {
 		t.Errorf("ops-telegram = %+v", tg)
 	}
 }
@@ -261,6 +264,26 @@ func TestLoadRejects(t *testing.T) {
 			want: `:2:1: value of key "deadline" must be positive`,
 		},
 		{
+			name: "max-text-zero",
+			doc:  "[target.dc]\ntype = \"discord\"\nurl = \"https://example.org/x\"\nmax_text = 0\n",
+			want: `:4:1: target "dc": value of key "max_text" must be positive`,
+		},
+		{
+			name: "max-lines-negative",
+			doc:  "[target.api]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org/x\"\nmax_lines = -1\n",
+			want: `:5:1: target "api": value of key "max_lines" must be positive`,
+		},
+		{
+			name: "unknown-long-file",
+			doc:  "[target.nt]\ntype = \"ntfy\"\nurl = \"https://ntfy.example.org/x\"\nlong_file = \"pdf\"\n",
+			want: `:4:1: target "nt": unknown file, want one of text, eml`,
+		},
+		{
+			name: "long-file-of-http",
+			doc:  "[target.api]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org/x\"\nlong_file = \"eml\"\n",
+			want: `:5:1: target "api": key "long_file" is not valid for type "http"`,
+		},
+		{
 			name: "no-targets",
 			doc:  "[general]\nsyslog_tag = \"x\"\n",
 			want: `: no targets configured`,
@@ -466,11 +489,11 @@ func TestLoadSpool(t *testing.T) {
 func TestLoadStrings(t *testing.T) {
 	const target = "\n[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\n"
 	t.Run("configured", func(t *testing.T) {
-		cfg, err := load(t, "[strings]\nno_subject = \"(ohne Betreff)\"\nempty_body = \"(leer)\"\ntruncated = \"[gekürzt]\"\nmore_attachments = \"und %d weitere\"\nnot_sent = \"[nicht gesendet]\"\n"+target, nil)
+		cfg, err := load(t, "[strings]\nno_subject = \"(ohne Betreff)\"\nempty_body = \"(leer)\"\ntruncated = \"[gekürzt]\"\ntruncated_size = \"[gekürzt, %s]\"\nmore_attachments = \"und %d weitere\"\nnot_sent = \"[nicht gesendet]\"\n"+target, nil)
 		if err != nil {
 			t.Fatalf("Load() error = %v", err)
 		}
-		if want := (Strings{NoSubject: "(ohne Betreff)", EmptyBody: "(leer)", Truncated: "[gekürzt]", MoreAttachments: "und %d weitere", NotSent: "[nicht gesendet]"}); cfg.Strings != want {
+		if want := (Strings{NoSubject: "(ohne Betreff)", EmptyBody: "(leer)", Truncated: "[gekürzt]", TruncatedSize: "[gekürzt, %s]", MoreAttachments: "und %d weitere", NotSent: "[nicht gesendet]"}); cfg.Strings != want {
 			t.Errorf("Strings = %+v, want %+v", cfg.Strings, want)
 		}
 	})
@@ -487,6 +510,8 @@ func TestLoadStrings(t *testing.T) {
 		"more-attachments-two-verbs":  "[strings]\nmore_attachments = \"%d of %d\"\n",
 		"more-attachments-other-verb": "[strings]\nmore_attachments = \"%s more\"\n",
 		"more-attachments-percent":    "[strings]\nmore_attachments = \"%d more, 100%\"\n",
+		"truncated-size-no-verb":      "[strings]\ntruncated_size = \"[cut]\"\n",
+		"truncated-size-other-verb":   "[strings]\ntruncated_size = \"[cut, %d]\"\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := load(t, doc+target, nil)

@@ -116,7 +116,7 @@ func TestDeliverNtfy(t *testing.T) {
 			t.Errorf("attachments = %q, want %q", s.attachments, want)
 		}
 	})
-	t.Run("title-cut-to-limit", func(t *testing.T) {
+	t.Run("T-LIM-13/title-cut-to-1-kb", func(t *testing.T) {
 		s := newServer(t)
 		deliverTo(t, s.sender(t), render.Data{Subject: strings.Repeat("ж", 2000), Body: "b\n"}, nil)
 		if got := s.publishes[0].Title; len(got) > maxTitle || len(got) < maxTitle-1 || !utf8.ValidString(got) {
@@ -130,11 +130,16 @@ func TestDeliverNtfy(t *testing.T) {
 			t.Errorf("publish = %+v", p)
 		}
 	})
-	t.Run("message-within-4096-bytes", func(t *testing.T) {
+	t.Run("T-LIM-13/long-message-as-attachment", func(t *testing.T) {
 		s := newServer(t)
-		result := deliverTo(t, s.sender(t), render.Data{Subject: "s", Body: strings.Repeat("ёжик ", 2000)}, nil)
-		if m := s.publishes[0].Message; !result.IsTruncated || len(m) > maxText || !strings.HasSuffix(m, "[truncated]") {
-			t.Errorf("message of %d bytes, truncated %v", len(m), result.IsTruncated)
+		body := strings.Repeat("ёжик ", 2000)
+		result := deliverTo(t, s.sender(t), render.Data{Subject: "s", Body: body}, nil)
+		m := s.publishes[0].Message
+		if !result.IsTruncated || len(m) > maxText || len(m) < maxText-200 || !strings.Contains(m, "[truncated]\nmessage.txt (text/plain") {
+			t.Errorf("message of %d bytes, truncated %v, ends %q", len(m), result.IsTruncated, m[max(0, len(m)-80):])
+		}
+		if len(s.attachments) != 1 || !strings.HasPrefix(s.attachments[0], "message.txt|s|s\n") || !strings.Contains(s.attachments[0], strings.TrimSpace(body)) {
+			t.Errorf("%d attachments, want message.txt with the full body", len(s.attachments))
 		}
 	})
 	t.Run("attachment-failure-is-partial", func(t *testing.T) {
