@@ -14,6 +14,7 @@ import (
 	"github.com/6RUN0/slendmail/internal/delivery"
 	"github.com/6RUN0/slendmail/internal/message"
 	"github.com/6RUN0/slendmail/internal/render"
+	"github.com/6RUN0/slendmail/internal/text"
 )
 
 // liveEnv names a file of KEY=VALUE lines with TELEGRAM_BOT_TOKEN and
@@ -39,6 +40,27 @@ func TestLiveTelegram(t *testing.T) {
 	result := deliverTo(t, sender, d, files)
 	if result.Status != delivery.OK || result.Err != nil {
 		t.Fatalf("result: status %v, err %v", result.Status, result.Err)
+	}
+}
+
+// TestLiveTelegramLongText sends a text over the limit with on_long
+// blockquote to the real Bot API: the cut body in an expandable blockquote
+// by sendMessage, then the full text as message.txt, which checks the
+// markup of the collapsed block and the cut for real.
+func TestLiveTelegramLongText(t *testing.T) {
+	sender := liveSender(t)
+	tmpl, err := render.Builtin(text.FormatTelegramHTML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := render.Data{
+		Subject: "slendmail live test: long text", Hostname: "test.example.org", From: message.Address{Addr: "root"},
+		Body: strings.Repeat("line of a long report with <markup> & ёжик 😀\n", 200), Strings: render.DefaultStrings(),
+	}
+	target := delivery.Target{ID: "tg", Sender: sender, Template: tmpl, OnLong: delivery.OnLongBlockquote}
+	result := delivery.Deliver(context.Background(), []delivery.Target{target}, d, nil)[0]
+	if result.Status != delivery.OK || result.Err != nil || !result.IsTruncated || result.TextRejected != nil {
+		t.Fatalf("result: status %v, err %v, truncated %v, text rejected %v", result.Status, result.Err, result.IsTruncated, result.TextRejected)
 	}
 }
 
