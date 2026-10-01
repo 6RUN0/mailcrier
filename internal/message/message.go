@@ -173,9 +173,7 @@ func Read(r io.Reader, opt ReadOptions) (*Message, BlindCopies, []string, error)
 	msg := &Message{Header: Header{}, Size: int64(len(raw)) + discarded}
 	raw = normalize(raw, opt.IgnoreDots)
 	msg.Raw = raw
-	if bytes.HasPrefix(raw, []byte("From ")) {
-		raw = raw[lineEnd(raw, 0):]
-	}
+	raw = raw[envelopeEnd(raw):]
 	headerEnd, bodyStart, isMalformed := scanHeader(raw)
 	if isMalformed {
 		warnings = append(warnings, WarningMalformedHeader)
@@ -323,6 +321,15 @@ func normalize(raw []byte, ignoreDots bool) []byte {
 	return raw[:w]
 }
 
+// envelopeEnd returns the offset past the leading mbox "From " line of
+// raw, which Read drops; 0 when raw has none.
+func envelopeEnd(raw []byte) int {
+	if !bytes.HasPrefix(raw, []byte("From ")) {
+		return 0
+	}
+	return lineEnd(raw, 0)
+}
+
 // lineEnd returns the offset after the line of raw that starts at pos: past
 // its LF, or the end of raw.
 func lineEnd(raw []byte, pos int) int {
@@ -330,6 +337,36 @@ func lineEnd(raw []byte, pos int) int {
 		return pos + n + 1
 	}
 	return len(raw)
+}
+
+// WithoutBlindCopies returns a copy of raw, the kept input of a message
+// (Message.Raw), without a leading mbox "From " line and without the Bcc
+// and Resent-Bcc fields of its header block, continuation lines included,
+// so that the message itself can go to a target as a file. Everything else
+// stays byte for byte. The mbox line stays when the next line starts with
+// "From " too: Read would take that line for the envelope and drop it.
+func WithoutBlindCopies(raw []byte) []byte {
+	kept := make([]byte, 0, len(raw))
+	if end := envelopeEnd(raw); envelopeEnd(raw[end:]) == 0 {
+		raw = raw[end:]
+	} else {
+		kept, raw = append(kept, raw[:end]...), raw[end:]
+	}
+	headerEnd, _, _ := scanHeader(raw)
+	for pos := 0; pos < headerEnd; {
+		end := lineEnd(raw, pos)
+		for end < headerEnd && (raw[end] == ' ' || raw[end] == '\t') {
+			end = lineEnd(raw, end)
+		}
+		name, _, _ := bytes.Cut(raw[pos:end], []byte(":"))
+		switch textproto.CanonicalMIMEHeaderKey(string(name)) {
+		case "Bcc", "Resent-Bcc":
+		default:
+			kept = append(kept, raw[pos:end]...)
+		}
+		pos = end
+	}
+	return append(kept, raw[headerEnd:]...)
 }
 
 // scanHeader returns where the header block of raw ends and where the body

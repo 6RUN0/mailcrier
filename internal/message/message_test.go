@@ -283,7 +283,27 @@ func FuzzRead(f *testing.F) {
 		if !reflect.DeepEqual(again, msg) {
 			t.Errorf("Raw read again differs:\n%+v\nwant\n%+v", again, msg)
 		}
+		stripped, blind, _, err := Read(bytes.NewReader(WithoutBlindCopies(msg.Raw)), ReadOptions{IgnoreDots: true, MaxSize: 1 << 16})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(blind.Bcc) > 0 || len(blind.ResentBcc) > 0 || stripped.Body != msg.Body || stripped.Subject != msg.Subject {
+			t.Errorf("WithoutBlindCopies(%q) keeps %+v or changes the text", msg.Raw, blind)
+		}
 	})
+}
+
+func TestWithoutBlindCopies(t *testing.T) {
+	raw := "From root Mon Jan  1 00:00:00 2026\nTo: a@example.org\nBcc: hidden@example.org,\n\tother@example.org\nSubject: s\n" +
+		"resent-bcc: r@example.org\nX-Bcc-Note: kept\n\nBcc: in the body stays\n"
+	want := "To: a@example.org\nSubject: s\nX-Bcc-Note: kept\n\nBcc: in the body stays\n"
+	input := []byte(raw)
+	if got := string(WithoutBlindCopies(input)); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if string(input) != raw {
+		t.Error("the input was changed")
+	}
 }
 
 // allocatedBytes returns the bytes Read allocates for input.
