@@ -138,6 +138,35 @@ func TestBuiltinNotices(t *testing.T) {
 	})
 }
 
+// TestBuiltinCollapsed pins the on_long blockquote rendering: the
+// Telegram HTML template puts the body into an expandable blockquote in
+// place of pre, the templates without such a block ignore the flag.
+func TestBuiltinCollapsed(t *testing.T) {
+	d := readData(t, "To: root\nSubject: s\n\nx < y\n")
+	open := renderAll(t, d)
+	d.IsCollapsed = true
+	for format, out := range renderAll(t, d) {
+		if format == text.FormatTelegramHTML {
+			if !strings.Contains(out, "<blockquote expandable>x &lt; y</blockquote>") || strings.Contains(out, "<pre>") {
+				t.Errorf("%s: %q", format, out)
+			}
+			continue
+		}
+		if out != open[format] {
+			t.Errorf("%s: collapsed %q differs from %q", format, out, open[format])
+		}
+	}
+}
+
+func TestStringsWithFullSize(t *testing.T) {
+	if got := DefaultStrings().WithFullSize(3 << 20).Truncated; got != "[truncated, 3.0 MiB in full]" {
+		t.Errorf("Truncated = %q", got)
+	}
+	if got := (Strings{Truncated: "[cut]"}).WithFullSize(10).Truncated; got != "[cut]" {
+		t.Errorf("without TruncatedSize: Truncated = %q", got)
+	}
+}
+
 // TestBuiltinNotSent pins that every template listing attachments marks
 // one the target does not send, escaped for its markup.
 func TestBuiltinNotSent(t *testing.T) {

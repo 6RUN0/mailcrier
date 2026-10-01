@@ -76,7 +76,9 @@ preset = "generic-json"
   than a quarter of the limit (at least 64 units of the target) is cut at
   a word and ends with `...`, then the list of attachments, then the body,
   which ends with the `truncated` notice. The limit is counted the way the
-  service counts it, after escaping.
+  service counts it, after escaping. When the rest of the text, host and
+  sender included, is too long on its own, the text is cut hard; for
+  Telegram between tags and entities, with the open tags closed.
 - Exit status: see "Exit status" below.
 - Logging goes to syslog, facility `mail`. Where no syslog socket exists (a
   container without `/dev/log`) the records go to stderr, with time and

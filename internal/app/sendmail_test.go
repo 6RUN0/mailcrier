@@ -471,7 +471,8 @@ func TestRunCronieCommandLine(t *testing.T) {
 // one and an absent one keeps it.
 func TestNotices(t *testing.T) {
 	got := notices(config.Strings{NoSubject: "a", EmptyBody: "b", Truncated: "c", MoreAttachments: "%d d", NotSent: "e"})
-	if want := (render.Strings{NoSubject: "a", EmptyBody: "b", Truncated: "c", MoreAttachments: "%d d", NotSent: "e"}); got != want {
+	want := render.Strings{NoSubject: "a", EmptyBody: "b", Truncated: "c", TruncatedSize: render.DefaultStrings().TruncatedSize, MoreAttachments: "%d d", NotSent: "e"}
+	if got != want {
 		t.Errorf("notices = %+v, want %+v", got, want)
 	}
 	if got := notices(config.Strings{}); got != render.DefaultStrings() {

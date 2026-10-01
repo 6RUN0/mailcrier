@@ -30,6 +30,9 @@ type Strings struct {
 	EmptyBody string
 	// Truncated ends a body that Fit has cut.
 	Truncated string
+	// TruncatedSize replaces Truncated when the full text does not go
+	// along as a file; its one %s verb is the size of the full text.
+	TruncatedSize string
 	// MoreAttachments follows the attachments Fit has listed when it left
 	// out the rest; its one %d verb is the number left out.
 	MoreAttachments string
@@ -44,9 +47,19 @@ func DefaultStrings() Strings {
 		NoSubject:       "(no subject)",
 		EmptyBody:       "(empty body)",
 		Truncated:       "[truncated]",
+		TruncatedSize:   "[truncated, %s in full]",
 		MoreAttachments: "... and %d more",
 		NotSent:         "[not sent]",
 	}
+}
+
+// WithFullSize returns s with Truncated replaced by TruncatedSize for a
+// full text of size bytes; s itself when TruncatedSize is empty.
+func (s Strings) WithFullSize(size int64) Strings {
+	if s.TruncatedSize != "" {
+		s.Truncated = fmt.Sprintf(s.TruncatedSize, humanizeBytes(size))
+	}
+	return s
 }
 
 // Attachment describes an attachment to a template; its content is not
@@ -99,6 +112,10 @@ type Data struct {
 	// Limit is the text limit of the target in its own unit; 0 when it
 	// has none.
 	Limit int
+	// IsCollapsed asks for the body in a collapsed block, where the markup
+	// of the target has one: the text exceeds the limit of a target whose
+	// on_long policy is blockquote.
+	IsCollapsed bool
 	// Strings are the notices for missing content.
 	Strings Strings
 }

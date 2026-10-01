@@ -13,11 +13,12 @@ import (
 var ErrLimitTooSmall = errors.New("render: the rest of the template alone exceeds the length limit")
 
 // strictFormats are the formats a cut at an arbitrary character breaks for
-// the service: JSON that no longer parses, and Telegram markup with an
-// unclosed tag, entity or escape, which the Bot API rejects.
+// the service: JSON that no longer parses, and Telegram MarkdownV2 with an
+// unclosed entity or escape, which the Bot API rejects. Telegram HTML is
+// cut by text.CutTelegramHTML instead, which closes what it leaves open.
 var strictFormats = map[text.Format]bool{
-	text.FormatTelegramHTML: true, text.FormatTelegramMarkdownV2: true,
-	text.FormatMattermost: true, text.FormatSlackWebhook: true, text.FormatGenericJSON: true,
+	text.FormatTelegramMarkdownV2: true,
+	text.FormatMattermost:         true, text.FormatSlackWebhook: true, text.FormatGenericJSON: true,
 }
 
 // Fit renders d with t so that measure of the result is at most limit, in
@@ -50,19 +51,34 @@ var strictFormats = map[text.Format]bool{
 //
 // When nothing fits, because the rest of the template is too long or
 // ignores the body, the subject and the attachments, a template parsed for
-// a format in strictFormats gives ErrLimitTooSmall, and any other the
-// longest prefix of the rendering with the cut subject, the Truncated
-// notice and no attachment that fits, cut at a character boundary.
+// a format in strictFormats gives ErrLimitTooSmall. Any other gives the
+// longest prefix that fits of the rendering with the cut subject, the
+// Truncated notice and no attachment: for Telegram HTML cut between tags
+// and entities with the open tags closed, by text.CutTelegramHTML, else
+// cut at a character boundary.
 func Fit(t *Template, d Data, limit int, measure func(string) int) (out string, truncated bool, err error) {
+	return FitLines(t, d, limit, 0, measure)
+}
+
+// FitLines is Fit for a target that also takes at most maxLines lines of
+// the body; 0 or less means no such limit. A body of more lines is cut
+// after line maxLines and ended by the Truncated notice before Fit cuts
+// anything else, and the result counts as truncated even when it then
+// fits the length limit.
+func FitLines(t *Template, d Data, limit, maxLines int, measure func(string) int) (out string, truncated bool, err error) {
+	body, isCut := firstLines(d.Body, maxLines)
+	if isCut {
+		d.Body = withNotice(body, d.Strings.Truncated)
+	}
 	full, err := t.Execute(d)
 	if err != nil || limit <= 0 || measure(full) <= limit {
-		return full, false, err
+		return full, isCut, err
 	}
 	render := func() (string, bool, error) {
 		out, err := t.Execute(d)
 		return out, err == nil && measure(out) <= limit, err
 	}
-	body, subject, attachments := d.Body, d.Subject, d.Attachments
+	subject, attachments := d.Subject, d.Attachments
 	subjectLength := utf8.RuneCountInString(subject)
 	measureSubject := measure
 	if escape, ok := subjectEscapers[t.format]; ok {
@@ -121,7 +137,31 @@ func Fit(t *Template, d Data, limit int, measure func(string) int) (out string, 
 	if err != nil {
 		return "", false, err
 	}
+	if t.format == text.FormatTelegramHTML {
+		return text.CutTelegramHTML(shortest, limit, measure), true, nil
+	}
 	return longestPrefix(shortest, limit, measure), true, nil
+}
+
+// firstLines returns the first maxLines lines of body, without the line
+// break after the last one, and whether anything but white space follows;
+// body itself when maxLines is 0 or less or nothing is cut.
+func firstLines(body string, maxLines int) (string, bool) {
+	if maxLines <= 0 {
+		return body, false
+	}
+	end := 0
+	for range maxLines {
+		next := strings.IndexByte(body[end:], '\n')
+		if next < 0 {
+			return body, false
+		}
+		end += next + 1
+	}
+	if strings.TrimSpace(body[end:]) == "" {
+		return body, false
+	}
+	return body[:end-1], true
 }
 
 // subjectEscapers escape a subject the way the built-in template of each

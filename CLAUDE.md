@@ -95,8 +95,10 @@ with "no non-test Go files".
   `defaults/<format>.tmpl` keyed by `text.Format`, `Fit` (a long subject
   cut to a quarter of the limit in the target's unit and marked `...`,
   then binary searches over the attachment list, the raw body and the
-  subject, measured after escaping; strictness comes from the format a
-  template is parsed for, not from who wrote it). Golden
+  subject, measured after escaping; when nothing fits, Telegram HTML is
+  cut hard by `text.CutTelegramHTML`, JSON and MarkdownV2 give
+  `ErrLimitTooSmall`; strictness comes from the format a template is
+  parsed for, not from who wrote it; `FitLines` adds `max_lines`). Golden
   output of every template for every caller fixture is in
   `internal/render/testdata/golden`.
 - `internal/config.Load` parses strictly: an unknown key, a key of another

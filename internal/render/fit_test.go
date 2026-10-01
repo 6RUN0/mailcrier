@@ -83,7 +83,7 @@ func checkFitOutput(t *testing.T, tmpl *Template, d Data, limit int, m measureFu
 
 // telegramMarkup matches a tag or an entity of the built-in Telegram HTML
 // template.
-var telegramMarkup = regexp.MustCompile(`</?(?:b|i|pre)>|&(?:amp|lt|gt);`)
+var telegramMarkup = regexp.MustCompile(`</?(?:b|i|pre|blockquote)>|<blockquote expandable>|&(?:amp|lt|gt);`)
 
 // checkTelegramHTML checks that every tag of out is closed in order and
 // that no <, > or & stands outside a tag or an entity.
@@ -100,7 +100,8 @@ func checkTelegramHTML(t *testing.T, out string) {
 			}
 			open = open[:len(open)-1]
 		default:
-			open = append(open, markup[1:])
+			name, _, _ := strings.Cut(markup[1:len(markup)-1], " ")
+			open = append(open, name+">")
 		}
 	}
 	if len(open) > 0 {
@@ -336,7 +337,7 @@ func TestFit(t *testing.T) {
 		}
 	})
 	t.Run("strict-format-too-long-without-subject", func(t *testing.T) {
-		for _, format := range []text.Format{text.FormatTelegramHTML, text.FormatGenericJSON} {
+		for _, format := range []text.Format{text.FormatTelegramMarkdownV2, text.FormatGenericJSON} {
 			tmpl, err := Builtin(format)
 			if err != nil {
 				t.Fatal(err)
@@ -348,6 +349,19 @@ func TestFit(t *testing.T) {
 			}
 		}
 	})
+	t.Run("T-LIM-16/telegram-wrapper-longer-than-limit-cut-hard", func(t *testing.T) {
+		tmpl, err := Builtin(text.FormatTelegramHTML)
+		if err != nil {
+			t.Fatal(err)
+		}
+		d := fitData("body\n")
+		d.Hostname = strings.Repeat("h&", 2500)
+		out, truncated, err := Fit(tmpl, d, 4096, text.MeasureTelegramHTML)
+		checkFitOutput(t, tmpl, d, 4096, measures[0], out, truncated, err)
+		if err != nil || !truncated || text.MeasureTelegramHTML(out) < 4000 || !strings.HasSuffix(out, "h&amp;</i>") {
+			t.Errorf("truncated = %v, err = %v, %d characters, ends %q", truncated, err, text.MeasureTelegramHTML(out), out[max(0, len(out)-40):])
+		}
+	})
 	t.Run("wrapper-longer-than-limit", func(t *testing.T) {
 		tmpl, err := parse("wrapper", strings.Repeat("header ", 100)+"{{ .Body }}", text.FormatPlain)
 		if err != nil {
@@ -356,6 +370,80 @@ func TestFit(t *testing.T) {
 		out, truncated, err := Fit(tmpl, fitData("body"), 20, text.RuneCount)
 		if err != nil || !truncated || out != "header header header" {
 			t.Errorf("out = %q, truncated = %v, err = %v", out, truncated, err)
+		}
+	})
+}
+
+// TestFitAtTheLimit pins the boundary of the Telegram limit with the
+// built-in template: a text that measures exactly the limit, wrapper
+// included, goes as it is; one character more cuts the body at the last
+// white space within 100 characters, or hard without one, and ends it with
+// the notice, within the limit.
+func TestFitAtTheLimit(t *testing.T) {
+	tmpl, err := Builtin(text.FormatTelegramHTML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const limit = 4096
+	wrapper, err := tmpl.Execute(fitData(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	room := limit - text.MeasureTelegramHTML(wrapper) + text.RuneCount(DefaultStrings().EmptyBody)
+	check := func(word string) func(*testing.T) {
+		return func(t *testing.T) {
+			body := text.TruncateRunes(strings.Repeat(word, room), room)
+			out, truncated, err := Fit(tmpl, fitData(body), limit, text.MeasureTelegramHTML)
+			if err != nil || truncated || text.MeasureTelegramHTML(out) != limit {
+				t.Fatalf("body at the limit: truncated = %v, err = %v, %d characters", truncated, err, text.MeasureTelegramHTML(out))
+			}
+			out, truncated, err = Fit(tmpl, fitData(body+"y"), limit, text.MeasureTelegramHTML)
+			checkFitOutput(t, tmpl, fitData(body+"y"), limit, measures[0], out, truncated, err)
+			kept, isCut := strings.CutSuffix(out, "\n[truncated]</pre>")
+			if !truncated || !isCut {
+				t.Fatalf("one more character: truncated = %v, ends %q", truncated, out[max(0, len(out)-60):])
+			}
+			_, keptBody, _ := strings.Cut(kept, "<pre>")
+			raw := strings.NewReplacer("&lt;", "<", "&gt;", ">", "&amp;", "&").Replace(keptBody)
+			lost := text.RuneCount(body) - text.RuneCount(raw)
+			if !strings.HasPrefix(body, raw) || lost > 100+len("[truncated]")+1 {
+				t.Errorf("kept %d of %d characters, %d lost", text.RuneCount(raw), text.RuneCount(body), lost)
+			}
+			if strings.Contains(word, " ") && (strings.HasSuffix(raw, " ") || !strings.HasPrefix(body[len(raw):], " ")) {
+				t.Errorf("cut not at a word: ends %q", raw[max(0, len(raw)-20):])
+			}
+		}
+	}
+	t.Run("T-ADJ-42/cut-at-word", check("word & <x> "))
+	t.Run("T-ADJ-42/cut-hard-without-space", check("x"))
+}
+
+// TestFitLines pins max_lines: a body of more lines is cut after the last
+// line allowed and marked, even when the rest would fit the length limit.
+func TestFitLines(t *testing.T) {
+	tmpl, err := Builtin(text.FormatPlain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := func(body string, maxLines int, wantBody string, wantTruncated bool) func(*testing.T) {
+		return func(t *testing.T) {
+			out, truncated, err := FitLines(tmpl, fitData(body), 4096, maxLines, text.RuneCount)
+			_, got, _ := strings.Cut(out, "\n\n")
+			if err != nil || truncated != wantTruncated || got != wantBody {
+				t.Errorf("body %q, truncated = %v, err = %v; want %q, %v", got, truncated, err, wantBody, wantTruncated)
+			}
+		}
+	}
+	t.Run("T-LIM-19/first-lines-kept", check("one\ntwo\nthree\n", 2, "one\ntwo\n[truncated]", true))
+	t.Run("lines-at-the-limit", check("one\ntwo\n", 2, "one\ntwo", false))
+	t.Run("trailing-blank-lines-ignored", check("one\ntwo\n\n \n", 2, "one\ntwo", false))
+	t.Run("no-limit", check("one\ntwo\nthree\n", 0, "one\ntwo\nthree", false))
+	t.Run("then-cut-to-the-length-limit", func(t *testing.T) {
+		d := fitData(strings.Repeat("a long line of the body\n", 50))
+		out, truncated, err := FitLines(tmpl, d, 100, 40, text.RuneCount)
+		checkFitOutput(t, tmpl, d, 100, measures[2], out, truncated, err)
+		if !truncated || strings.Count(out, "[truncated]") != 1 {
+			t.Errorf("truncated = %v, out %q", truncated, out)
 		}
 	})
 }

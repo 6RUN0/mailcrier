@@ -268,32 +268,14 @@ func FuzzEscapeChat(f *testing.F) {
 }
 
 func TestCutTelegramHTML(t *testing.T) {
-	cases := []struct {
-		name  string
-		in    string
-		limit int
-		want  string
-	}{
-		{"fits-unchanged", "<b>a &amp; b</b>", 5, "<b>a &amp; b</b>"},
-		{"T-LIM-05/entity-kept-whole", "<b>a &amp; b</b>", 3, "<b>a &amp;</b>"},
-		{"T-LIM-05/entity-not-split", "<b>a &amp; b</b>", 2, "<b>a </b>"},
-		{"T-LIM-05/open-tags-closed-innermost-first", "<blockquote expandable><b>xyz</b>abc</blockquote>", 2, "<blockquote expandable><b>xy</b></blockquote>"},
-		{"T-LIM-05/closed-element-stays-closed", "<b>x</b><i>yz</i>", 2, "<b>x</b><i>y</i>"},
-		{"character-outside-bmp-whole", "<pre>😀😀</pre>", 1, "<pre>😀</pre>"},
-		{"no-empty-element-at-the-end", "<b>x</b><i>yz</i>", 1, "<b>x</b>"},
-		{"nothing-fits", "<b>abc</b>", 0, ""},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			got := CutTelegramHTML(tc.in, tc.limit, MeasureTelegramHTML)
-			if got != tc.want {
-				t.Errorf("CutTelegramHTML(%q, %d) = %q, want %q", tc.in, tc.limit, got, tc.want)
-			}
-			if err := validTelegramHTML(got); err != "" {
-				t.Error(err)
-			}
-		})
-	}
+	t.Run("fits-unchanged", checkCut("<b>a &amp; b</b>", 5, "<b>a &amp; b</b>"))
+	t.Run("T-LIM-05/entity-kept-whole", checkCut("<b>a &amp; b</b>", 3, "<b>a &amp;</b>"))
+	t.Run("T-LIM-05/entity-not-split", checkCut("<b>a &amp; b</b>", 2, "<b>a </b>"))
+	t.Run("T-LIM-05/open-tags-closed-innermost-first", checkCut("<blockquote expandable><b>xyz</b>abc</blockquote>", 2, "<blockquote expandable><b>xy</b></blockquote>"))
+	t.Run("T-LIM-05/closed-element-stays-closed", checkCut("<b>x</b><i>yz</i>", 2, "<b>x</b><i>y</i>"))
+	t.Run("character-outside-bmp-whole", checkCut("<pre>😀😀</pre>", 1, "<pre>😀</pre>"))
+	t.Run("no-empty-element-at-the-end", checkCut("<b>x</b><i>yz</i>", 1, "<b>x</b>"))
+	t.Run("nothing-fits", checkCut("<b>abc</b>", 0, ""))
 	// The validator knows only the tags of the built-in template, so these
 	// two compare the result alone.
 	for _, tc := range []struct{ name, in, want string }{
@@ -312,6 +294,20 @@ func TestCutTelegramHTML(t *testing.T) {
 			t.Errorf("got %q, want %q", got, "<pre>abcd</pre>")
 		}
 	})
+}
+
+// checkCut returns a subtest that cuts in to limit characters and wants
+// the result want, which the Bot API parses.
+func checkCut(in string, limit int, want string) func(*testing.T) {
+	return func(t *testing.T) {
+		got := CutTelegramHTML(in, limit, MeasureTelegramHTML)
+		if got != want {
+			t.Errorf("CutTelegramHTML(%q, %d) = %q, want %q", in, limit, got, want)
+		}
+		if err := validTelegramHTML(got); err != "" {
+			t.Error(err)
+		}
+	}
 }
 
 // telegramMarkup matches a tag or an entity of the HTML parse mode as the

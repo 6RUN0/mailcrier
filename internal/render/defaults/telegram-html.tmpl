@@ -1,6 +1,6 @@
 <b>{{ .Subject | default .Strings.NoSubject | tgHTML }}</b>
 <i>{{ .Hostname | tgHTML }}: {{ .From.String | tgHTML }}</i>
-<pre>{{ .Body | default .Strings.EmptyBody | trimEnd | tgHTML }}</pre>
+{{ if .IsCollapsed }}<blockquote expandable>{{ .Body | default .Strings.EmptyBody | trimEnd | tgHTML }}</blockquote>{{ else }}<pre>{{ .Body | default .Strings.EmptyBody | trimEnd | tgHTML }}</pre>{{ end }}
 {{- range .Attachments }}
 {{ .Name | tgHTML }} ({{ .ContentType | tgHTML }}, {{ humanizeBytes .Size }}){{ if .IsSkipped }} {{ $.Strings.NotSent | tgHTML }}{{ end }}
 {{- end }}
