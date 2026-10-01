@@ -173,7 +173,8 @@ channel = "#alerts"                          # channel name or ID
 ```toml
 [target.phone]
 type = "ntfy"
-url_file = "/etc/slendmail.d/ntfy.url"  # https://ntfy.sh/<topic>, user:password@ allowed
+# https://ntfy.sh/<topic>, user:password@ allowed
+url_file = "/etc/slendmail.d/ntfy.url"
 ```
 
 - `ntfy`: a JSON publish to the server root with the topic, the subject
@@ -328,13 +329,14 @@ preset = "generic-json"
   of any user can send while only root and the binary read the secrets.
   When a user other than root runs the binary and the kernel applies the
   setgid bit:
-  - before doing anything else the process executes itself once more, through `/proc/self/exe` or
-    else `/usr/sbin/slendmail`, with the environment reduced to `USER`,
-    `LOGNAME`, `HOME`, `LANG`, `LC_*` and `TZ` (a zone name such as
-    `Europe/Berlin` only), so that `GODEBUG`, proxy or TLS variables of the
-    caller cannot act with the group privilege. If both fail, it replaces
-    its environment the same way and goes on with HTTP/2 off, the Go debug
-    output dropped and no proxy, and logs `reexec failed` as an error;
+  - before doing anything else the process executes itself once more,
+    through `/proc/self/exe` or else `/usr/sbin/slendmail`, with the
+    environment reduced to `USER`, `LOGNAME`, `HOME`, `LANG`, `LC_*` and
+    `TZ` (a zone name such as `Europe/Berlin` only), so that `GODEBUG`,
+    proxy or TLS variables of the caller cannot act with the group
+    privilege. If both fail, it replaces its environment the same way and
+    goes on with HTTP/2 off, the Go debug output dropped and no proxy, and
+    logs `reexec failed` as an error;
   - `--config` and `SLENDMAIL_CONFIG` are ignored with a warning;
   - `--probe` and `--check-config` exit 77 unless the caller is the
     `slendmail` user.
