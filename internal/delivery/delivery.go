@@ -32,6 +32,11 @@ type Target struct {
 	Sender backend.Sender
 	// Template renders the text of the target.
 	Template *render.Template
+	// Fallback is the built-in template of the target when Template comes
+	// from the configuration, nil otherwise. It renders the text when
+	// Template fails, and once more when the target rejects the text of
+	// Template.
+	Fallback *render.Template
 	// OnLong is what the target gets for a text over its limit.
 	OnLong OnLong
 	// LongFile selects the file that carries a long text in full.
@@ -126,10 +131,14 @@ type Result struct {
 	// IsTruncated reports that the text was cut to the length limit of
 	// the target.
 	IsTruncated bool
-	// TextRejected is the error of the first attempt when the target
-	// rejected the text and the full text went again as a file alone; nil
-	// otherwise.
+	// TextRejected is the error of the attempt before the last when the
+	// target rejected the text and the full text went again as a file
+	// alone; nil otherwise.
 	TextRejected error
+	// TemplateErr is the failure of the template from the configuration,
+	// a *render.TemplateError, or the error of the target that rejected
+	// its text, when Fallback rendered the text instead; nil otherwise.
+	TemplateErr error
 }
 
 // Deliver renders d for every target, fitted to its length limit, and
@@ -142,6 +151,10 @@ type Result struct {
 // attachments, when the target takes files. A target that rejects the
 // text, backend.Error.IsTextRejected, gets the full text as a file alone,
 // once, whatever its OnLong.
+//
+// A target whose template from the configuration fails gets the text of
+// its Fallback template, and so does a target that rejects the text of
+// that template, once, before the full text goes as a file.
 //
 // A panic while rendering or sending for one target, a bug, becomes a
 // permanent failure of that target: the others still deliver, and the
@@ -190,66 +203,126 @@ func deliverOne(ctx context.Context, target Target, d render.Data, files []messa
 	if measure == nil {
 		measure = text.RuneCount
 	}
-	full := d
-	d.Target, d.Limit = target.ID, limit
-	named := nameFiles(files)
-	var sent []backend.Attachment
-	d.Attachments, sent = selectFiles(caps, full.Attachments, named)
-	out, isTruncated, err := render.FitLines(target.Template, d, limit, target.MaxLines, measure)
-	var longFile *backend.Attachment
-	isLongFileSent := false
-	if err == nil && isTruncated {
-		if target.OnLong != OnLongTruncate && caps.MaxFiles > 0 {
-			if longFile, err = long.file(target.LongFile); err != nil {
-				return Result{TargetID: target.ID, Status: Perm, Err: &backend.Error{Class: backend.Permanent, Err: fmt.Errorf("render: %w", err)}}
-			}
-			listed, withFile := selectWithLongFile(caps, full.Attachments, named, longFile)
-			if isLongFileSent = !listed[0].IsSkipped; isLongFileSent {
-				d.Attachments, sent = listed, withFile
-			}
-		}
-		if !isLongFileSent {
-			size, sizeErr := long.textSize()
-			if sizeErr != nil {
-				return Result{TargetID: target.ID, Status: Perm, Err: &backend.Error{Class: backend.Permanent, Err: fmt.Errorf("render: %w", sizeErr)}}
-			}
-			d.Strings = d.Strings.WithFullSize(size)
-		}
-		d.IsCollapsed = target.OnLong == OnLongBlockquote
-		out, _, err = render.FitLines(target.Template, d, limit, target.MaxLines, measure)
+	job := &textJob{target: target, caps: caps, limit: limit, measure: measure, full: d, named: nameFiles(files), long: long}
+	job.d = d
+	job.d.Target, job.d.Limit = target.ID, limit
+	out, err := job.fit(target.Template)
+	var templateErr error
+	var userErr *render.TemplateError
+	if errors.As(err, &userErr) && target.Fallback != nil {
+		templateErr = err
+		out, err = job.fit(target.Fallback)
 	}
 	if err != nil {
 		err = &backend.Error{Class: backend.Permanent, Err: fmt.Errorf("render: %w", err)}
-		return Result{TargetID: target.ID, Status: Perm, Err: err}
+		return Result{TargetID: target.ID, Status: Perm, Err: err, TemplateErr: templateErr}
 	}
 	title := d.Subject
 	if title == "" {
-		title = d.Strings.NoSubject
+		title = job.d.Strings.NoSubject
 	}
-	payload := backend.Payload{Title: title, Text: out, Attachments: sent}
-	if caps.CanTakeMessage {
-		payload.Message = long.whole()
+	send := func(out *fitted) error {
+		payload := backend.Payload{Title: title, Text: out.text, Attachments: out.sent}
+		if caps.CanTakeMessage {
+			payload.Message = long.whole()
+		}
+		return target.Sender.Send(ctx, payload)
 	}
-	err = target.Sender.Send(ctx, payload)
-	result = Result{TargetID: target.ID, Status: statusOf(err), Err: err, IsTruncated: isTruncated}
+	err = send(out)
+	result = Result{TargetID: target.ID, Status: statusOf(err), Err: err, IsTruncated: out.isTruncated, TemplateErr: templateErr}
 	var deliveryErr *backend.Error
-	if !errors.As(err, &deliveryErr) || !deliveryErr.IsTextRejected || caps.MaxFiles == 0 {
+	if !errors.As(err, &deliveryErr) || !deliveryErr.IsTextRejected {
 		return result
 	}
+	if templateErr == nil && target.Fallback != nil {
+		builtin, fitErr := job.fit(target.Fallback)
+		if fitErr != nil {
+			return result
+		}
+		out, templateErr = builtin, err
+		err = send(out)
+		result = Result{TargetID: target.ID, Status: statusOf(err), Err: err, IsTruncated: out.isTruncated, TemplateErr: templateErr}
+		if !errors.As(err, &deliveryErr) || !deliveryErr.IsTextRejected {
+			return result
+		}
+	}
+	if caps.MaxFiles == 0 {
+		return result
+	}
+	longFile := out.longFile
 	if longFile == nil {
 		if longFile, err = long.file(target.LongFile); err != nil {
 			return result
 		}
 	}
-	if !isLongFileSent {
-		listed, withFile := selectWithLongFile(caps, full.Attachments, named, longFile)
+	sent := out.sent
+	if !out.isLongFileSent {
+		listed, withFile := selectWithLongFile(caps, job.full.Attachments, job.named, longFile)
 		if listed[0].IsSkipped {
 			return result
 		}
 		sent = withFile
 	}
 	err = target.Sender.Send(ctx, backend.Payload{Title: title, Attachments: sent})
-	return Result{TargetID: target.ID, Status: statusOf(err), Err: err, IsTruncated: isTruncated, TextRejected: result.Err}
+	return Result{TargetID: target.ID, Status: statusOf(err), Err: err, IsTruncated: out.isTruncated, TextRejected: result.Err, TemplateErr: templateErr}
+}
+
+// textJob is what rendering the text of one target needs, for each
+// template it tries.
+type textJob struct {
+	target  Target
+	caps    backend.Caps
+	limit   int
+	measure func(string) int
+	// full is the data of the message; d the same with the target and its
+	// limit set.
+	full, d render.Data
+	named   []backend.Attachment
+	long    *longFiles
+}
+
+// fitted is the text of a target and the files that go with it.
+type fitted struct {
+	text        string
+	isTruncated bool
+	// sent are the files to send: the attachments within the limits of
+	// the target, with longFile first when isLongFileSent.
+	sent           []backend.Attachment
+	longFile       *backend.Attachment
+	isLongFileSent bool
+}
+
+// fit renders the text of the target with tmpl, fitted to its limit, and
+// picks the files: for a cut text the full text goes first among them
+// per OnLong, else the notice of the cut gives its size.
+func (j *textJob) fit(tmpl *render.Template) (*fitted, error) {
+	d, caps := j.d, j.caps
+	out := &fitted{}
+	d.Attachments, out.sent = selectFiles(caps, j.full.Attachments, j.named)
+	var err error
+	out.text, out.isTruncated, err = render.FitLines(tmpl, d, j.limit, j.target.MaxLines, j.measure)
+	if err != nil || !out.isTruncated {
+		return out, err
+	}
+	if j.target.OnLong != OnLongTruncate && caps.MaxFiles > 0 {
+		if out.longFile, err = j.long.file(j.target.LongFile); err != nil {
+			return nil, err
+		}
+		listed, withFile := selectWithLongFile(caps, j.full.Attachments, j.named, out.longFile)
+		if out.isLongFileSent = !listed[0].IsSkipped; out.isLongFileSent {
+			d.Attachments, out.sent = listed, withFile
+		}
+	}
+	if !out.isLongFileSent {
+		size, err := j.long.textSize()
+		if err != nil {
+			return nil, err
+		}
+		d.Strings = d.Strings.WithFullSize(size)
+	}
+	d.IsCollapsed = j.target.OnLong == OnLongBlockquote
+	out.text, _, err = render.FitLines(tmpl, d, j.limit, j.target.MaxLines, j.measure)
+	return out, err
 }
 
 // fullTextTemplate is the built-in plain template, which renders the

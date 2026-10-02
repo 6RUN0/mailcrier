@@ -465,3 +465,123 @@ func TestDeliverEachPassesMessage(t *testing.T) {
 		t.Error("target without CanTakeMessage got the message")
 	}
 }
+
+// userTemplate parses source as a template from the configuration for
+// the plain format.
+func userTemplate(t *testing.T, source string) *render.Template {
+	t.Helper()
+	tmpl, err := render.Parse("custom", source, text.FormatPlain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tmpl
+}
+
+// TestDeliverFallsBackToBuiltin pins that a failed template from the
+// configuration costs the message nothing: the built-in template renders
+// the text, the result carries the template error, and the status is
+// that of the delivery.
+func TestDeliverFallsBackToBuiltin(t *testing.T) {
+	builtin, err := plainTemplate(t).Execute(testData())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Run("T-TPL-05/execution-error", fallbackCase{"{{ index .To 3 }}", builtin}.check)
+	t.Run("T-ADJ-58/blank-output", fallbackCase{"{{ .MessageID }}\n", builtin}.check)
+	t.Run("user-text-sent", func(t *testing.T) {
+		sender := &fakeSender{}
+		target := Target{ID: "t", Sender: sender, Template: userTemplate(t, "custom {{ .Subject }}"), Fallback: plainTemplate(t)}
+		result := Deliver(context.Background(), []Target{target}, testData(), nil)[0]
+		if result.Status != OK || result.TemplateErr != nil || len(sender.sent) != 1 || sender.sent[0].Text != "custom s" {
+			t.Errorf("result = %+v, sent %+v", result, sender.sent)
+		}
+	})
+	t.Run("shared-template-in-parallel", func(t *testing.T) {
+		tmpl := userTemplate(t, "{{ index .To 3 }}")
+		var targets []Target
+		for i := range 8 {
+			targets = append(targets, Target{ID: fmt.Sprint(i), Sender: &fakeSender{}, Template: tmpl, Fallback: plainTemplate(t)})
+		}
+		for _, result := range Deliver(context.Background(), targets, testData(), nil) {
+			if result.Status != OK || result.TemplateErr == nil {
+				t.Errorf("result = %+v", result)
+			}
+		}
+	})
+}
+
+// fallbackCase is a template from the configuration that fails for
+// testData, and the built-in text the target gets instead.
+type fallbackCase struct {
+	source, builtin string
+}
+
+func (c fallbackCase) check(t *testing.T) {
+	sender := &fakeSender{}
+	target := Target{ID: "t", Sender: sender, Template: userTemplate(t, c.source), Fallback: plainTemplate(t)}
+	result := Deliver(context.Background(), []Target{target}, testData(), nil)[0]
+	var templateErr *render.TemplateError
+	if result.Status != OK || result.Err != nil || !errors.As(result.TemplateErr, &templateErr) {
+		t.Fatalf("result = %+v", result)
+	}
+	if len(sender.sent) != 1 || sender.sent[0].Text != c.builtin {
+		t.Errorf("sent = %+v, want the built-in text %q", sender.sent, c.builtin)
+	}
+	if code := ExitCode([]Result{result}, QueueOff); code != 0 {
+		t.Errorf("exit code %d", code)
+	}
+}
+
+// TestDeliverRetriesRejectedUserText pins the order after a target
+// rejects the text of a template from the configuration: the text of the
+// built-in template once, then the full text as a file alone.
+func TestDeliverRetriesRejectedUserText(t *testing.T) {
+	rejected := &backend.Error{Class: backend.Permanent, Status: 400, Err: errors.New("can't parse entities"), IsTextRejected: true}
+	builtin, err := plainTemplate(t).Execute(testData())
+	if err != nil {
+		t.Fatal(err)
+	}
+	newTarget := func(sender *fakeSender) Target {
+		return Target{ID: "t", Sender: sender, Template: userTemplate(t, "<b>{{ .Subject }}"), Fallback: plainTemplate(t)}
+	}
+	t.Run("builtin-text-then-file", func(t *testing.T) {
+		sender := &fakeSender{caps: backend.Caps{MaxFiles: 10}, send: func(_ context.Context, p backend.Payload) error {
+			if p.Text != "" {
+				return rejected
+			}
+			return nil
+		}}
+		result := Deliver(context.Background(), []Target{newTarget(sender)}, testData(), nil)[0]
+		if result.Status != OK || result.TemplateErr != rejected || result.TextRejected != rejected || len(sender.sent) != 3 {
+			t.Fatalf("result = %+v, %d sends", result, len(sender.sent))
+		}
+		if first := sender.sent[0].Text; first != "<b>s" {
+			t.Errorf("first text = %q", first)
+		}
+		if second := sender.sent[1].Text; second != builtin {
+			t.Errorf("second text = %q, want %q", second, builtin)
+		}
+		if third := sender.sent[2]; third.Text != "" || len(third.Attachments) != 1 || third.Attachments[0].Name != "message.txt" {
+			t.Errorf("third request = %+v", third)
+		}
+	})
+	t.Run("builtin-text-accepted", func(t *testing.T) {
+		sender := &fakeSender{send: func(_ context.Context, p backend.Payload) error {
+			if p.Text == "<b>s" {
+				return rejected
+			}
+			return nil
+		}}
+		result := Deliver(context.Background(), []Target{newTarget(sender)}, testData(), nil)[0]
+		if result.Status != OK || result.Err != nil || result.TemplateErr != rejected || result.TextRejected != nil || len(sender.sent) != 2 || sender.sent[1].Text != builtin {
+			t.Errorf("result = %+v, sent %+v", result, sender.sent)
+		}
+	})
+	t.Run("text-only-target-rejects-both", func(t *testing.T) {
+		sender := &fakeSender{err: rejected}
+		result := Deliver(context.Background(), []Target{newTarget(sender)}, testData(), nil)[0]
+		if result.Status != Perm || result.TemplateErr != rejected || result.TextRejected != nil || len(sender.sent) != 2 {
+			t.Errorf("result = %+v, %d sends", result, len(sender.sent))
+		}
+	})
+}
