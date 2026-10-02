@@ -14,12 +14,14 @@ import (
 	"github.com/6RUN0/slendmail/internal/text"
 )
 
-// Bounds of one execution of a template from the configuration. They keep
-// a heavy template on a big message from stalling the delivery or filling
-// the memory; they do not guard against the author of the template, who
-// is root.
+// Bounds of a template from the configuration: one execution, and all
+// the executions that fit the text of one message for one target, which
+// Fit repeats dozens of times for a long text. They keep a heavy template
+// on a big message from stalling the delivery or filling the memory; they
+// do not guard against the author of the template, who is root.
 const (
 	userTimeout   = time.Second
+	userBudget    = 2 * time.Second
 	userMaxOutput = 1 << 20
 )
 
@@ -42,6 +44,7 @@ func (e *TemplateError) Unwrap() error { return e.Err }
 // Causes of a TemplateError besides the errors of text/template.
 var (
 	errTimeout     = errors.New("execution exceeded the time limit")
+	errBudgetSpent = errors.New("time budget of the text spent before this execution")
 	errBroken      = errors.New("disabled for the rest of the process after exceeding the time limit")
 	errOutputLimit = errors.New("output exceeds the size limit")
 	errEmpty       = errors.New("output is empty")
@@ -50,7 +53,10 @@ var (
 // userLimits bound the executions of one template from the configuration.
 type userLimits struct {
 	timeout   time.Duration
+	budget    time.Duration
 	maxOutput int
+	// now is the clock of the budget, which tests advance by hand.
+	now func() time.Time
 	// isBroken is set by the first execution that runs out of time. The
 	// template then fails at once for the rest of the process, instead of
 	// leaving one more goroutine behind per message; the goroutine left
@@ -80,7 +86,25 @@ func parseUser(name, source string, format text.Format, extra template.FuncMap) 
 	if err := rejectNesting(tmpl); err != nil {
 		return nil, err
 	}
-	return &Template{tmpl: tmpl, format: format, user: &userLimits{timeout: userTimeout, maxOutput: userMaxOutput}}, nil
+	return &Template{tmpl: tmpl, format: format, user: &userLimits{timeout: userTimeout, budget: userBudget, maxOutput: userMaxOutput, now: time.Now}}, nil
+}
+
+// WithBudget returns t bounded, over all its executions, by its budget
+// from now, or by deadline when that is earlier and not zero: the copy
+// renders the text of one message for one target. A built-in template has
+// no bounds and is returned as it is. An execution that the end of the
+// budget cuts short fails as one past the time limit does; one that would
+// start after it fails without running, and the template stays usable.
+func (t *Template) WithBudget(deadline time.Time) *Template {
+	if t.user == nil {
+		return t
+	}
+	bounded := *t
+	bounded.deadline = t.user.now().Add(t.user.budget)
+	if !deadline.IsZero() && deadline.Before(bounded.deadline) {
+		bounded.deadline = deadline
+	}
+	return &bounded
 }
 
 // rejectNesting fails for a template node, which {{template}} and
@@ -144,13 +168,23 @@ func findInBranch(branch *tparse.BranchNode) tparse.Node {
 }
 
 // executeUser renders d with a template from the configuration in a
-// goroutine of its own, so that a timeout can give up on it, with the
+// goroutine of its own, so that a timeout, or the end of the budget set
+// by WithBudget, can give up on it, with the
 // output bounded by a writer that fails past the limit, which ends the
 // execution. A panic in the goroutine becomes an error.
 func (t *Template) executeUser(d Data) ([]byte, error) {
 	limits := t.user
 	if limits.isBroken.Load() {
 		return nil, &TemplateError{Err: errBroken}
+	}
+	wait := limits.timeout
+	if !t.deadline.IsZero() {
+		wait = min(wait, t.deadline.Sub(limits.now()))
+	}
+	// No goroutine is left behind here, and the budget may have gone on
+	// other templates or on the queue run: the template stays usable.
+	if wait <= 0 {
+		return nil, &TemplateError{Err: errBudgetSpent}
 	}
 	type outcome struct {
 		out []byte
@@ -167,7 +201,7 @@ func (t *Template) executeUser(d Data) ([]byte, error) {
 		err := t.tmpl.Execute(w, d)
 		done <- outcome{out: w.buf.Bytes(), err: err}
 	})
-	timer := time.NewTimer(limits.timeout)
+	timer := time.NewTimer(wait)
 	defer timer.Stop()
 	select {
 	case result := <-done:

@@ -479,11 +479,16 @@ template = '''
   template whose text grows with them; what it adds on its own is cut
   hard, and an `http` body that does not fit `max_text` at all fails the
   template.
-- One rendering may take 1 s and write 1 MiB. Past 1 MiB a text with a
-  limit counts as too long and its body is cut; without a limit (`http`
-  without `max_text`, `shoutrrr`) the template fails. A template that runs
-  out of time stays failed for the rest of the call or queue run, so that
-  each further message gets the built-in template at once.
+- Cutting a long text renders the template again and again, up to a few
+  dozen times. All the renderings of the text of one message for one
+  target may take 2 s together, ending no later than `deadline`, and each
+  one 1 s and 1 MiB of output. Past 1 MiB a text with a limit counts as
+  too long and its body is cut; without a limit (`http` without
+  `max_text`, `shoutrrr`) the template fails. A template stopped while
+  rendering, by either time limit, stays failed for the rest of the call
+  or queue run, so that each further message gets the built-in template at
+  once. A rendering due after the time is spent is not started: that
+  message gets the built-in template, and the template stays in use.
 - A template that fails while rendering a message (an error of a
   function, the time or size limit, a text of white space only, an `http`
   body over `max_text`) leaves that message the built-in template of the

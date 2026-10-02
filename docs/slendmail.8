@@ -157,7 +157,10 @@ and
 .Ic humanizeBytes .
 A template that does not parse, or uses define, template or block, is a
 configuration error.
-One rendering may take 1 s and write 1 MiB.
+The renderings of the text of one message for one target may take 2 s
+together, ending no later than
+.Ic deadline ,
+each one 1 s and 1 MiB of output.
 A template that fails while rendering a message, past either limit, with an
 error of a function or with nothing but white space, leaves that message the
 built-in template, as does a 400 to its text, once; the log records

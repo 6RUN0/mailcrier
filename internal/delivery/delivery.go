@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/6RUN0/slendmail/internal/backend"
 	"github.com/6RUN0/slendmail/internal/message"
@@ -204,6 +205,7 @@ func deliverOne(ctx context.Context, target Target, d render.Data, files []messa
 		measure = text.RuneCount
 	}
 	job := &textJob{target: target, caps: caps, limit: limit, measure: measure, full: d, named: nameFiles(files), long: long}
+	job.deadline, _ = ctx.Deadline()
 	job.d = d
 	job.d.Target, job.d.Limit = target.ID, limit
 	out, err := job.fit(target.Template)
@@ -279,6 +281,8 @@ type textJob struct {
 	full, d render.Data
 	named   []backend.Attachment
 	long    *longFiles
+	// deadline is that of the delivery; zero for none.
+	deadline time.Time
 }
 
 // fitted is the text of a target and the files that go with it.
@@ -294,8 +298,11 @@ type fitted struct {
 
 // fit renders the text of the target with tmpl, fitted to its limit, and
 // picks the files: for a cut text the full text goes first among them
-// per OnLong, else the notice of the cut gives its size.
+// per OnLong, else the notice of the cut gives its size. A template from
+// the configuration gets one budget for both renderings, ending no later
+// than the delivery.
 func (j *textJob) fit(tmpl *render.Template) (*fitted, error) {
+	tmpl = tmpl.WithBudget(j.deadline)
 	d, caps := j.d, j.caps
 	out := &fitted{}
 	d.Attachments, out.sent = selectFiles(caps, j.full.Attachments, j.named)

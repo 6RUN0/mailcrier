@@ -3,6 +3,7 @@ package render
 import (
 	"errors"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"text/template"
 	"time"
@@ -236,4 +237,55 @@ func TestUserTemplateFunctions(t *testing.T) {
 	t.Run("T-TPL-08/truncate", functionCase{`{{ truncate 10 .Subject }}|{{ truncate 4 "ab" }}|{{ truncate 5 "абвгдеж" }}`, "disk fa...|ab|аб..."}.check)
 	t.Run("T-TPL-08/truncate-short", functionCase{`{{ truncate 3 .Subject }}|{{ truncate 1 "абв!" }}|[{{ truncate 0 "x" }}]`, "dis|а|[]"}.check)
 	t.Run("indent", functionCase{`{{ indent 2 (head 2 .Body) }}`, "  one\n  two"}.check)
+}
+
+// TestUserTemplateBudget pins the budget of WithBudget: it ends an
+// execution before the time limit of one execution would, it is shared
+// by the copy and the template, and a built-in template has none.
+func TestUserTemplateBudget(t *testing.T) {
+	t.Run("T-TPL-06/budget-ends-execution", func(t *testing.T) {
+		release := make(chan struct{})
+		tmpl, err := parseUser("custom", "{{ wait }}", text.FormatPlain, template.FuncMap{"wait": func() string { <-release; return "x" }})
+		if err != nil {
+			t.Fatal(err)
+		}
+		tmpl.user.timeout, tmpl.user.budget = time.Hour, time.Millisecond
+		if _, err := tmpl.WithBudget(time.Time{}).Execute(Data{}); !errors.Is(templateCause(t, err), errTimeout) {
+			t.Errorf("err = %v", err)
+		}
+		if _, err := tmpl.Execute(Data{}); !errors.Is(templateCause(t, err), errBroken) {
+			t.Errorf("template after the budget: err = %v", err)
+		}
+		close(release)
+		tmpl.user.running.Wait()
+	})
+	t.Run("T-TPL-06/deadline-passed", func(t *testing.T) {
+		var calls atomic.Int32
+		tmpl, err := parseUser("custom", "{{ count }}", text.FormatPlain, template.FuncMap{"count": func() string { calls.Add(1); return "x" }})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _, err = Fit(tmpl.WithBudget(time.Now().Add(-time.Second)), Data{}, 10, text.RuneCount)
+		if !errors.Is(templateCause(t, err), errBudgetSpent) || calls.Load() != 0 {
+			t.Errorf("err = %v, %d executions", err, calls.Load())
+		}
+		if out, err := tmpl.Execute(Data{}); err != nil || out != "x" || tmpl.user.isBroken.Load() {
+			t.Errorf("template after a spent budget: %q, %v, broken %v", out, err, tmpl.user.isBroken.Load())
+		}
+	})
+	t.Run("budget-left", func(t *testing.T) {
+		tmpl := mustParse(t, "{{ .Subject }}", text.FormatPlain)
+		if out, err := tmpl.WithBudget(time.Now().Add(time.Hour)).Execute(Data{Subject: "s"}); err != nil || out != "s" {
+			t.Errorf("got %q, %v", out, err)
+		}
+	})
+	t.Run("builtin-unbounded", func(t *testing.T) {
+		builtin, err := Builtin(text.FormatPlain)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if builtin.WithBudget(time.Now().Add(-time.Second)) != builtin {
+			t.Error("WithBudget copies a built-in template")
+		}
+	})
 }

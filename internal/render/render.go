@@ -191,6 +191,9 @@ type Template struct {
 	// user bounds the execution of a template from the configuration;
 	// nil for a built-in one, which runs without those bounds.
 	user *userLimits
+	// deadline ends every execution of a copy made by WithBudget; zero
+	// for none.
+	deadline time.Time
 }
 
 //go:embed defaults/*.tmpl

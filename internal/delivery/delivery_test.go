@@ -585,3 +585,24 @@ func TestDeliverRetriesRejectedUserText(t *testing.T) {
 		}
 	})
 }
+
+// TestDeliverRenderBudgetEndsWithDelivery pins that the delivery deadline
+// bounds the rendering of a template from the configuration: past it the
+// target gets the built-in text.
+func TestDeliverRenderBudgetEndsWithDelivery(t *testing.T) {
+	builtin, err := plainTemplate(t).Execute(testData())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	sender := &fakeSender{}
+	target := Target{ID: "t", Sender: sender, Template: userTemplate(t, "custom {{ .Subject }}"), Fallback: plainTemplate(t)}
+	result := Deliver(ctx, []Target{target}, testData(), nil)[0]
+	if result.Status != OK || result.TemplateErr == nil || !strings.Contains(result.TemplateErr.Error(), "budget of the text spent") {
+		t.Fatalf("result = %+v", result)
+	}
+	if len(sender.sent) != 1 || sender.sent[0].Text != builtin {
+		t.Errorf("sent = %+v, want the built-in text", sender.sent)
+	}
+}
