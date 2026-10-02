@@ -21,9 +21,37 @@ builds:
     ldflags:
       - -s -w -buildid=
     mod_timestamp: "{{ .CommitTimestamp }}"
+  - id: slendmail-minimal
+    main: ./cmd/slendmail
+    binary: slendmail-minimal
+    tags:
+      - noshoutrrr
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - "7"
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -buildid=
+    mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
-  - formats:
+  - id: slendmail
+    ids:
+      - slendmail
+    formats:
+      - binary
+  - id: slendmail-minimal
+    ids:
+      - slendmail-minimal
+    formats:
       - binary
 
 checksum:
