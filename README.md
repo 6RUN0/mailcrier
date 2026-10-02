@@ -130,9 +130,9 @@ preset = "generic-json"
 
 ### Targets
 
-Every target of the file receives every message unless routes choose
-the targets, see "Routes and suppression"; the targets of a message are
-sent to at the same time. Each sends the text in the markup of its
+Every target of the file receives every message unless routes or direct
+chats choose the targets, see "Routes and suppression"; the targets of a
+message are sent to at the same time. Each sends the text in the markup of its
 service, escaped so that nothing in the message becomes markup, a link
 preview or a mention; `shoutrrr` sends plain text, and `exec` hands on the
 message itself instead.
@@ -571,7 +571,9 @@ targets = ["mm"]
 targets = ["mm"]
 ```
 
-- Without a `[[route]]` every target gets every message. With routes, the
+- Without a `[[route]]` every target gets every message, except one whose
+  recipients are all direct chats (`<chat>@telegram` with
+  `telegram_direct`), which goes to those chats alone. With routes, the
   rules are checked from the first, for each recipient of the envelope on
   its own: the targets of the first rule whose conditions all match are
   taken, and with `continue = true` the check goes on and the targets of
@@ -614,9 +616,13 @@ targets = ["mm"]
   with the same status. A queue run checks a held message against the
   rules of the moment and queues it once they select a target; until then
   it stays, counted in the limits of the spool, and moves to `failed/`
-  after `hold_ttl`. The warning comes once: a run that finds no route
-  again logs it as debug. The targets chosen are logged as
-  `message routed` (debug) with `targets`.
+  after `hold_ttl`. Until then every later call of the same user and
+  every `-q` read and route it again, before the retries of `queue/` and
+  out of the same `drain_budget` or `run_budget`: held messages up to the
+  per-user limit of the spool take that time from the retries. The
+  warning comes once: a run that finds no route again logs it as debug.
+  The targets chosen are logged as `message routed` (debug) with
+  `targets`.
 - The targets of a queued message are fixed when it is queued: a change
   of the routes affects new messages and those released from `hold/`,
   not the retries.
@@ -629,7 +635,10 @@ targets = ["mm"]
   message released from `hold/` is checked again, and a suppressed one is
   deleted.
 - An error in a rule exits 78 like any configuration error and names the
-  rule by its number and line (`route 3: ...`), never its expression.
+  rule by its number and line (`route 3: ...`), never its expression. The
+  line is that of the `[[route]]` or `[[suppress]]` table; rules written
+  as an inline array, `route = [{ ... }, { ... }]`, all point at the line
+  of its key, and only the number tells them apart.
 
 Direct chats let a caller name a Telegram chat as a recipient:
 

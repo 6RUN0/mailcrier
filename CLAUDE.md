@@ -127,7 +127,14 @@ with "no non-test Go files".
   `allowedKeys`, which lists only implemented keys, required ones in
   `requiredKeys`. `template_file` is read at load, but `config` does not
   import `render`: `app.buildTargets` parses the template, and a parse
-  error rejects the configuration (78, message held).
+  error rejects the configuration (78, message held). `[[route]]` and
+  `[[suppress]]` are compiled at load (`compileRules`, globs through
+  `compileGlob` into `(?is)^...$` RE2, `FuzzGlob`) into `Match`; their
+  errors name the rule number and key, never the expression. `keyIndex`
+  gives each element of an array of tables its own paths
+  (`elementPath`: `route\x1f<i>\x1f<key>`), and pointer fields tell a
+  key that is present. `telegram_direct_chats` is normalized at load
+  (`setDirectChats`) the way `route.NormalizeChat` normalizes a recipient.
 - `internal/backend`: `Sender`, `Caps`, `Payload`, `*Error` with `Class`,
   `IsPartial` (text arrived, files did not: counts as delivered),
   `Classify`, and the HTTP guards every target uses (`WithoutRedirects`,
@@ -151,6 +158,12 @@ with "no non-test Go files".
   `TestLiveTelegram` sends to the real Bot API only with
   `SLENDMAIL_TELEGRAM_ENV` naming a file with `TELEGRAM_BOT_TOKEN` and
   `TELEGRAM_CHAT_ID`.
+- `internal/route` (imports only `message`): `Router` from rules with
+  compiled `*regexp.Regexp` (`app.newRouter` copies them from `config`),
+  `Suppressed`, `Targets` (first match per recipient, `continue`, union
+  over recipients, `Decision.IsImplicit` without rules, `Unrouted`),
+  `Addresses` (recipients parsed by `message.ParseAddressList`, argv ones
+  carry display names) and `SplitDirect` for `<chat>@telegram`.
 - `internal/redact`: `app.Run` wraps every logger and the standard `log`
   output with one `Redactor` and registers tokens, URLs and header values after
   `config.Load`; a new secret-bearing config key must be registered in
@@ -204,9 +217,19 @@ with "no non-test Go files".
   only repeats a delivery). Quota usage reads every sidecar for `OwnerUID`.
   `OpenExisting` is for the listing modes and creates nothing.
 - `internal/app/queue.go`: own message (write-ahead, deliver, record each
-  result, remove), `hold/` on a rejected configuration, queue runs
-  (`hold/` released first, then `queue/`, oldest first), `mailq`,
-  `--status`. Errors stored in sidecars pass through the redactor.
+  result, remove), `hold/` on a rejected configuration or without a route
+  (`hold` takes the reason), queue runs (`hold/` released first, then
+  `queue/`, oldest first), `mailq`, `--status`. Errors stored in sidecars
+  pass through the redactor. `internal/app/routing.go`: `queue.decide`
+  runs after `buildTargets` and before the spool: suppression (0, nothing
+  spooled), direct chats, routes; no target gives `hold/` with
+  `no route` and 64. `release` and `releaseInto` decide again through
+  `routeHeld`, which reads the message only when there are rules or
+  `telegram_direct`; warnings of a repeated decision go to debug, as
+  `drainOwn` runs `hold/` after every call. `queue.target` builds the copy
+  `<chat>@telegram` of the `telegram_direct` target (`directTarget`) on
+  every lookup, so a queued copy takes the configuration of its retry.
+  The targets of a `queue/` entry are never routed again.
 - `TestImportGraph` (`import_graph_test.go`) enforces the package graph: a
   new package needs an entry in `allowedImports`.
 

@@ -85,8 +85,10 @@ taken as UTF-8.
 Text without a charset or declared US-ASCII that is not valid UTF-8, and text
 declared ISO-8859-1, is read as windows-1252.
 .Pp
-The message goes to all targets at the same time, each in the markup of its
-service, or as it is to a program.
+The message goes to its targets at the same time, to all of them unless
+routes choose them, see
+.Sx ROUTING ,
+each in the markup of its service, or as it is to a program.
 A text longer than a target accepts is cut, counted the way the service counts
 it: a subject longer than a quarter of the limit is cut at a word and ends
 with
@@ -296,6 +298,89 @@ a bigger file is listed as not sent.
 429 and 5xx answers, and any answer with a Retry-After header, are temporary
 failures; other rejections are permanent.
 A target that took the text but not all files counts as delivered.
+.Sh ROUTING
+Without a
+.Li "[[route]]"
+table every target gets every message, except one whose recipients are all
+direct chats, which goes to those chats alone.
+With routes, the rules are checked from the first for each recipient on its
+own: the targets of the first rule whose conditions all match are taken, and
+.Ic continue No = Li true
+goes on to add those of the next matching rules.
+The targets of all recipients are joined.
+A rule without conditions matches every message;
+.Ic targets ,
+a list of configured target names, is required.
+.Pp
+The conditions are
+.Ic subject ,
+the decoded subject;
+.Ic sender ,
+the envelope sender;
+and
+.Ic recipient ,
+one envelope recipient, Bcc included, as its address without the display
+name; a local name such as
+.Li root
+has no domain.
+Each is a glob, matching the whole value with case ignored, where
+.Li *
+is any run of characters,
+.Li \&?
+one character and a backslash makes the next character literal; or, under
+the key with
+.Li _regex ,
+an RE2 expression that matches anywhere unless anchored, with case as
+written.
+A message without recipients matches only rules without
+.Ic recipient .
+.Pp
+When no rule matches and no recipient is a direct chat, the message is held
+in
+.Pa hold/
+with the reason
+.Dq no route
+and the call exits 64; with the spool off it is lost.
+A queue run routes it again with the rules of the moment, until
+.Ic hold_ttl
+moves it to
+.Pa failed/ ;
+every call of the same user and every
+.Fl q
+read it again first, out of the budget of their queue run.
+The targets of a queued message are fixed when it is queued.
+.Pp
+A
+.Li "[[suppress]]"
+rule takes
+.Ic subject
+and
+.Ic sender
+conditions, at least one; a message that matches one of these rules is
+neither sent nor spooled, logged as
+.Dq message suppressed ,
+and the call exits 0.
+.Pp
+With
+.Ic telegram_direct
+in
+.Li "[general]"
+naming a telegram target, a recipient
+.Ar chat Ns @telegram
+gets a copy of that target sent to
+.Ar chat ,
+a numeric id or an @username, without its
+.Ic message_thread_id .
+Only the chats of
+.Ic telegram_direct_chats
+get a copy, at most
+.Ic telegram_direct_max ,
+10 by default, per message; other addresses of the domain are ordinary
+recipients and logged as a warning.
+Direct recipients are not routed.
+A negative id goes after
+.Fl -
+on the command line.
 .Sh QUEUE
 Before the delivery the message is written to the spool,
 .Pa /var/spool/slendmail
@@ -322,7 +407,7 @@ message, a timeout after that, or a power failure repeats the delivery.
 A message whose configuration is rejected is kept in
 .Pa hold/ ,
 in the default spool when the file cannot be read at all; the next queue run
-with a valid configuration sends it to every target, and
+with a valid configuration routes it as a new message, and
 .Fl q
 moves it from the default spool when the valid file names another
 .Ic dir .
@@ -445,13 +530,14 @@ Queue run locks, one per user.
 .Sh EXIT STATUS
 .Bl -tag -width Ds
 .It 0
-At least one target accepted the message, the rest is queued, or a mode
-without a message succeeded.
+At least one target accepted the message, the rest is queued, a suppress
+rule matched, or a mode without a message succeeded.
 .It 64
 Usage error: a sender flag without a value, a line break in an address
 or in the full name,
 .Fl bs ,
-or a mode that does not exist yet.
+or a mode that does not exist yet; or no route selects a target, and the
+message is held.
 .It 66
 Standard input cannot be read.
 .It 69
