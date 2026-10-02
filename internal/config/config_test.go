@@ -295,7 +295,7 @@ func TestLoadRejects(t *testing.T) {
 		{
 			name: "template-file-missing",
 			doc:  "[target.dc]\ntype = \"discord\"\nurl = \"https://example.org\"\ntemplate_file = \"/etc/t.tmpl\"\n",
-			want: `:4:1: target "dc": template_file: open etc/t.tmpl: file does not exist`,
+			want: `:4:1: target "dc": template_file: /etc/t.tmpl: file does not exist`,
 		},
 		{
 			name: "exec-template",
@@ -340,7 +340,7 @@ func TestLoadRejects(t *testing.T) {
 		{
 			name: "missing-secret-file",
 			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl_file = \"/etc/slendmail.d/hook.url\"\n",
-			want: `:4:1: target "hook": url_file: open etc/slendmail.d/hook.url: file does not exist`,
+			want: `:4:1: target "hook": url_file: /etc/slendmail.d/hook.url: file does not exist`,
 		},
 		{
 			name: "wrong-value-type",
@@ -485,7 +485,7 @@ func TestLoadRejects(t *testing.T) {
 			if !errors.As(err, &cfgErr) {
 				t.Fatalf("Load() error = %v (%T), want *Error", err, err)
 			}
-			if got, want := err.Error(), configPath+tc.want; got != want {
+			if got, want := err.Error(), "/"+configPath+tc.want; got != want {
 				t.Errorf("Load() error\n got  %s\n want %s", got, want)
 			}
 		})
@@ -517,7 +517,7 @@ func TestLoadRejectsBadURLFileContent(t *testing.T) {
 	doc := "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl_file = \"/etc/slendmail.d/hook.url\"\n"
 	for _, content := range []string{"", "\n", "hooks.example.org/SECRET\n"} {
 		_, err := load(t, doc, fstest.MapFS{"etc/slendmail.d/hook.url": {Data: []byte(content)}})
-		want := configPath + `:4:1: target "hook": value of key "url_file" is not an absolute http or https URL`
+		want := "/" + configPath + `:4:1: target "hook": value of key "url_file" is not an absolute http or https URL`
 		if err == nil || err.Error() != want {
 			t.Errorf("url_file content %q: error %v, want %s", content, err, want)
 		}
@@ -544,7 +544,7 @@ func TestLoadTemplates(t *testing.T) {
 		t.Errorf("Preset = %q", cfg.Targets["hook"].Preset)
 	}
 	_, err = load(t, "[target.tg]\ntype = \"telegram\"\ntoken = \"1:a\"\nchat_id = 1\ntemplate_file = \"/t.tmpl\"\n", fstest.MapFS{"t.tmpl": {Data: []byte("\n")}})
-	if want := configPath + `:5:1: target "tg": file of key "template_file" is blank`; err == nil || err.Error() != want {
+	if want := "/" + configPath + `:5:1: target "tg": file of key "template_file" is blank`; err == nil || err.Error() != want {
 		t.Errorf("blank template_file: %v, want %s", err, want)
 	}
 }
@@ -582,6 +582,9 @@ func TestLoadMissingFile(t *testing.T) {
 	var cfgErr *Error
 	if !errors.As(err, &cfgErr) {
 		t.Fatalf("Load() error = %v, want *Error", err)
+	}
+	if got, want := err.Error(), "/"+configPath+": file does not exist"; got != want {
+		t.Errorf("Load() error = %q, want %q, the path once", got, want)
 	}
 }
 
@@ -721,8 +724,8 @@ func TestLoadSpool(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := load(t, tc.doc+target, nil)
-			if err == nil || err.Error() != configPath+tc.want {
-				t.Errorf("Load() error = %v, want %s", err, configPath+tc.want)
+			if err == nil || err.Error() != "/"+configPath+tc.want {
+				t.Errorf("Load() error = %v, want %s", err, "/"+configPath+tc.want)
 			}
 		})
 	}
@@ -838,7 +841,7 @@ func TestLoadRejectsRules(t *testing.T) {
 			if err == nil {
 				t.Fatal("Load() succeeded")
 			}
-			if got, want := err.Error(), configPath+tc.want; got != want {
+			if got, want := err.Error(), "/"+configPath+tc.want; got != want {
 				t.Errorf("Load() error\n got  %s\n want %s", got, want)
 			}
 			if strings.Contains(err.Error(), "MARKER") {
@@ -893,7 +896,7 @@ func TestLoadRejectsDirectChats(t *testing.T) {
 			if err == nil {
 				t.Fatal("Load() succeeded")
 			}
-			if got, want := err.Error(), configPath+tc.want; got != want {
+			if got, want := err.Error(), "/"+configPath+tc.want; got != want {
 				t.Errorf("Load() error\n got  %s\n want %s", got, want)
 			}
 		})
@@ -906,7 +909,7 @@ func TestLoadRejectsDirectChats(t *testing.T) {
 func TestLoadRejectsInlineRules(t *testing.T) {
 	doc := "route = [\n  { targets = [\"a\"] },\n  { subject_regex = '(MARKER', targets = [\"a\"] },\n]\n\n" + twoHTTPTargets
 	_, err := load(t, doc, nil)
-	want := configPath + `:1:1: route 2: value of key "subject_regex" is not a valid expression: missing closing )`
+	want := "/" + configPath + `:1:1: route 2: value of key "subject_regex" is not a valid expression: missing closing )`
 	if err == nil || err.Error() != want {
 		t.Errorf("Load() error\n got  %v\n want %s", err, want)
 	}

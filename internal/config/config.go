@@ -354,7 +354,7 @@ var (
 // Error is a configuration error. Its text never quotes configuration
 // values, because the file holds secrets and the text goes to syslog.
 type Error struct {
-	// Path is the configuration file.
+	// Path is the absolute path of the configuration file.
 	Path string
 	// Line and Column locate the offending key; 0 when unknown.
 	Line, Column int
@@ -374,32 +374,52 @@ func (e *Error) Error() string {
 // Load reads the configuration at path in fsys, decodes it strictly,
 // validates it and replaces every *_file reference with the file content.
 // Secret files are read from fsys as well, with the leading slash removed
-// from their absolute path. Every returned error is *Error.
+// from their absolute path. Every returned error is *Error, whose Path is
+// the absolute path of the file, "/" followed by path.
 func Load(fsys fs.FS, path string) (*Config, error) {
+	cfg, _, err := loadWithKeys(fsys, path)
+	return cfg, err
+}
+
+// loadWithKeys is Load that also returns the index of the keys of the document,
+// which Check needs for the positions of its warnings.
+func loadWithKeys(fsys fs.FS, path string) (*Config, keyIndex, error) {
+	cfg, keys, err := decodeAndValidate(fsys, path)
+	if err != nil {
+		err.Path = "/" + path
+		return nil, nil, err
+	}
+	return cfg, keys, nil
+}
+
+// decodeAndValidate does the work of loadWithKeys; the caller sets Error.Path.
+func decodeAndValidate(fsys fs.FS, path string) (*Config, keyIndex, *Error) {
 	doc, err := fs.ReadFile(fsys, path)
 	if err != nil {
-		return nil, &Error{Path: path, Msg: err.Error()}
+		// Error.Path names the file already.
+		var pathErr *fs.PathError
+		if errors.As(err, &pathErr) {
+			return nil, nil, &Error{Msg: pathErr.Err.Error()}
+		}
+		return nil, nil, &Error{Msg: err.Error()}
 	}
 	var cfg Config
 	dec := toml.NewDecoder(bytes.NewReader(doc)).DisallowUnknownFields()
 	if err := dec.Decode(&cfg); err != nil {
-		return nil, decodeError(path, err)
+		return nil, nil, decodeError(err)
 	}
 	keys, err := indexKeys(doc)
 	if err != nil {
-		return nil, &Error{Path: path, Msg: err.Error()}
+		return nil, nil, &Error{Msg: err.Error()}
 	}
 	if err := validate(&cfg, keys); err != nil {
-		err.Path = path
-		return nil, err
+		return nil, nil, err
 	}
 	if err := setChatIDs(&cfg, keys); err != nil {
-		err.Path = path
-		return nil, err
+		return nil, nil, err
 	}
 	if err := setDirectChats(&cfg, keys); err != nil {
-		err.Path = path
-		return nil, err
+		return nil, nil, err
 	}
 	// The channel is checked without surrounding white space, so it is
 	// sent without it: Slack does not find " #alerts".
@@ -409,16 +429,13 @@ func Load(fsys fs.FS, path string) (*Config, error) {
 		cfg.Targets[name] = target
 	}
 	if err := readSecretFiles(fsys, &cfg, keys); err != nil {
-		err.Path = path
-		return nil, err
+		return nil, nil, err
 	}
 	if err := readTemplateFiles(fsys, &cfg, keys); err != nil {
-		err.Path = path
-		return nil, err
+		return nil, nil, err
 	}
 	if err := validateSecrets(&cfg, keys); err != nil {
-		err.Path = path
-		return nil, err
+		return nil, nil, err
 	}
 	if cfg.General.SyslogTag == "" {
 		cfg.General.SyslogTag = DefaultSyslogTag
@@ -430,25 +447,35 @@ func Load(fsys fs.FS, path string) (*Config, error) {
 		cfg.General.Deadline.Duration = DefaultDeadline
 	}
 	setSpoolDefaults(&cfg.Spool, keys)
-	return &cfg, nil
+	return &cfg, keys, nil
+}
+
+// fileErrorText describes a failed read of a file of fsys by the absolute
+// path of the file, as the configuration names it, without the operation.
+func fileErrorText(err error) string {
+	var pathErr *fs.PathError
+	if errors.As(err, &pathErr) {
+		return "/" + pathErr.Path + ": " + pathErr.Err.Error()
+	}
+	return err.Error()
 }
 
 // decodeError keeps only the position and the key of a go-toml error:
 // DecodeError.String quotes the surrounding document, which may hold a
 // token.
-func decodeError(path string, err error) *Error {
+func decodeError(err error) *Error {
 	var strict *toml.StrictMissingError
 	if errors.As(err, &strict) && len(strict.Errors) > 0 {
 		first := strict.Errors[0]
 		line, column := first.Position()
-		return &Error{Path: path, Line: line, Column: column, Msg: fmt.Sprintf("unknown key %q", strings.Join(first.Key(), "."))}
+		return &Error{Line: line, Column: column, Msg: fmt.Sprintf("unknown key %q", strings.Join(first.Key(), "."))}
 	}
 	var decode *toml.DecodeError
 	if errors.As(err, &decode) {
 		line, column := decode.Position()
-		return &Error{Path: path, Line: line, Column: column, Msg: decode.Error()}
+		return &Error{Line: line, Column: column, Msg: decode.Error()}
 	}
-	return &Error{Path: path, Msg: err.Error()}
+	return &Error{Msg: err.Error()}
 }
 
 // setSpoolDefaults fills the keys the file leaves out with DefaultSpool.
@@ -927,7 +954,7 @@ func readSecretFiles(fsys fs.FS, cfg *Config, keys keyIndex) *Error {
 			content, err := fs.ReadFile(fsys, strings.TrimPrefix(file.path, "/"))
 			if err != nil {
 				pos := keys.position("target", name, file.key)
-				return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("target %q: %s: %v", name, file.key, err)}
+				return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("target %q: %s: %s", name, file.key, fileErrorText(err))}
 			}
 			*file.dst = strings.TrimSpace(string(content))
 		}
@@ -948,7 +975,7 @@ func readTemplateFiles(fsys fs.FS, cfg *Config, keys keyIndex) *Error {
 		pos := keys.position("target", name, "template_file")
 		content, err := fs.ReadFile(fsys, strings.TrimPrefix(target.TemplateFile, "/"))
 		if err != nil {
-			return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("target %q: template_file: %v", name, err)}
+			return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("target %q: template_file: %s", name, fileErrorText(err))}
 		}
 		target.Template = strings.TrimSuffix(string(content), "\n")
 		if strings.TrimSpace(target.Template) == "" {
