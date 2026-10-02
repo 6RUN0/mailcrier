@@ -73,8 +73,8 @@ const twoTargets = "[target.a]\ntype = \"http\"\npreset = \"generic-json\"\nurl 
 // are its own constants rather than an import.
 func TestExitStatusValues(t *testing.T) {
 	t.Run("T-MTA-35/sysexits-values", func(t *testing.T) {
-		got := []int{exitOK, exitUsage, exitUnavailable, exitNoInput, exitSoftware, exitIOErr, exitNoPerm, exitConfig}
-		want := []int{0, 64, 69, 66, 70, 74, 77, 78}
+		got := []int{exitOK, exitUsage, exitUnavailable, exitNoInput, exitSoftware, exitIOErr, exitTempFail, exitNoPerm, exitConfig}
+		want := []int{0, 64, 69, 66, 70, 74, 75, 77, 78}
 		if !slices.Equal(got, want) {
 			t.Errorf("exit statuses = %v, want %v", got, want)
 		}

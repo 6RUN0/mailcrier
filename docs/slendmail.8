@@ -20,6 +20,9 @@
 .Op Ar recipient ...
 .Nm
 .Fl -version | -help | -status | -check-config
+.Nm
+.Fl -probe
+.Op Fl - Ar target ...
 .Nm newaliases
 .Nm mailq
 .Sh DESCRIPTION
@@ -515,6 +518,22 @@ Errors and warnings go to standard error, one per line, followed by a line
 with their numbers; standard output stays empty, and stdin and the spool are
 not read.
 Takes no arguments.
+.It Fl -probe Op Fl - Ar target ...
+Send a sample message, subject
+.Dq slendmail probe from Ar host ,
+to every target, or to the targets named after
+.Fl - ;
+an unknown name exits 64 before anything is sent.
+These are real notifications and hooks run; routes, suppress rules and
+direct chats do not apply, and stdin, the spool and the queue are not
+touched.
+Prints one logfmt line per target to standard output, such as
+.Li target=mm class=temp status=503 err="..." ,
+with
+.Li template=fallback
+when the built-in template stood in for a failed one.
+Exits 0 when every target took the message, 69 when one rejected it, 75
+when one failed temporarily and none rejected it.
 .El
 .Pp
 Of several mode options the last one wins.
@@ -557,15 +576,17 @@ Queue run locks, one per user.
 At least one target accepted the message, the rest is queued, a suppress
 rule matched, or a mode without a message succeeded;
 .Fl -check-config
-found no error, warnings aside.
+found no error, warnings aside;
+.Fl -probe
+reached every target.
 .It 64
 Usage error: a sender flag without a value, a line break in an address
 or in the full name,
 .Fl bs ,
-.Fl -probe ,
-which does not exist yet,
 .Fl -check-config
-with an argument, or with
+with an argument,
+.Fl -probe
+naming a target that is not configured, or either with
 .Fl -config
 or
 .Ev SLENDMAIL_CONFIG
@@ -576,6 +597,8 @@ Standard input cannot be read.
 .It 69
 No target accepted the message: one rejected it, or all failed temporarily
 with the spool off.
+.Fl -probe :
+a target rejected the sample message.
 .It 70
 Internal error.
 .It 73
@@ -587,12 +610,19 @@ A target failed temporarily and the spool entry could not be written,
 could not read the spool, or
 .Fl -status
 found no spool directory.
+.It 75
+Only
+.Fl -probe :
+a target failed temporarily and none rejected the sample message; nothing
+is queued.
 .It 77
 A service mode requested by a caller without the right to it.
 .It 78
 The configuration cannot be read or is invalid; a message is held.
 .Fl -check-config
-found an error.
+found an error, or
+.Fl -probe
+cannot use the configuration; nothing is held.
 .El
 .Sh SEE ALSO
 .Xr syslog 3 ,

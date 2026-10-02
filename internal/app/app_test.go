@@ -58,6 +58,8 @@ type invocation struct {
 	// spoolSaved and entryLocked are the spool hooks of Deps.
 	spoolSaved  func(e *spool.Entry)
 	entryLocked func(id string)
+	// ctx is the context of Run, context.Background when nil.
+	ctx context.Context
 }
 
 // execCall is one attempt to replace the process image.
@@ -131,7 +133,11 @@ func (inv *invocation) run(t *testing.T) int {
 		spoolSaved:  inv.spoolSaved,
 		entryLocked: inv.entryLocked,
 	}
-	return Run(context.Background(), deps, args, inv.stdin)
+	ctx := inv.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return Run(ctx, deps, args, inv.stdin)
 }
 
 // testNow is the clock of the invocations.

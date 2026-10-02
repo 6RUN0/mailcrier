@@ -50,6 +50,7 @@ const (
 	exitUnavailable = 69
 	exitSoftware    = 70
 	exitIOErr       = 74
+	exitTempFail    = 75
 	exitNoPerm      = 77
 	exitConfig      = 78
 )
@@ -183,11 +184,19 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 			defer stop()
 		}
 		return runQueueMode(ctx, d, log, newLogger, redactor, &client, inv)
-	case sendmail.CheckConfig:
+	case sendmail.Probe, sendmail.CheckConfig:
 		if code, isAdmitted := admitServiceMode(d, log, inv); !isAdmitted {
 			return code
 		}
-		return runCheckConfig(ctx, d, log, newLogger, redactor, &client, inv)
+		if inv.Mode == sendmail.CheckConfig {
+			return runCheckConfig(ctx, d, log, newLogger, redactor, &client, inv)
+		}
+		// The probe reads no message, so a stop signal may cancel it at
+		// once, killing a hook with its group.
+		var stop context.CancelFunc
+		ctx, stop = catchSignals(ctx, d)
+		defer stop()
+		return runProbe(ctx, d, log, newLogger, redactor, &client, inv)
 	default:
 		return runMode(d, log, inv.Mode)
 	}
@@ -435,8 +444,6 @@ func runMode(d Deps, log *slog.Logger, mode sendmail.Mode) int {
 	case sendmail.Help:
 		_, _ = io.WriteString(d.Stdout, usage)
 		return exitOK
-	case sendmail.Probe:
-		return refuseMode(d, log, sendmail.OptionProbe)
 	default:
 		// A mode that Run does not dispatch is a bug, not a request for
 		// help.
@@ -447,12 +454,14 @@ func runMode(d Deps, log *slog.Logger, mode sendmail.Mode) int {
 
 // usage is the text of --help.
 const usage = `usage: slendmail [flags] [--] [recipient ...]
-       slendmail --version | --help | --status | --check-config
+       slendmail --version | --help | --status | --check-config |
+                 --probe [-- target ...]
 Reads a message on stdin and delivers it to the targets of
 /etc/slendmail.conf, or of --config PATH. sendmail flags: -t -i -oi
 -f ADDR -r ADDR -F NAME; -bi, -I and newaliases do nothing; -bp and mailq
 list the queue; -q runs it. The modes read no message: --status prints the
-queue counts, --check-config checks the configuration without sending.
+queue counts, --check-config checks the configuration without sending,
+--probe sends a test message to every target or to the targets named.
 Other sendmail flags are accepted and ignored. See slendmail(8).
 `
 
@@ -486,20 +495,6 @@ func newCallID() string {
 	id := make([]byte, 8)
 	_, _ = rand.Read(id) // never fails on Linux, per crypto/rand
 	return hex.EncodeToString(id)
-}
-
-// refuseMode answers --probe, which does not exist yet. It sends to every
-// target, so an elevated caller other than root and the slendmail user
-// gets 77; everyone else gets a usage error.
-func refuseMode(d Deps, log *slog.Logger, mode string) int {
-	if !d.Credentials.isPrivilegedCaller() {
-		_, _ = fmt.Fprintf(d.Stderr, "slendmail: %s: permission denied\n", mode)
-		log.Error("mode refused, caller not privileged", "option", mode, "uid", d.Credentials.UID)
-		return exitNoPerm
-	}
-	_, _ = fmt.Fprintf(d.Stderr, "slendmail: %s: not implemented\n", mode)
-	log.Error("mode refused, not implemented", "option", mode)
-	return exitUsage
 }
 
 // selectConfigPath returns the configuration file relative to d.ConfigFS:

@@ -29,7 +29,7 @@ T-ADJ-27	critical	done	HTTP 429, 500, 502 queue the message and exit 0, or exit 
 T-ADJ-28	critical	done	A configuration error exits 78 after logging the error	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L1101
 T-ADJ-29	low	todo	stdin attached to a terminal without a mode flag exits with a usage hint on stderr	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L1113
 T-ADJ-30	low	todo	-s SUBJECT adds a Subject only when the message has none, header name case-insensitive	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L728
-T-ADJ-31	high	todo	--probe does not read stdin or touch the spool, sends a test message to every target and exits 0, 69 or 75	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L896
+T-ADJ-31	high	done	--probe does not read stdin or touch the spool, sends a test message to every target and exits 0, 69 or 75	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L896
 T-ADJ-32	high	done	stdin is limited to 10 MiB: exactly the limit passes unchanged, the rest is drained and a warning is logged	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L310-L354
 T-ADJ-33	high	done	Suppression by case-insensitive glob on subject and sender; a suppressed message is logged and not queued	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L250-L292
 T-ADJ-34	low	todo	A spool failure does not prevent the direct delivery attempt	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_main.py#L512-L545

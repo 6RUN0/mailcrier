@@ -803,7 +803,21 @@ preset = "generic-json"
   writes its findings to stderr and exits 0 without an error, 78 with
   one. It takes no arguments (64). root, the `slendmail` user and a
   caller without the setgid bit may run it.
-- `--probe` is reserved and exits 64 (not implemented).
+- `--probe` sends a sample message, subject `slendmail probe from
+  <host>`, to every target of the configuration, or with `--probe --
+  name ...` to the targets named (an unknown name exits 64 before
+  anything is sent; the names go after `--`, since a name may start with
+  `-`). These are real notifications, and `exec` hooks run. Routes,
+  `[[suppress]]` rules and direct chats do not apply. It reads no stdin,
+  does not touch the spool and does not run the queue. One logfmt line
+  per target goes to stdout, such as `target=mm class=temp status=503
+  err="..."`; a template that failed and was replaced by the built-in one
+  shows `template=fallback` with status 0, and `--check-config` shows the
+  template error. The exit status is 0 when every target took the
+  message, 69 when one rejected it, and 75 when one failed temporarily
+  and none rejected it. root, the `slendmail` user and a caller without
+  the setgid bit may run it. Mail flags such as `-f` or `-t` are ignored,
+  and of several mode options the last one wins.
 - The intended install is setgid: binary `root:slendmail 2755`,
   configuration and `*_file` files `root:slendmail 0640`, so that cron jobs
   of any user can send while only root and the binary read the secrets.
@@ -818,8 +832,8 @@ preset = "generic-json"
     goes on with HTTP/2 off, the Go debug output dropped and no proxy, and
     logs `reexec failed` as an error;
   - `--config` and `SLENDMAIL_CONFIG` are ignored with a warning; with
-    `--check-config` they exit 64 instead, so that the check never
-    reports on another file than the one named;
+    `--check-config` or `--probe` they exit 64 instead, so that a mode
+    never works on another file than the one named;
   - `--probe` and `--check-config` exit 77 for everyone but root and the
     `slendmail` user.
 - Without the setgid bit taking effect the binary runs with the ids of its
@@ -1013,19 +1027,21 @@ option: `-f --probe` names a sender.
 | a `[[suppress]]` rule matched; the message is neither sent nor spooled | 0 |
 | every target failed temporarily and the message is queued | 0 |
 | `newaliases`, `-bi`, `-I`, `mailq`, `-bp`, `-q`, `--status`, `--version`, `--help` | 0 |
+| `--check-config` found no error, with or without warnings | 0 |
+| `--probe`: every target took the sample message, if only with `template=fallback` | 0 |
 | no target accepted it and one rejected it, or all failed temporarily with the spool off | 69 |
+| `--probe`: a target rejected the sample message | 69 |
 | a target failed temporarily and the spool entry could not be created: directory missing or not writable, or a limit reached | 73 |
 | a target failed temporarily and the spool entry could not be written; `-q` or `--status` could not read the spool, `mailq` a spool that exists | 74 |
+| `--probe` only: a target failed temporarily and none rejected the sample message; nothing is queued | 75 |
 | usage error: `-f` or `-r` without a value, a line break in the sender, the full name or a recipient, `-bs`, `--config` without a value; stdin is not read | 64 |
-| `--check-config` found no error, with or without warnings | 0 |
-| `--probe`: not implemented | 64 |
-| `--check-config` with an argument, or from an elevated caller with `--config` or `SLENDMAIL_CONFIG` | 64 |
+| `--check-config` with an argument, `--probe` naming no configured target, or either from an elevated caller with `--config` or `SLENDMAIL_CONFIG` | 64 |
 | no route selects a target; the message is held, or lost with the spool off | 64 |
 | stdin cannot be read | 66 |
 | panic in the main goroutine (a bug; the redacted record in the log carries the details) | 70 |
 | `--probe` or `--check-config` from an elevated caller other than root and the `slendmail` user | 77 |
 | for a call with a message: the configuration cannot be read, parsed or validated, defines no targets, or holds a template that does not parse; the message is held | 78 |
-| `--check-config` found an error | 78 |
+| `--check-config` found an error, or `--probe` cannot use the configuration; nothing is held | 78 |
 
 The targets are sent to at the same time. A panic while rendering or
 sending for one target (a bug) fails that target permanently, logged
