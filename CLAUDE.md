@@ -108,8 +108,7 @@ with "no non-test Go files".
   integer or a non-blank string, `channel` non-blank (both trimmed).
   Targets are `[target.<name>]` tables; keys per type are in
   `allowedKeys`, which lists only implemented keys, required ones in
-  `requiredKeys`. Type `shoutrrr` is parsed but rejected by `app` as not
-  implemented.
+  `requiredKeys`.
 - `internal/backend`: `Sender`, `Caps`, `Payload`, `*Error` with `Class`,
   `IsPartial` (text arrived, files did not: counts as delivered),
   `Classify`, and the HTTP guards every target uses (`WithoutRedirects`,
@@ -123,6 +122,12 @@ with "no non-test Go files".
   group with a fresh environment and, from `app.hookProcess`, the real
   ids when `egid != gid`; its tests run real `/bin/sh` scripts, and
   `TestSetgidHookDropsGroup` checks the ids under a real setgid bit.
+  `shoutrrr` sits behind `//go:build !noshoutrrr` (`without.go` makes
+  `New` fail, so the target is a configuration error); its client
+  wrapper records the status and transport error of the last request,
+  because the library reports them only as text that quotes the URL.
+  Tests of either build carry the matching tag; `make test`, `build` and
+  `lint-go` run both builds.
   `TestLiveTelegram` sends to the real Bot API only with
   `SLENDMAIL_TELEGRAM_ENV` naming a file with `TELEGRAM_BOT_TOKEN` and
   `TELEGRAM_CHAT_ID`.
@@ -206,6 +211,11 @@ with "no non-test Go files".
 
 ## Gotchas
 
+- `make licenses` lets the modules of `LICENSE_EXCEPTIONS` through
+  (`--ignore`): `eclipse/paho.golang` is taken under EDL-1.0, which
+  go-licenses does not detect. `TestLicenseExceptionsStillOffered` reads
+  the module in the module cache and fails when the license file stops
+  offering it; a new exception needs its own check there.
 - `.gitignore` is an allowlist (`/*`, `.*`, then `!/path`): a new top-level
   file or directory stays ignored until listed. Check tracked files with
   `git ls-files | git check-ignore --stdin --no-index` and new paths with

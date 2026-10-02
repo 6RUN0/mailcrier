@@ -707,9 +707,9 @@ func TestHold(t *testing.T) {
 			t.Errorf("hold %v, failed %v, want the entry failed", c.ids(spool.HoldDir), c.ids(spool.FailedDir))
 		}
 	})
-	t.Run("not-implemented-target-type-holds", func(t *testing.T) {
+	t.Run("rejected-target-holds", func(t *testing.T) {
 		c := newSpoolCase(t)
-		c.config = "[target.x]\ntype = \"shoutrrr\"\nurl = \"generic://example.org\"\n"
+		c.config = "[target.x]\ntype = \"shoutrrr\"\nurl = \"nosuch://example.org\"\n"
 		if code, _ := c.send("held", elevatedUser); code != 78 || len(c.ids(spool.HoldDir)) != 1 {
 			t.Errorf("Run() = %d, hold %v", code, c.ids(spool.HoldDir))
 		}

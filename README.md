@@ -3,7 +3,8 @@
 A sendmail replacement for machines that send no email: cron, at, sudo,
 mdadm, smartd, fail2ban and every other tool that pipes a message into
 `/usr/sbin/sendmail` get it delivered to Telegram, Discord, Slack, ntfy,
-an HTTP webhook or a program of their own instead.
+an HTTP webhook, a service of the shoutrrr library or a program of their
+own instead.
 
 - Accepts the command lines of the usual callers (`-t`, `-i`, `-f`, `-F`,
   `-oi`, `-bi`, `-q` and the rest) and reads MIME messages: encoded
@@ -21,6 +22,12 @@ an HTTP webhook or a program of their own instead.
 ```sh
 go build -o slendmail ./cmd/slendmail
 ```
+
+With `-tags noshoutrrr` the binary leaves out the shoutrrr library and
+the 12 modules it brings, about 3 MB of 13.7 MB (linux/amd64, `-trimpath
+-ldflags='-s -w'`, go1.27.1); a `shoutrrr` target then rejects the
+configuration with exit status 78 and `built without shoutrrr` in the log.
+Releases carry both builds, the smaller one as `slendmail-minimal`.
 
 The binary goes to `/usr/sbin/slendmail`, with `/usr/sbin/sendmail`,
 `/usr/lib/sendmail`, `/usr/sbin/newaliases` and `/usr/bin/mailq` as links
@@ -59,9 +66,6 @@ preset = "generic-json"
 - Exactly one of `url` and `url_file` is set; likewise `token` and
   `token_file`. A `*_file` key takes an absolute path; the file content, with
   surrounding whitespace removed, is used as the value.
-- The type `shoutrrr` is recognized by the parser but rejected with exit
-  status 78 until implemented; the other types are described under
-  "Targets".
 - `[strings]` replaces the English notices that stand in for missing
   content: `no_subject` for a message without a subject, `empty_body` for
   a body without visible text, `truncated` at the end of a body cut to the
@@ -124,16 +128,16 @@ preset = "generic-json"
 
 All targets of the file receive every message, at the same time. Each
 sends the text in the markup of its service, escaped so that nothing in the
-message becomes markup, a link preview or a mention; `exec` hands on the
-message itself instead.
+message becomes markup, a link preview or a mention; `shoutrrr` sends plain
+text, and `exec` hands on the message itself instead.
 
-`max_file_size`, a key of every type but `http` and `exec`, sets the size
-limit of one file in bytes, in place of the one given below for the type
-(`slack` has none); it must be a positive integer, else exit status 78. A
-file over it is listed with the `not_sent` notice and not sent, and a cut
-text whose full text exceeds it ends with the `truncated_size` notice. A
-value above the limit of the service is taken as it is, and the service
-rejects a bigger file.
+`max_file_size`, a key of every type but `http`, `exec` and `shoutrrr`,
+sets the size limit of one file in bytes, in place of the one given below
+for the type (`slack` has none); it must be a positive integer, else exit
+status 78. A file over it is listed with the `not_sent` notice and not
+sent, and a cut text whose full text exceeds it ends with the
+`truncated_size` notice. A value above the limit of the service is taken as
+it is, and the service rejects a bigger file.
 
 ```toml
 [target.ops-telegram]
@@ -306,6 +310,32 @@ timeout = "30s"                 # optional, the default
     not acceptable, the hook has to refuse to run as anyone but
     `slendmail` (exit 75 keeps the message queued for the queue run of
     that user), and then reads what `slendmail` reads, as said above.
+
+```toml
+[target.bus]
+type = "shoutrrr"
+url_file = "/etc/slendmail.d/bus.url"   # a service URL, gotify://host/token
+```
+
+- `shoutrrr`: one message through a service of the shoutrrr library
+  (github.com/nicholas-fedor/shoutrrr v0.21.1), chosen by the scheme of the
+  URL: `gotify`, `matrix`, `teams`, `pushover`, `smtp`, `generic` and the
+  others its documentation lists. The text is that of the plain template
+  (subject, host, sender, body), without files and without a title; there
+  is no length limit of slendmail's, each service cuts or splits a long
+  text as the library does. An unknown scheme or a URL the service rejects
+  exits 78 when the configuration is loaded. `matrix` takes an access token
+  only (`matrix://:token@host`): with a user name the library logs in while
+  the configuration is loaded, outside `http_timeout` and `deadline`, so
+  such a URL exits 78 without contacting the server. A failure after an
+  HTTP answer outside 2xx is classified by its status, as for the other
+  targets; a redirect is not followed and fails permanently even where the
+  library would count it a success; any other failure is temporary and
+  stays queued until `queue_ttl`. The services that send over HTTP use
+  `http_timeout` and the proxy rule above; `smtp`, `xmpp` and `mqtt` open
+  their own connections without a proxy, bounded only by `deadline`. Error
+  texts of the library may quote the URL, which is masked in the log as
+  every URL is.
 
 ### Long messages
 

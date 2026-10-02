@@ -190,13 +190,24 @@ caller; a queue run as the slendmail user runs it with the slendmail group.
 is visible to all local users and holds no secret; a secret the program reads
 itself is readable by every caller of a setgid call.
 Its stdout and stderr, up to 4096 bytes, are logged.
+.It Cm shoutrrr
+The plain text through the service of the shoutrrr library that the scheme of
+.Ic url
+selects, without files; an unknown scheme, a URL the service rejects or a
+matrix URL with a user name instead of an access token is a configuration
+error.
+A failure after an HTTP answer is classified by its status, any other failure
+is temporary.
+A binary built with the noshoutrrr tag rejects the target as a configuration
+error.
 .El
 .Pp
 .Ic max_file_size
 replaces the size limit of one file, in bytes, for every type but
-.Cm http
+.Cm http ,
+.Cm exec
 and
-.Cm exec ;
+.Cm shoutrrr ;
 a bigger file is listed as not sent.
 .Pp
 429 and 5xx answers, and any answer with a Retry-After header, are temporary

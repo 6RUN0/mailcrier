@@ -10,9 +10,19 @@ GORELEASER := $(GO) tool -modfile=tools/goreleaser/go.mod goreleaser
 GO_LICENSES := $(GO) tool -modfile=tools/licenses/go.mod go-licenses
 TOOL_MODULES := tools tools/actionlint tools/goreleaser tools/licenses
 
+# The noshoutrrr tag builds the binary without the shoutrrr library, whose
+# targets are then a configuration error; test, build and lint-go cover
+# both builds.
+
 # Licenses a dependency linked into the binary may carry; anything else,
 # GPL in particular, fails licenses.
 ALLOWED_LICENSES := MIT,BSD-2-Clause,BSD-3-Clause,Apache-2.0,ISC
+
+# Modules taken under another license than the one go-licenses detects.
+# paho.golang (MQTT of shoutrrr) is dual licensed EPL-2.0 or EDL-1.0, and
+# EDL-1.0 is BSD-3-Clause; go-licenses reports only EPL-2.0.
+# TestLicenseExceptionsStillOffered fails when a new version drops EDL-1.0.
+LICENSE_EXCEPTIONS := github.com/eclipse/paho.golang
 
 # Python tools are pinned in tools/requirements.txt, which Dependabot updates.
 pinned = $(shell sed -n 's/^$(1)==//p' tools/requirements.txt)
@@ -55,6 +65,7 @@ lint: lint-go lint-yaml lint-actions
 
 lint-go:
 	$(TOOL) golangci-lint run ./...
+	$(TOOL) golangci-lint run --build-tags setgid_e2e,noshoutrrr ./...
 
 lint-yaml:
 	$(YAMLLINT) --strict .
@@ -69,6 +80,7 @@ tidy:
 
 test:
 	$(GO) test -race ./...
+	$(GO) test -race -tags noshoutrrr ./...
 
 fuzz:
 	for target in $(FUZZ_TARGETS); do \
@@ -77,9 +89,10 @@ fuzz:
 
 build:
 	$(GO) build -o slendmail ./cmd/slendmail
+	$(GO) build -tags noshoutrrr -o /dev/null ./cmd/slendmail
 
 licenses:
-	$(GO_LICENSES) check ./cmd/... --allowed_licenses=$(ALLOWED_LICENSES)
+	$(GO_LICENSES) check ./cmd/... --allowed_licenses=$(ALLOWED_LICENSES) $(addprefix --ignore=,$(LICENSE_EXCEPTIONS))
 
 vuln:
 	$(TOOL) govulncheck ./...

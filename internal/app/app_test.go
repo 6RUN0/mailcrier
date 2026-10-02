@@ -237,7 +237,7 @@ func TestRunRejectsConfiguration(t *testing.T) {
 		{"unparsable", "[target.hook\n", "expected"},
 		{"no-targets", "", "no targets configured"},
 		{"ntfy-without-topic", "[target.nt]\ntype = \"ntfy\"\nurl = \"https://ntfy.example.org/\"\n", `target \"nt\": URL has no topic`},
-		{"type-not-implemented", "[target.bus]\ntype = \"shoutrrr\"\nurl = \"generic://example.org\"\n", `type \"shoutrrr\" is not implemented`},
+		{"shoutrrr-unknown-service", "[target.bus]\ntype = \"shoutrrr\"\nurl = \"nosuch://example.org\"\n", shoutrrrRejection},
 		{"preset-missing", "[target.mm]\ntype = \"http\"\nurl = \"http://127.0.0.1:1\"\n", `key \"preset\" is required`},
 	}
 	for _, tc := range cases {

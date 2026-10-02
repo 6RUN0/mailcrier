@@ -24,6 +24,7 @@ import (
 	"github.com/6RUN0/slendmail/internal/backend/discord"
 	"github.com/6RUN0/slendmail/internal/backend/hook"
 	"github.com/6RUN0/slendmail/internal/backend/ntfy"
+	"github.com/6RUN0/slendmail/internal/backend/shoutrrr"
 	"github.com/6RUN0/slendmail/internal/backend/slack"
 	"github.com/6RUN0/slendmail/internal/backend/telegram"
 	"github.com/6RUN0/slendmail/internal/backend/webhook"
@@ -595,6 +596,12 @@ func buildTargets(cfg *config.Config, client *http.Client, hooks hook.Process) (
 			// and cannot fail on the message.
 			sender = hook.New(hook.Options{Name: name, Argv: target.Argv, Timeout: target.Timeout.Duration, Process: hooks})
 			format = text.FormatPlain
+		case config.TypeShoutrrr:
+			service, err := shoutrrr.New(shoutrrr.Options{URL: target.URL, Client: client})
+			if err != nil {
+				return nil, fmt.Errorf("target %q: %w", name, err)
+			}
+			sender, format = service, text.FormatPlain
 		default:
 			return nil, fmt.Errorf("target %q: type %q is not implemented", name, target.Type)
 		}
