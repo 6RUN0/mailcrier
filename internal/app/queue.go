@@ -1,7 +1,6 @@
 package app
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -19,6 +18,7 @@ import (
 	"github.com/6RUN0/slendmail/internal/message"
 	"github.com/6RUN0/slendmail/internal/redact"
 	"github.com/6RUN0/slendmail/internal/render"
+	"github.com/6RUN0/slendmail/internal/route"
 	"github.com/6RUN0/slendmail/internal/spool"
 )
 
@@ -30,6 +30,7 @@ const staleAge = time.Hour
 // without delivery.
 const (
 	reasonConfig        = "configuration rejected"
+	reasonNoRoute       = "no route"
 	reasonExpired       = "expired"
 	reasonTargetRemoved = "target removed"
 )
@@ -46,6 +47,9 @@ type queue struct {
 	// configuration was rejected, which leaves a queue run only the
 	// expiry of entries.
 	targets map[string]delivery.Target
+	// router applies the rules of the configuration; nil when it was
+	// rejected.
+	router *route.Router
 	// deadline bounds the delivery of one message; notices fill the
 	// template data.
 	deadline time.Duration
@@ -229,9 +233,10 @@ func (q *queue) finish(rec *spool.Record) {
 	_ = rec.Close()
 }
 
-// hold puts a message whose configuration was rejected into hold/, where
-// a queue run takes it once the configuration loads again.
-func (q *queue) hold(msg *message.Message, env message.Envelope, receivedAt time.Time, openErr error) {
+// hold puts a message into hold/ for reason: its configuration was
+// rejected, or its rules select no target. A queue run takes it once the
+// configuration loads again and routes it.
+func (q *queue) hold(msg *message.Message, env message.Envelope, receivedAt time.Time, openErr error, reason string) {
 	if q.settings.Dir == "" {
 		q.log.Error("message lost, spool off")
 		return
@@ -239,7 +244,7 @@ func (q *queue) hold(msg *message.Message, env message.Envelope, receivedAt time
 	err := openErr
 	if err == nil {
 		entry := spool.NewEntry(spool.NewID(q.d.Now()), q.d.Credentials.UID, q.d.Now(), receivedAt, env, nil)
-		entry.Reason = reasonConfig
+		entry.Reason = reason
 		var rec *spool.Record
 		if rec, err = q.sp.Create(spool.HoldDir, entry, msg.Raw, q.quota(entry.OwnerUID)); err == nil {
 			q.log.Warn("message held", "id", rec.ID())
@@ -325,9 +330,10 @@ func (q *queue) lock(area, id string, owner int) *spool.Record {
 	return rec
 }
 
-// release moves a held entry to the queue with every configured target,
-// or to failed/ when it expired; it reports whether the entry is now in
-// the queue.
+// release moves a held entry to the queue with the targets its rules
+// select, or to failed/ when it expired; it removes a suppressed one and
+// keeps one without a route. It reports whether the entry is now in the
+// queue.
 func (q *queue) release(rec *spool.Record) bool {
 	if spool.Expired(rec.Entry, q.d.Now(), q.settings.HoldTTL.Duration) {
 		q.fail(rec, reasonExpired)
@@ -336,7 +342,26 @@ func (q *queue) release(rec *spool.Record) bool {
 	if q.targets == nil {
 		return false
 	}
-	q.setReleased(rec.Entry)
+	log := q.log.With("id", rec.ID())
+	names, v, err := q.routeHeld(log, rec.Entry, rec.Message)
+	switch {
+	case err != nil:
+		q.hasIOError = true
+		log.Error("held message unreadable", "err", err)
+		return false
+	case v == suppressed:
+		if err := rec.Remove(); err != nil {
+			q.hasIOError = true
+			log.Error("spool entry not removed", "err", err)
+		}
+		return false
+	case v == noRoute:
+		if q.markNoRoute(log, rec.Entry) {
+			q.save(rec)
+		}
+		return false
+	}
+	q.setReleased(rec.Entry, names)
 	if err := rec.Move(spool.QueueDir); err != nil {
 		q.hasIOError = true
 		q.log.Error("held message not released", "id", rec.ID(), "err", err)
@@ -346,16 +371,21 @@ func (q *queue) release(rec *spool.Record) bool {
 	return true
 }
 
-// setReleased gives a held entry every configured target and starts its
-// time in the queue.
-func (q *queue) setReleased(e *spool.Entry) {
-	names := make([]string, 0, len(q.targets))
-	for name := range q.targets {
-		names = append(names, name)
-	}
-	slices.Sort(names)
+// setReleased gives a held entry the targets of names and starts its time
+// in the queue.
+func (q *queue) setReleased(e *spool.Entry, names []string) {
 	e.SetTargets(names)
 	e.Reason, e.ReleasedAt = "", q.d.Now()
+}
+
+// markNoRoute records in a held entry that its rules select no target and
+// reports whether that changed the entry. The warning comes once per
+// change of reason; a queue run that finds it again logs at debug.
+func (q *queue) markNoRoute(log *slog.Logger, e *spool.Entry) bool {
+	isChanged := e.Reason != reasonNoRoute
+	log.Log(context.Background(), repeatLevel(!isChanged), "no route for message")
+	e.Reason = reasonNoRoute
+	return isChanged
 }
 
 // releaseOtherHold moves the entries of hold/ in q.otherHold into this
@@ -395,12 +425,14 @@ func (q *queue) releaseOtherHold(owner int) *spool.Spool {
 }
 
 // releaseInto copies a locked held entry of another spool into this one
-// and removes it there. An entry of the same id here is the copy of a run
-// that died before the removal: it is kept as it is, since a process may
-// be delivering it, and only the held one is removed.
+// and removes it there: into the queue with the targets its rules select,
+// into hold/ when they select none, into failed/ when it expired. A
+// suppressed entry is only removed. An entry of the same id here is the
+// copy of a run that died before the removal: it is kept as it is, since a
+// process may be delivering it, and only the held one is removed.
 func (q *queue) releaseInto(rec *spool.Record) {
 	id := rec.ID()
-	if q.sp.Has(spool.QueueDir, id) || q.sp.Has(spool.FailedDir, id) {
+	if q.sp.Has(spool.QueueDir, id) || q.sp.Has(spool.HoldDir, id) || q.sp.Has(spool.FailedDir, id) {
 		q.removeReleased(rec, "held message already released")
 		return
 	}
@@ -416,7 +448,21 @@ func (q *queue) releaseInto(rec *spool.Record) {
 		entry.Reason, entry.FailedAt = reasonExpired, q.d.Now()
 		area, quota = spool.FailedDir, spool.Quota{}
 	} else {
-		q.setReleased(&entry)
+		log := q.log.With("id", id)
+		names, v, err := q.routeHeld(log, &entry, func() ([]byte, error) { return raw, nil })
+		switch {
+		case err != nil:
+			log.Error("held message unreadable", "err", err)
+			return
+		case v == suppressed:
+			q.removeReleased(rec, "")
+			return
+		case v == noRoute:
+			q.markNoRoute(log, &entry)
+			area = spool.HoldDir
+		default:
+			q.setReleased(&entry, names)
+		}
 	}
 	copied, err := q.sp.Create(area, &entry, raw, quota)
 	if err != nil {
@@ -424,12 +470,15 @@ func (q *queue) releaseInto(rec *spool.Record) {
 		return
 	}
 	_ = copied.Close()
-	if isExpired {
+	switch {
+	case isExpired:
 		q.log.Error("message failed", "id", id, "reason", reasonExpired)
 		q.removeReleased(rec, "")
-		return
+	case area == spool.HoldDir:
+		q.removeReleased(rec, "held message moved")
+	default:
+		q.removeReleased(rec, "held message released")
 	}
-	q.removeReleased(rec, "held message released")
 }
 
 // removeReleased removes a held entry of another spool after its copy
@@ -486,7 +535,7 @@ func (q *queue) deliverEntry(ctx context.Context, rec *spool.Record) bool {
 		log.Error("queued message unreadable", "err", err)
 		return false
 	}
-	msg, bcc, _, err := message.Read(bytes.NewReader(raw), message.ReadOptions{IgnoreDots: true, MaxSize: message.MaxSize, ReceivedAt: e.ReceivedAt})
+	msg, bcc, _, err := readStored(raw, e)
 	if err != nil {
 		log.Error("queued message unreadable", "err", err)
 		return false

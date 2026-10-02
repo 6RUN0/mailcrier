@@ -130,10 +130,12 @@ preset = "generic-json"
 
 ### Targets
 
-All targets of the file receive every message, at the same time. Each
-sends the text in the markup of its service, escaped so that nothing in the
-message becomes markup, a link preview or a mention; `shoutrrr` sends plain
-text, and `exec` hands on the message itself instead.
+Every target of the file receives every message unless routes choose
+the targets, see "Routes and suppression"; the targets of a message are
+sent to at the same time. Each sends the text in the markup of its
+service, escaped so that nothing in the message becomes markup, a link
+preview or a mention; `shoutrrr` sends plain text, and `exec` hands on the
+message itself instead.
 
 `max_file_size`, a key of every type but `http`, `exec` and `shoutrrr`,
 sets the size limit of one file in bytes, in place of the one given below
@@ -540,6 +542,95 @@ template = '''
   `<target>.path`, `<target>.query.<name>` or `<target>.headers.<name>`
   and its line.
 
+### Routes and suppression
+
+```toml
+[target.ops-telegram]
+type = "telegram"
+token_file = "/etc/slendmail.d/tg.token"
+chat_id = -1001234567890
+
+[target.mm]
+type = "http"
+url_file = "/etc/slendmail.d/mm.url"
+preset = "mattermost"
+
+[[suppress]]
+subject = "*Anacron*"
+
+[[route]]
+subject = "*raid*"
+targets = ["ops-telegram"]
+continue = true
+
+[[route]]
+recipient_regex = '^backup(@|$)'
+targets = ["mm"]
+
+[[route]]                       # no condition: every message
+targets = ["mm"]
+```
+
+- Without a `[[route]]` every target gets every message. With routes, the
+  rules are checked from the first, for each recipient of the envelope on
+  its own: the targets of the first rule whose conditions all match are
+  taken, and with `continue = true` the check goes on and the targets of
+  the next matching rules are added. The targets of all recipients are
+  joined: a message to `root` and `backup@example.org` reaches the targets
+  of both, even when the rule for `root` comes first without `continue`. A
+  rule without conditions matches every message.
+- A condition is `subject`, `sender` or `recipient`:
+  - `subject` is the subject with encoded words decoded and white space
+    collapsed, empty when the message has none;
+  - `sender` is the envelope sender, see "sendmail command line": `-f` or
+    `-r`, else `Resent-From`, else `From`, else the caller; empty for the
+    null sender;
+  - `recipient` is one envelope recipient, `Bcc` included, as its address
+    without the display name: `Root <root@example.org>` on the command
+    line is `root@example.org`. A local name stays without a domain: cron
+    mails `root`, which `recipient = "root"` matches and `root@*` does
+    not.
+- Each condition is a glob, or an RE2 expression in Go syntax under the
+  key with `_regex` (`subject_regex`, `sender_regex`, `recipient_regex`);
+  a rule takes at most one of the two keys of a field. A glob matches the
+  whole value with case ignored, Cyrillic and other scripts included: `*`
+  is any run of characters, `/` and line breaks included, `?` one
+  character, and `\` makes the next character literal; there are no
+  `[...]` classes. An expression matches anywhere in the value unless
+  anchored with `^` and `$`, with case as written unless it starts with
+  `(?i)`. An empty glob or expression is an error: a field without a
+  condition leaves its key out.
+- `targets` is required, a list of configured target names without
+  repeats.
+- A message without recipients, as `-t` without recipient headers gives,
+  is checked once: only a rule without `recipient` can match it.
+- A recipient that no rule matches, while others have targets, is logged
+  as `no route for recipient` (warning) with `unrouted`, the number of such
+  recipients, never the addresses. When no rule matches at all, the
+  message is held in `hold/` with the reason `no route`, the log records
+  `no route for message` (warning), and the call exits 64; with the spool
+  off, or the entry not written, the message is lost
+  (`message lost, spool off` or `message lost, not held`) with the same
+  status. A queue run checks a held message against the rules of the
+  moment and queues it once they select a target; until then it stays,
+  counted in the limits of the spool, and moves to `failed/` after
+  `hold_ttl`. The warning comes once: a run that finds no route again logs
+  it as debug. The targets chosen are logged as `message routed` (debug)
+  with `targets`.
+- The targets of a queued message are fixed when it is queued: a change
+  of the routes affects new messages and those released from `hold/`,
+  not the retries.
+- A `[[suppress]]` rule takes `subject` and `sender` as above, or their
+  `_regex` keys, at least one of them: a rule without conditions would
+  drop every message. The rules are checked before the routes and before
+  the spool; a message that matches every condition of one of them is
+  neither sent nor spooled, the log records `message suppressed` (info)
+  with `rule`, the number of the rule from 1, and the call exits 0. A
+  message released from `hold/` is checked again, and a suppressed one is
+  deleted.
+- An error in a rule exits 78 like any configuration error and names the
+  rule by its number and line (`route 3: ...`), never its expression.
+
 ### Spool and queue
 
 ```toml
@@ -586,10 +677,10 @@ preset = "generic-json"
   with `target removed, message dropped for it`.
 - A message whose configuration is rejected goes to `hold/` (of the
   default directory when the file cannot be read) and the call exits 78;
-  the first queue run with a valid configuration sends it to every
-  configured target. When the valid file names a `dir` other than the
-  default, `-q` also moves what `hold/` of the default directory keeps
-  into that queue. `hold_ttl` bounds the wait.
+  the first queue run with a valid configuration routes it as a new
+  message, see "Routes and suppression". When the valid file names a
+  `dir` other than the default, `-q` also moves what `hold/` of the
+  default directory keeps into that queue. `hold_ttl` bounds the wait.
 - Each call runs the queue for at most `drain_budget` and
   `drain_max_messages` entries after delivering its own message, only for
   the entries of its caller's uid, and not at all while another call of the
@@ -727,7 +818,7 @@ option: `-f --probe` names a sender.
   headers instead of `To`, `Cc` and `Bcc`, as Postfix does. `Bcc` and
   `Resent-Bcc` headers are removed from the message and never reach a
   notification. A message without any recipient is delivered to every
-  target.
+  target when there are no routes, see "Routes and suppression".
 - The sender is the value of `-f` or `-r` without surrounding angle
   brackets, else the first `Resent-From` address, else the `From` address,
   else `EMAIL`, else `USER` or `LOGNAME` at the host name, else the login
@@ -775,7 +866,8 @@ option: `-f --probe` names a sender.
 
 | Situation | Status |
 |---|---|
-| at least one target accepted the message, or a rule suppressed it for every target; the targets that failed temporarily are queued | 0 |
+| at least one target accepted the message; the targets that failed temporarily are queued | 0 |
+| a `[[suppress]]` rule matched; the message is neither sent nor spooled | 0 |
 | every target failed temporarily and the message is queued | 0 |
 | `newaliases`, `-bi`, `-I`, `mailq`, `-bp`, `-q`, `--status`, `--version`, `--help` | 0 |
 | no target accepted it and one rejected it, or all failed temporarily with the spool off | 69 |
@@ -783,6 +875,7 @@ option: `-f --probe` names a sender.
 | a target failed temporarily and the spool entry could not be written; `-q` or `--status` could not read the spool, `mailq` a spool that exists | 74 |
 | usage error: `-f` or `-r` without a value, a line break in the sender, the full name or a recipient, `-bs`, `--config` without a value; stdin is not read | 64 |
 | `--probe`, `--check-config`: not implemented | 64 |
+| no route selects a target; the message is held, or lost with the spool off | 64 |
 | stdin cannot be read | 66 |
 | panic in the main goroutine (a bug; the redacted record in the log carries the details) | 70 |
 | `--probe` or `--check-config` from an elevated caller other than root and the `slendmail` user | 77 |

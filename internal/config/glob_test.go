@@ -147,3 +147,15 @@ func equalFold(a, b rune) bool {
 		}
 	}
 }
+
+// TestGlobErrorText pins that an error of the translated expression is
+// reported by its code, never by its text, which quotes the glob.
+func TestGlobErrorText(t *testing.T) {
+	if got := globErrorText(errGlobBackslash); got != errGlobBackslash.Error() {
+		t.Errorf("globErrorText(backslash) = %q", got)
+	}
+	err := &syntax.Error{Code: syntax.ErrLarge, Expr: "MARKER"}
+	if got := globErrorText(err); got != "is not a valid glob: expression too large" {
+		t.Errorf("globErrorText(%v) = %q", err, got)
+	}
+}

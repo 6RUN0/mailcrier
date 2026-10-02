@@ -213,7 +213,7 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 	if err != nil {
 		log.Error("configuration rejected, message not delivered", "err", err)
 		q, openErr := newQueue(d, log, redactor, spoolSettings(d, nil), nil)
-		q.hold(msg, env, receivedAt, openErr)
+		q.hold(msg, env, receivedAt, openErr, reasonConfig)
 		return exitConfig
 	}
 	registerSecrets(redactor, cfg)
@@ -225,20 +225,28 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 	if err != nil {
 		log.Error("configuration rejected, message not delivered", "err", err)
 		q, openErr := newQueue(d, log, redactor, spoolSettings(d, cfg), nil)
-		q.hold(msg, env, receivedAt, openErr)
+		q.hold(msg, env, receivedAt, openErr, reasonConfig)
 		return exitConfig
 	}
 	q, openErr := newQueue(d, log, redactor, spoolSettings(d, cfg), targets)
-	q.deadline, q.notices = cfg.General.Deadline.Duration, notices(cfg.Strings)
+	q.router, q.deadline, q.notices = newRouter(cfg), cfg.General.Deadline.Duration, notices(cfg.Strings)
+	// The own message goes first, the caller's queue after it, within its
+	// own budget: a failed service must not delay the next message.
+	defer q.drainOwn(ctx)
+	names, v := q.decide(log, msg.Subject, env, false)
+	switch v {
+	case suppressed:
+		return exitOK
+	case noRoute:
+		log.Warn("no route for message")
+		q.hold(msg, env, receivedAt, openErr, reasonNoRoute)
+		return exitUsage
+	}
 	data := render.NewData(msg, env, bcc)
 	data.Hostname, data.ReceivedAt, data.Strings = d.Hostname, receivedAt, q.notices
 	deliverCtx, cancel := context.WithTimeout(ctx, q.deadline)
 	defer cancel()
-	code = q.deliverOwn(deliverCtx, targets, msg, env, data, openErr)
-	// The own message goes first, the caller's queue after it, within its
-	// own budget: a failed service must not delay the next message.
-	q.drainOwn(ctx)
-	return code
+	return q.deliverOwn(deliverCtx, q.selectTargets(names), msg, env, data, openErr)
 }
 
 // catchSignals applies d.CatchSignals to ctx when it is set.
@@ -280,7 +288,7 @@ func runQueueMode(ctx context.Context, d Deps, log *slog.Logger, newLogger func(
 	}
 	q, openErr := newQueue(d, log, redactor, settings, targets)
 	if cfg != nil {
-		q.deadline, q.notices = cfg.General.Deadline.Duration, notices(cfg.Strings)
+		q.router, q.deadline, q.notices = newRouter(cfg), cfg.General.Deadline.Duration, notices(cfg.Strings)
 	}
 	if openErr != nil {
 		log.Error("spool not opened", "err", openErr)

@@ -764,3 +764,86 @@ func TestLoadStrings(t *testing.T) {
 		})
 	}
 }
+
+// TestLoadRules pins that [[route]] and [[suppress]] load with their
+// conditions compiled: globs whole and case folded, expressions as
+// written.
+func TestLoadRules(t *testing.T) {
+	doc := twoHTTPTargets + `
+[[suppress]]
+subject = "*Anacron*"
+
+[[route]]
+subject = "*raid*"
+targets = ["a"]
+continue = true
+
+[[route]]
+recipient_regex = '^backup(@|$)'
+sender = "root@*"
+targets = ["b", "a"]
+`
+	cfg, err := load(t, doc, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Routes) != 2 || len(cfg.Suppressions) != 1 {
+		t.Fatalf("routes %d, suppressions %d", len(cfg.Routes), len(cfg.Suppressions))
+	}
+	first, second := cfg.Routes[0].Match, cfg.Routes[1].Match
+	switch {
+	case !cfg.Suppressions[0].Match.Subject.MatchString("ANACRON job"):
+		t.Error("suppress glob does not ignore case")
+	case !first.Subject.MatchString("md0: RAID\ndegraded"):
+		t.Error("route glob does not match across lines")
+	case !cfg.Routes[0].Continue || cfg.Routes[1].Continue:
+		t.Error("continue not loaded")
+	case !second.Recipient.MatchString("backup") || second.Recipient.MatchString("BACKUP"):
+		t.Error("regex not taken as written")
+	case !second.Sender.MatchString("ROOT@host") || second.Subject != nil || first.Recipient != nil:
+		t.Error("conditions misplaced")
+	case strings.Join(cfg.Routes[1].Targets, ",") != "b,a":
+		t.Errorf("targets %v", cfg.Routes[1].Targets)
+	}
+}
+
+// twoHTTPTargets declares targets a and b.
+const twoHTTPTargets = "[target.a]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org/a\"\n\n" +
+	"[target.b]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org/b\"\n"
+
+// TestLoadRejectsRules pins the errors of [[route]] and [[suppress]]: each
+// names the rule by its number and points at its line, never quoting a
+// value.
+func TestLoadRejectsRules(t *testing.T) {
+	// twoHTTPTargets takes 9 lines; the rules start at line 10.
+	cases := []struct {
+		name, rules, want string
+	}{
+		{"unknown-target", "[[route]]\ntargets = [\"a\", \"nosuch\"]\n", `:11:1: route 1: element 2 of key "targets" is not a configured target`},
+		{"repeated-target", "[[route]]\ntargets = [\"a\", \"a\"]\n", `:11:1: route 1: element 2 of key "targets" repeats a target`},
+		{"empty-targets", "[[route]]\ntargets = []\n", `:11:1: route 1: key "targets" must name at least one target`},
+		{"missing-targets", "[[route]]\nsubject = \"x\"\n", `:10:3: route 1: key "targets" must name at least one target`},
+		{"glob-and-regex", "[[route]]\nsubject = \"x\"\nsubject_regex = \"x\"\ntargets = [\"a\"]\n", `:12:1: route 1: keys "subject" and "subject_regex" are mutually exclusive`},
+		{"empty-glob", "[[route]]\nrecipient = \"\"\ntargets = [\"a\"]\n", `:11:1: route 1: value of key "recipient" must not be empty`},
+		{"empty-regex", "[[suppress]]\nsender_regex = ''\n", `:11:1: suppress 1: value of key "sender_regex" must not be empty`},
+		{"trailing-backslash", "[[suppress]]\nsubject = 'x\\'\n", `:11:1: suppress 1: value of key "subject" ends with a backslash that escapes nothing`},
+		{"bad-regex", "[[route]]\nsubject_regex = '(MARKER'\ntargets = [\"a\"]\n", `:11:1: route 1: value of key "subject_regex" is not a valid expression: missing closing )`},
+		{"suppress-without-condition", "[[suppress]]\n", `:10:3: suppress 1: a condition is required, or every message is suppressed`},
+		{"recipient-in-suppress", "[[suppress]]\nrecipient = \"root\"\n", `:11:1: unknown key "suppress.recipient"`},
+		{"third-rule", "[[route]]\ntargets = [\"a\"]\n[[route]]\ntargets = [\"b\"]\n\n[[route]]\nsubject = \"x\"\ntargets = [\"c\"]\n", `:17:1: route 3: element 1 of key "targets" is not a configured target`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := load(t, twoHTTPTargets+tc.rules, nil)
+			if err == nil {
+				t.Fatal("Load() succeeded")
+			}
+			if got, want := err.Error(), configPath+tc.want; got != want {
+				t.Errorf("Load() error\n got  %s\n want %s", got, want)
+			}
+			if strings.Contains(err.Error(), "MARKER") {
+				t.Errorf("error quotes the expression: %v", err)
+			}
+		})
+	}
+}

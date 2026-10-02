@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"regexp/syntax"
 	"slices"
 	"sort"
 	"strconv"
@@ -98,6 +99,45 @@ type Config struct {
 	// Targets maps the target name, the key of [target.<name>], to its
 	// settings. TOML rejects a table defined twice, so names are unique.
 	Targets map[string]Target `toml:"target"`
+	// Routes are the [[route]] rules in file order; without any, every
+	// target gets every message.
+	Routes []Route `toml:"route"`
+	// Suppressions are the [[suppress]] rules in file order.
+	Suppressions []Suppression `toml:"suppress"`
+}
+
+// Route is one [[route]] table. Each condition is a glob or, with the
+// _regex key, an RE2 expression, never both; a nil field is not set.
+type Route struct {
+	Subject        *string `toml:"subject"`
+	SubjectRegex   *string `toml:"subject_regex"`
+	Sender         *string `toml:"sender"`
+	SenderRegex    *string `toml:"sender_regex"`
+	Recipient      *string `toml:"recipient"`
+	RecipientRegex *string `toml:"recipient_regex"`
+	// Targets names the targets the rule selects.
+	Targets []string `toml:"targets"`
+	// Continue lets the rules after this one match too.
+	Continue bool `toml:"continue"`
+	// Match holds the conditions compiled by Load.
+	Match Match `toml:"-"`
+}
+
+// Suppression is one [[suppress]] table, with conditions as in Route.
+type Suppression struct {
+	Subject      *string `toml:"subject"`
+	SubjectRegex *string `toml:"subject_regex"`
+	Sender       *string `toml:"sender"`
+	SenderRegex  *string `toml:"sender_regex"`
+	// Match holds the conditions compiled by Load; Recipient stays nil.
+	Match Match `toml:"-"`
+}
+
+// Match holds the compiled conditions of a rule, nil where not set. A
+// glob is compiled to match the whole value with case ignored, an
+// expression of a _regex key as written.
+type Match struct {
+	Subject, Sender, Recipient *regexp.Regexp
 }
 
 // General is the [general] table.
@@ -476,7 +516,114 @@ func validate(cfg *Config, keys keyIndex) *Error {
 			return err
 		}
 	}
+	return compileRules(cfg, keys)
+}
+
+// condition is one condition of a rule: the glob and the regex key of a
+// field and where the compiled expression goes.
+type condition struct {
+	key         string
+	glob, regex *string
+	dst         **regexp.Regexp
+}
+
+// compileRules validates the [[route]] and [[suppress]] rules and
+// compiles their conditions. An error names the rule by its number from 1
+// and the key, never a value: it goes to syslog with the rest.
+func compileRules(cfg *Config, keys keyIndex) *Error {
+	for i := range cfg.Routes {
+		r := &cfg.Routes[i]
+		fail := ruleFail(keys, "route", i)
+		if err := compileConditions(fail, []condition{
+			{"subject", r.Subject, r.SubjectRegex, &r.Match.Subject},
+			{"sender", r.Sender, r.SenderRegex, &r.Match.Sender},
+			{"recipient", r.Recipient, r.RecipientRegex, &r.Match.Recipient},
+		}); err != nil {
+			return err
+		}
+		if len(r.Targets) == 0 {
+			return fail("targets", "key %q must name at least one target", "targets")
+		}
+		for j, name := range r.Targets {
+			if _, ok := cfg.Targets[name]; !ok {
+				return fail("targets", "element %d of key %q is not a configured target", j+1, "targets")
+			}
+			if slices.Contains(r.Targets[:j], name) {
+				return fail("targets", "element %d of key %q repeats a target", j+1, "targets")
+			}
+		}
+	}
+	for i := range cfg.Suppressions {
+		s := &cfg.Suppressions[i]
+		fail := ruleFail(keys, "suppress", i)
+		if s.Subject == nil && s.SubjectRegex == nil && s.Sender == nil && s.SenderRegex == nil {
+			return fail("", "a condition is required, or every message is suppressed")
+		}
+		if err := compileConditions(fail, []condition{
+			{"subject", s.Subject, s.SubjectRegex, &s.Match.Subject},
+			{"sender", s.Sender, s.SenderRegex, &s.Match.Sender},
+		}); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+// ruleFail returns the error constructor of the index-th rule of array,
+// which points at key in the rule, or at its header without the key.
+func ruleFail(keys keyIndex, array string, index int) func(key, format string, args ...any) *Error {
+	return func(key, format string, args ...any) *Error {
+		pos := keys.position(elementPath(array, index, key)...)
+		return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("%s %d: ", array, index+1) + fmt.Sprintf(format, args...)}
+	}
+}
+
+// compileConditions compiles the conditions that are set.
+func compileConditions(fail func(key, format string, args ...any) *Error, conditions []condition) *Error {
+	for _, c := range conditions {
+		regexKey := c.key + "_regex"
+		switch {
+		case c.glob != nil && c.regex != nil:
+			return fail(regexKey, "keys %q and %q are mutually exclusive", c.key, regexKey)
+		case c.glob != nil && *c.glob == "":
+			return fail(c.key, "value of key %q must not be empty", c.key)
+		case c.regex != nil && *c.regex == "":
+			return fail(regexKey, "value of key %q must not be empty", regexKey)
+		case c.glob != nil:
+			re, err := compileGlob(*c.glob)
+			if err != nil {
+				return fail(c.key, "value of key %q %s", c.key, globErrorText(err))
+			}
+			*c.dst = re
+		case c.regex != nil:
+			re, err := regexp.Compile(*c.regex)
+			if err != nil {
+				return fail(regexKey, "value of key %q is not a valid expression: %s", regexKey, syntaxCode(err))
+			}
+			*c.dst = re
+		}
+	}
+	return nil
+}
+
+// globErrorText says what is wrong with a glob. Only errGlobBackslash is
+// expected; any other error is that of the translated expression, whose
+// text would quote the glob.
+func globErrorText(err error) string {
+	if errors.Is(err, errGlobBackslash) {
+		return err.Error()
+	}
+	return "is not a valid glob: " + syntaxCode(err)
+}
+
+// syntaxCode returns what is wrong with an expression without quoting it,
+// as the text of a syntax.Error does.
+func syntaxCode(err error) string {
+	var syntaxErr *syntax.Error
+	if errors.As(err, &syntaxErr) {
+		return string(syntaxErr.Code)
+	}
+	return "invalid"
 }
 
 func validateTarget(name string, target Target, keys keyIndex) *Error {
