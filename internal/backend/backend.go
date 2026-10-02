@@ -35,6 +35,9 @@ type Caps struct {
 	// MaxFilesSize is the sum of the attachment sizes of one message in
 	// bytes.
 	MaxFilesSize int64
+	// CanTakeMessage asks for Payload.Message: the target hands the
+	// message itself on, as the exec target does on the stdin of its hook.
+	CanTakeMessage bool
 }
 
 // Payload is what one target receives.
@@ -49,6 +52,28 @@ type Payload struct {
 	Text string
 	// Attachments are the files to send, within the file limits of Caps.
 	Attachments []Attachment
+	// Message is set only for a target whose Caps.CanTakeMessage is set;
+	// the target only reads it, as all targets share it.
+	Message *Message
+}
+
+// Message is the message itself and its envelope, for a target that
+// hands it on whole. Nothing in it names a blind copy.
+type Message struct {
+	// Raw is the message as it was read, without its Bcc and Resent-Bcc
+	// fields; empty when the raw message is not known.
+	Raw []byte
+	// Subject is the decoded Subject; empty when the message has none.
+	Subject string
+	// From is the address of the From header, or the envelope sender.
+	From string
+	// To are the envelope recipients without the addresses that only a
+	// Bcc or Resent-Bcc field named.
+	To []string
+	// MessageID is the Message-ID header.
+	MessageID string
+	// Hostname is the name of the machine.
+	Hostname string
 }
 
 // Attachment is one file of a Payload.

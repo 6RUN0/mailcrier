@@ -226,7 +226,11 @@ func deliverOne(ctx context.Context, target Target, d render.Data, files []messa
 	if title == "" {
 		title = d.Strings.NoSubject
 	}
-	err = target.Sender.Send(ctx, backend.Payload{Title: title, Text: out, Attachments: sent})
+	payload := backend.Payload{Title: title, Text: out, Attachments: sent}
+	if caps.CanTakeMessage {
+		payload.Message = long.whole()
+	}
+	err = target.Sender.Send(ctx, payload)
 	result = Result{TargetID: target.ID, Status: statusOf(err), Err: err, IsTruncated: isTruncated}
 	var deliveryErr *backend.Error
 	if !errors.As(err, &deliveryErr) || !deliveryErr.IsTextRejected || caps.MaxFiles == 0 {
@@ -254,19 +258,23 @@ var fullTextTemplate = sync.OnceValues(func() (*render.Template, error) {
 	return render.Builtin(text.FormatPlain)
 })
 
-// longFiles builds the files that carry a long text in full once per
-// message, on first use, for all targets: a copy of a message of 10 MiB
-// per target would multiply the memory by the number of targets. The
-// targets only read the bytes.
+// longFiles builds the files that carry a long text in full, and the
+// message for a target that takes it, once per message, on first use,
+// for all targets: a copy of a message of 10 MiB per target would
+// multiply the memory by the number of targets. The targets only read the
+// bytes.
 type longFiles struct {
 	text    func() (*backend.Attachment, error)
 	message func() *backend.Attachment
+	whole   func() *backend.Message
 }
 
 // newLongFiles returns the long files of d, rendered without a limit,
 // and of raw, the kept input of the message; nil raw has no message.eml.
+// whole is the message for a target that takes it, with the bytes of
+// message.eml.
 func newLongFiles(d render.Data, raw []byte) *longFiles {
-	return &longFiles{
+	l := &longFiles{
 		text: sync.OnceValues(func() (*backend.Attachment, error) {
 			tmpl, err := fullTextTemplate()
 			if err != nil {
@@ -285,6 +293,14 @@ func newLongFiles(d render.Data, raw []byte) *longFiles {
 			return &backend.Attachment{Name: messageFileName, ContentType: "message/rfc822", Data: message.WithoutBlindCopies(raw)}
 		}),
 	}
+	l.whole = sync.OnceValue(func() *backend.Message {
+		whole := &backend.Message{Subject: d.Subject, From: d.From.Addr, To: d.Recipients, MessageID: d.MessageID, Hostname: d.Hostname}
+		if eml := l.message(); eml != nil {
+			whole.Raw = eml.Data
+		}
+		return whole
+	})
+	return l
 }
 
 // file returns the file of kind; message.txt for LongFileMessage without

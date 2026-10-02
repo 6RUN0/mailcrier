@@ -432,3 +432,36 @@ func TestExitCode(t *testing.T) {
 		})
 	}
 }
+
+// TestDeliverEachPassesMessage pins that a target with CanTakeMessage
+// gets the message without its blind copies, the same bytes for every
+// such target, and that another target gets none.
+func TestDeliverEachPassesMessage(t *testing.T) {
+	raw := []byte("From: a@example.org\nTo: b@example.org\nBcc: hidden@example.org\nSubject: s\n\nbody\n")
+	d := testData()
+	d.From, d.Recipients, d.MessageID = message.Address{Name: "A", Addr: "a@example.org"}, []string{"b@example.org"}, "<1@example.org>"
+	first, second := &fakeSender{caps: backend.Caps{CanTakeMessage: true}}, &fakeSender{caps: backend.Caps{CanTakeMessage: true}}
+	other := &fakeSender{}
+	var targets []Target
+	for i, s := range []*fakeSender{first, second, other} {
+		targets = append(targets, Target{ID: fmt.Sprint(i), Sender: s, Template: plainTemplate(t)})
+	}
+	DeliverEach(context.Background(), targets, d, nil, raw, nil)
+
+	got := first.sent[0].Message
+	if got == nil {
+		t.Fatal("target with CanTakeMessage got no message")
+	}
+	if want := string(message.WithoutBlindCopies(raw)); string(got.Raw) != want || strings.Contains(want, "hidden") {
+		t.Errorf("Raw = %q, want %q without the Bcc field", got.Raw, want)
+	}
+	if got.Subject != "s" || got.From != "a@example.org" || !slices.Equal(got.To, []string{"b@example.org"}) || got.MessageID != "<1@example.org>" || got.Hostname != "h" {
+		t.Errorf("Message = %+v", got)
+	}
+	if second.sent[0].Message != got {
+		t.Error("targets got separate copies of the message")
+	}
+	if other.sent[0].Message != nil {
+		t.Error("target without CanTakeMessage got the message")
+	}
+}
