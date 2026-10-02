@@ -43,7 +43,8 @@ FUZZTIME ?= 10s
 FUZZ_TARGETS := ./internal/app:FuzzSanitize ./internal/sendmail:FuzzParse ./internal/message:FuzzRead \
 	./internal/message:FuzzHTMLToText ./internal/text:FuzzEscapeTelegram ./internal/text:FuzzEscapeChat \
 	./internal/text:FuzzCutTelegramHTML \
-	./internal/render:FuzzFit ./internal/backend/telegram:FuzzTelegramText ./internal/spool:FuzzDecode
+	./internal/render:FuzzFit ./internal/backend/telegram:FuzzTelegramText ./internal/spool:FuzzDecode \
+	./internal/config:FuzzGlob
 
 # setgid-e2e installs the binary setgid inside a throwaway container and
 # needs docker; the image is testdata/setgid-e2e/Dockerfile.

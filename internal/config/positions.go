@@ -2,6 +2,7 @@ package config
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/pelletier/go-toml/v2/unstable"
@@ -14,12 +15,18 @@ const keySeparator = "\x1f"
 // keyIndex maps every key path present in the document to the position of
 // its first appearance. Validation needs it twice: to tell a key that is
 // set from one left at its zero value, and to report where a bad key is.
+// The path of a key in an element of an array of tables carries the index
+// of the element after the name of the array (see elementPath), so that
+// each element has its own keys.
 type keyIndex map[string]unstable.Position
 
 // indexKeys walks the document with the go-toml parser. The document has
 // already been decoded, so a parse error here is unexpected.
 func indexKeys(doc []byte) (keyIndex, error) {
 	keys := keyIndex{}
+	// elements counts the elements of each array of tables, by the path
+	// of the array.
+	elements := map[string]int{}
 	var parser unstable.Parser
 	parser.Reset(doc)
 	var table []string
@@ -27,13 +34,54 @@ func indexKeys(doc []byte) (keyIndex, error) {
 		expr := parser.Expression()
 		switch expr.Kind {
 		case unstable.Table, unstable.ArrayTable:
-			table = keyParts(expr.Key())
-			keys.record(&parser, table, expr.Key())
+			table = keys.recordTable(&parser, expr, elements)
 		case unstable.KeyValue:
 			keys.recordKeyValue(&parser, table, expr)
 		}
 	}
 	return keys, parser.Error()
+}
+
+// recordTable records the parts of a table header and returns the path of
+// the table. A header of an array of tables adds an element to the array
+// and the index of the element to the path; any other header that runs
+// through an array, such as [[a.b]] or [a.c] after [[a]], continues its
+// last element, as TOML defines.
+func (k keyIndex) recordTable(parser *unstable.Parser, expr *unstable.Node, elements map[string]int) []string {
+	var path []string
+	key := expr.Key()
+	for key.Next() {
+		pos := parser.Shape(key.Node().Raw).Start
+		path = append(path, string(key.Node().Data))
+		k.recordFirst(path, pos)
+		joined := strings.Join(path, keySeparator)
+		count, isArray := elements[joined]
+		switch {
+		case expr.Kind == unstable.ArrayTable && key.IsLast():
+			elements[joined] = count + 1
+			path = append(path, strconv.Itoa(count))
+		case isArray:
+			path = append(path, strconv.Itoa(count-1))
+		default:
+			continue
+		}
+		k.recordFirst(path, pos)
+	}
+	return path
+}
+
+// recordFirst stores pos for path unless the path is known.
+func (k keyIndex) recordFirst(path []string, pos unstable.Position) {
+	joined := strings.Join(path, keySeparator)
+	if _, seen := k[joined]; !seen {
+		k[joined] = pos
+	}
+}
+
+// elementPath returns the path of key in the index-th element, from 0, of
+// the array of tables named array.
+func elementPath(array string, index int, key ...string) []string {
+	return append([]string{array, strconv.Itoa(index)}, key...)
 }
 
 func (k keyIndex) recordKeyValue(parser *unstable.Parser, table []string, kv *unstable.Node) {
@@ -60,10 +108,7 @@ func (k keyIndex) record(parser *unstable.Parser, path []string, key unstable.It
 	}
 	head := len(path) - len(positions)
 	for i, pos := range positions {
-		joined := strings.Join(path[:head+i+1], keySeparator)
-		if _, seen := k[joined]; !seen {
-			k[joined] = pos
-		}
+		k.recordFirst(path[:head+i+1], pos)
 	}
 }
 
