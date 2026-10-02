@@ -195,7 +195,37 @@ func TestLoadRejects(t *testing.T) {
 		{
 			name: "http-preset-missing",
 			doc:  "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\n",
-			want: `:1:9: target "hook": key "preset" is required`,
+			want: `:1:9: target "hook": one of keys "preset", "template" and "template_file" is required`,
+		},
+		{
+			name: "http-preset-and-template",
+			doc:  "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\ntemplate = \"{}\"\npreset = \"generic-json\"\n",
+			want: `:5:1: target "hook": key "preset" and a template are mutually exclusive`,
+		},
+		{
+			name: "template-and-template-file",
+			doc:  "[target.tg]\ntype = \"telegram\"\ntoken = \"1:a\"\nchat_id = 1\ntemplate = \"x\"\ntemplate_file = \"/etc/t.tmpl\"\n",
+			want: `:6:1: target "tg": keys "template" and "template_file" are mutually exclusive`,
+		},
+		{
+			name: "template-blank",
+			doc:  "[target.tg]\ntype = \"telegram\"\ntoken = \"1:a\"\nchat_id = 1\ntemplate = \" \\n\"\n",
+			want: `:5:1: target "tg": value of key "template" must not be blank`,
+		},
+		{
+			name: "template-file-relative",
+			doc:  "[target.dc]\ntype = \"discord\"\nurl = \"https://example.org\"\ntemplate_file = \"t.tmpl\"\n",
+			want: `:4:1: target "dc": key "template_file" must be an absolute path`,
+		},
+		{
+			name: "template-file-missing",
+			doc:  "[target.dc]\ntype = \"discord\"\nurl = \"https://example.org\"\ntemplate_file = \"/etc/t.tmpl\"\n",
+			want: `:4:1: target "dc": template_file: open etc/t.tmpl: file does not exist`,
+		},
+		{
+			name: "exec-template",
+			doc:  "[target.run]\ntype = \"exec\"\nargv = [\"/usr/local/bin/notify\"]\ntemplate = \"x\"\n",
+			want: `:4:1: target "run": key "template" is not valid for type "exec"`,
 		},
 		{
 			name: "invalid-name",
@@ -416,6 +446,31 @@ func TestLoadRejectsBadURLFileContent(t *testing.T) {
 		if err == nil || err.Error() != want {
 			t.Errorf("url_file content %q: error %v, want %s", content, err, want)
 		}
+	}
+}
+
+// TestLoadTemplates pins that every type but exec takes a template, from
+// the file itself or from template_file, and that an http target with a
+// template needs no preset.
+func TestLoadTemplates(t *testing.T) {
+	doc := "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\ntemplate = \"{{ toJson .Subject }}\"\n" +
+		"[target.tg]\ntype = \"telegram\"\ntoken = \"1:a\"\nchat_id = 1\ntemplate_file = \"/etc/slendmail.d/tg.tmpl\"\n" +
+		"[target.bus]\ntype = \"shoutrrr\"\nurl = \"gotify://example.org/token\"\ntemplate = \"{{ .Body }}\"\n"
+	cfg, err := load(t, doc, fstest.MapFS{"etc/slendmail.d/tg.tmpl": {Data: []byte("<b>{{ .Subject | tgHTML }}</b>\n\n")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]string{"hook": "{{ toJson .Subject }}", "tg": "<b>{{ .Subject | tgHTML }}</b>\n", "bus": "{{ .Body }}"} {
+		if got := cfg.Targets[name].Template; got != want {
+			t.Errorf("%s: Template = %q, want %q", name, got, want)
+		}
+	}
+	if cfg.Targets["hook"].Preset != "" {
+		t.Errorf("Preset = %q", cfg.Targets["hook"].Preset)
+	}
+	_, err = load(t, "[target.tg]\ntype = \"telegram\"\ntoken = \"1:a\"\nchat_id = 1\ntemplate_file = \"/t.tmpl\"\n", fstest.MapFS{"t.tmpl": {Data: []byte("\n")}})
+	if want := configPath + `:5:1: target "tg": file of key "template_file" is blank`; err == nil || err.Error() != want {
+		t.Errorf("blank template_file: %v, want %s", err, want)
 	}
 }
 

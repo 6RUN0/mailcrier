@@ -237,28 +237,35 @@ type Target struct {
 	// Timeout bounds one run of the exec target; zero when the file sets
 	// none, which leaves the default to the target.
 	Timeout Duration `toml:"timeout"`
+	// Template is the text/template source that replaces the built-in
+	// template of the target. After Load it also holds the content of
+	// TemplateFile, without the line break that ends the file.
+	Template string `toml:"template"`
+	// TemplateFile is an absolute path to a file holding the template.
+	TemplateFile string `toml:"template_file"`
 }
 
 // allowedKeys lists, per target type, the keys it uses besides "type". A
 // type lists only what its implementation honours, so that a key it would
 // ignore rejects the file instead: the http target sends no files, so the
 // keys about files and the file of a long text are not among its keys.
+// The exec target hands on the message, not a text, so it takes no
+// template.
 var allowedKeys = map[string][]string{
-	TypeTelegram: {"token", "token_file", "chat_id", "message_thread_id", "disable_notification", "on_long", "long_file", "max_text", "max_lines", "max_file_size"},
-	TypeDiscord:  {"url", "url_file", "on_long", "long_file", "max_text", "max_lines", "max_file_size"},
-	TypeSlack:    {"token", "token_file", "channel", "on_long", "long_file", "max_text", "max_lines", "max_file_size"},
-	TypeNtfy:     {"url", "url_file", "on_long", "long_file", "max_text", "max_lines", "max_file_size"},
-	TypeHTTP:     {"url", "url_file", "preset", "method", "username", "channel", "headers", "max_text", "max_lines"},
+	TypeTelegram: {"token", "token_file", "chat_id", "message_thread_id", "disable_notification", "on_long", "long_file", "max_text", "max_lines", "max_file_size", "template", "template_file"},
+	TypeDiscord:  {"url", "url_file", "on_long", "long_file", "max_text", "max_lines", "max_file_size", "template", "template_file"},
+	TypeSlack:    {"token", "token_file", "channel", "on_long", "long_file", "max_text", "max_lines", "max_file_size", "template", "template_file"},
+	TypeNtfy:     {"url", "url_file", "on_long", "long_file", "max_text", "max_lines", "max_file_size", "template", "template_file"},
+	TypeHTTP:     {"url", "url_file", "preset", "method", "username", "channel", "headers", "max_text", "max_lines", "template", "template_file"},
 	TypeExec:     {"argv", "timeout"},
-	TypeShoutrrr: {"url", "url_file"},
+	TypeShoutrrr: {"url", "url_file", "template", "template_file"},
 }
 
 // requiredKeys lists, per target type, the keys it cannot work without,
-// besides the token or URL pairs.
+// besides the token or URL pairs and the body of the http target.
 var requiredKeys = map[string][]string{
 	TypeTelegram: {"chat_id"},
 	TypeSlack:    {"channel"},
-	TypeHTTP:     {"preset"},
 	TypeExec:     {"argv"},
 }
 
@@ -330,6 +337,10 @@ func Load(fsys fs.FS, path string) (*Config, error) {
 		cfg.Targets[name] = target
 	}
 	if err := readSecretFiles(fsys, &cfg, keys); err != nil {
+		err.Path = path
+		return nil, err
+	}
+	if err := readTemplateFiles(fsys, &cfg, keys); err != nil {
 		err.Path = path
 		return nil, err
 	}
@@ -494,7 +505,18 @@ func validateTarget(name string, target Target, keys keyIndex) *Error {
 			return fail("", "one of keys %q and %q is required", pair[0], pair[1])
 		}
 	}
-	for _, file := range []struct{ key, path string }{{"token_file", target.TokenFile}, {"url_file", target.URLFile}} {
+	hasTemplate := keys.has("target", name, "template") || keys.has("target", name, "template_file")
+	switch {
+	case keys.has("target", name, "template") && keys.has("target", name, "template_file"):
+		return fail("template_file", "keys %q and %q are mutually exclusive", "template", "template_file")
+	case keys.has("target", name, "template") && strings.TrimSpace(target.Template) == "":
+		return fail("template", "value of key %q must not be blank", "template")
+	case target.Type == TypeHTTP && hasTemplate && keys.has("target", name, "preset"):
+		return fail("preset", "key %q and a template are mutually exclusive", "preset")
+	case target.Type == TypeHTTP && !hasTemplate && !keys.has("target", name, "preset"):
+		return fail("", "one of keys %q, %q and %q is required", "preset", "template", "template_file")
+	}
+	for _, file := range []struct{ key, path string }{{"token_file", target.TokenFile}, {"url_file", target.URLFile}, {"template_file", target.TemplateFile}} {
 		if keys.has("target", name, file.key) && !strings.HasPrefix(file.path, "/") {
 			return fail(file.key, "key %q must be an absolute path", file.key)
 		}
@@ -599,6 +621,29 @@ func readSecretFiles(fsys fs.FS, cfg *Config, keys keyIndex) *Error {
 				return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("target %q: %s: %v", name, file.key, err)}
 			}
 			*file.dst = strings.TrimSpace(string(content))
+		}
+		cfg.Targets[name] = target
+	}
+	return nil
+}
+
+// readTemplateFiles sets Template from template_file. One line break at
+// the end is dropped, as an editor adds it, which a template string in
+// the file itself would not have; the rest is kept, white space included.
+func readTemplateFiles(fsys fs.FS, cfg *Config, keys keyIndex) *Error {
+	for _, name := range cfg.TargetNames() {
+		target := cfg.Targets[name]
+		if target.TemplateFile == "" {
+			continue
+		}
+		pos := keys.position("target", name, "template_file")
+		content, err := fs.ReadFile(fsys, strings.TrimPrefix(target.TemplateFile, "/"))
+		if err != nil {
+			return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("target %q: template_file: %v", name, err)}
+		}
+		target.Template = strings.TrimSuffix(string(content), "\n")
+		if strings.TrimSpace(target.Template) == "" {
+			return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("target %q: file of key %q is blank", name, "template_file")}
 		}
 		cfg.Targets[name] = target
 	}

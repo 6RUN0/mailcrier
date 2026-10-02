@@ -56,7 +56,7 @@ T-ADJ-54	high	todo	Package tests: sendmail shim installed, newaliases is a no-op
 T-ADJ-55	critical	done	A header without a space after the colon is parsed; input without headers becomes the body	https://github.com/marionauta/imsendmail/blob/ac7f0f0e2c87/src/root.zig#L125-L202
 T-ADJ-56	high	todo	MarkdownV2 escaping covers the full special set including the backslash	https://github.com/marionauta/imsendmail/blob/ac7f0f0e2c87/src/root.zig#L257-L278
 T-ADJ-57	low	todo	Recipient 1234@telegram maps to chat 1234, @name@telegram to @name, @telegram is an error, other domains are plain addresses	https://github.com/marionauta/imsendmail/blob/ac7f0f0e2c87/src/root.zig#L317-L336
-T-ADJ-58	high	todo	A template producing an empty string falls back to the built-in template with a warning	https://github.com/nadiamoe/sendmail-telegram/blob/b76fa85b4572/sendmail-telegram.go#L115-L117
+T-ADJ-58	high	done	A template producing an empty string falls back to the built-in template with a warning	https://github.com/nadiamoe/sendmail-telegram/blob/b76fa85b4572/sendmail-telegram.go#L115-L117
 T-ADJ-59	high	todo	Discord: an empty message is an error, a multipart request with files is one request, a failed first batch is reported	https://github.com/nicholas-fedor/shoutrrr/blob/c19db02256c2/pkg/services/chat/discord/discord_service_test.go#L72-L136
 T-ADJ-60	high	todo	Telegram: text over the limit is handled before sending rather than rejected by the API	https://github.com/nicholas-fedor/shoutrrr/blob/c19db02256c2/pkg/services/chat/telegram/telegram_test.go#L47-L64
 T-ADJ-61	high	done	HTML to text drops script, style, iframe, object, embed, svg, math, noscript and title with their content, also after a self-closing tag, drops javascript: links but keeps their text, and keeps the text of formatting tags	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_parser.py#L103-L305
@@ -168,15 +168,16 @@ T-LIM-18	low	todo	Optional split mode sends numbered parts in order with the suf
 T-LIM-19	high	done	With max_lines the first N lines go as text and the rest as a file	https://github.com/caronc/apprise/blob/68f0eaf/apprise/plugins/base.py#L1216-L1218
 T-TPL-01	critical	done	Each built-in template has golden output for the cronie, smartd and mdadm fixtures	https://github.com/cronie-crond/cronie/blob/59a3d15/src/do_command.c
 T-TPL-02	critical	done	An empty Subject renders as (no subject) and an empty body still gives non-empty text accepted by the API	https://github.com/YoRyan/mailrise/blob/60d485e/src/mailrise/smtp.py#L129-L133
-T-TPL-03	high	todo	Headers with a dash are reachable from templates case-insensitively; repeated headers give all values	https://github.com/nadiamoe/sendmail-telegram/blob/b76fa85b4572/sendmail-telegram.go#L96-L99
-T-TPL-04	critical	todo	A template parse error is a configuration error (exit 78), found at startup and by --check-config	https://github.com/binwiederhier/ntfy/blob/6560158/docs/publish.md
-T-TPL-05	critical	todo	A template execution error falls back to the built-in template with a warning and the call exits 0	https://github.com/prometheus/alertmanager/blob/6a79679/template/template.go#L321-L324
-T-TPL-06	high	todo	Rendering has a timeout and an output size limit; a huge body cannot hang the process	https://github.com/binwiederhier/ntfy/blob/6560158/docs/publish.md#L3226-L3233
+T-TPL-03	high	done	Headers with a dash are reachable from templates case-insensitively; repeated headers give all values	https://github.com/nadiamoe/sendmail-telegram/blob/b76fa85b4572/sendmail-telegram.go#L96-L99
+T-TPL-04	critical	done	A template parse error is a configuration error (exit 78), found at startup and by a queue run (-q)	https://github.com/binwiederhier/ntfy/blob/6560158/docs/publish.md
+T-TPL-05	critical	done	A template execution error falls back to the built-in template with a warning and the call exits 0	https://github.com/prometheus/alertmanager/blob/6a79679/template/template.go#L321-L324
+T-TPL-06	high	done	Rendering has a timeout and an output size limit; a huge body cannot hang the process	https://github.com/binwiederhier/ntfy/blob/6560158/docs/publish.md#L3226-L3233
 T-TPL-07	critical	done	toJson on a body with quotes, backslashes, control characters and invalid UTF-8 yields valid JSON	https://github.com/prometheus/alertmanager/blob/6a79679/template/template.go#L366
-T-TPL-08	high	todo	truncate n keeps n runes including a three-dot ASCII marker; no marker when n is 3 or less	https://github.com/prometheus/alertmanager/blob/6a79679/notify/util.go#L106-L117
-T-TPL-09	low	todo	join takes the separator first and works in pipelines over strings and addresses	https://github.com/prometheus/alertmanager/blob/6a79679/template/template.go#L294-L312
-T-TPL-10	low	todo	date and tz format the message date in a zone; an unknown zone is an execution error	https://github.com/prometheus/alertmanager/blob/6a79679/template/template.go#L335-L345
+T-TPL-08	high	done	truncate n keeps n runes including a three-dot ASCII marker; no marker when n is 3 or less	https://github.com/prometheus/alertmanager/blob/6a79679/notify/util.go#L106-L117
+T-TPL-09	low	done	join takes the separator first and works in pipelines over strings and addresses	https://github.com/prometheus/alertmanager/blob/6a79679/template/template.go#L294-L312
+T-TPL-10	low	done	date and tz format the message date in a zone; an unknown zone is an execution error	https://github.com/prometheus/alertmanager/blob/6a79679/template/template.go#L335-L345
 T-TPL-11	critical	done	Bcc never reaches template data, even with -t	https://github.com/marlam/msmtp/blob/755df9f0d3ac/tests/test-header-handling.sh#L35-L55
 T-TPL-12	critical	done	A bot token or webhook URL never appears in logs or exit messages; it is replaced by ***	https://github.com/KostyaEsmukov/smtp_to_telegram/blob/279f5fc/smtp_to_telegram.go#L644-L646
 T-TPL-13	critical	done	The default MarkdownV2 template escapes the body, so dots and dashes do not cause an API error	https://github.com/nadiamoe/sendmail-telegram/blob/b76fa85b4572/sendmail-telegram.go
 T-TPL-14	critical	done	An ISO-8859-1 base64 body and a Q-encoded ISO-8859-1 Subject reach the template as UTF-8	https://github.com/KostyaEsmukov/smtp_to_telegram/blob/279f5fc/smtp_to_telegram_test.go#L641
+T-TPL-15	critical	todo	--check-config reports a template parse error with the target and exits 78	https://github.com/binwiederhier/ntfy/blob/6560158/docs/publish.md

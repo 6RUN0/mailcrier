@@ -501,6 +501,9 @@ func logResult(log *slog.Logger, r delivery.Result) {
 	if r.IsTruncated {
 		log.Info("text truncated for target", "target", r.TargetID)
 	}
+	if r.TemplateErr != nil {
+		log.Warn("template failed, built-in used", "target", r.TargetID, "err", r.TemplateErr)
+	}
 	switch {
 	case r.TextRejected != nil && r.Status == delivery.OK:
 		log.Warn("text rejected, sent as file", "target", r.TargetID, "err", r.TextRejected)
@@ -611,7 +614,12 @@ func buildTargets(cfg *config.Config, client *http.Client, hooks hook.Process) (
 					fields[key] = value
 				}
 			}
-			format = presetFormats[target.Preset]
+			// A template without preset writes a JSON body, which Fit
+			// cuts as strictly as that of generic-json.
+			format = text.FormatGenericJSON
+			if target.Preset != "" {
+				format = presetFormats[target.Preset]
+			}
 			sender = webhook.New(webhook.Options{URL: target.URL, Method: target.Method, Format: format, Fields: fields, Headers: target.Headers, Client: client})
 		case config.TypeExec:
 			// The hook gets the message, not the text; the plain template
@@ -628,12 +636,19 @@ func buildTargets(cfg *config.Config, client *http.Client, hooks hook.Process) (
 		default:
 			return nil, fmt.Errorf("target %q: type %q is not implemented", name, target.Type)
 		}
-		tmpl, err := render.Builtin(format)
+		builtin, err := render.Builtin(format)
 		if err != nil {
 			return nil, fmt.Errorf("target %q: %w", name, err)
 		}
+		tmpl, fallback := builtin, (*render.Template)(nil)
+		if target.Template != "" {
+			if tmpl, err = render.Parse(name, target.Template, format); err != nil {
+				return nil, fmt.Errorf("target %q: %w", name, err)
+			}
+			fallback = builtin
+		}
 		targets = append(targets, delivery.Target{
-			ID: name, Sender: sender, Template: tmpl, OnLong: onLongPolicies[target.OnLong], LongFile: longFiles[target.LongFile],
+			ID: name, Sender: sender, Template: tmpl, Fallback: fallback, OnLong: onLongPolicies[target.OnLong], LongFile: longFiles[target.LongFile],
 			MaxText: target.MaxText, MaxLines: target.MaxLines, MaxFileSize: target.MaxFileSize,
 		})
 	}

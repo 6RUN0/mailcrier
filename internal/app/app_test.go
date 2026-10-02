@@ -238,7 +238,7 @@ func TestRunRejectsConfiguration(t *testing.T) {
 		{"no-targets", "", "no targets configured"},
 		{"ntfy-without-topic", "[target.nt]\ntype = \"ntfy\"\nurl = \"https://ntfy.example.org/\"\n", `target \"nt\": URL has no topic`},
 		{"shoutrrr-unknown-service", "[target.bus]\ntype = \"shoutrrr\"\nurl = \"nosuch://example.org\"\n", shoutrrrRejection},
-		{"preset-missing", "[target.mm]\ntype = \"http\"\nurl = \"http://127.0.0.1:1\"\n", `key \"preset\" is required`},
+		{"preset-missing", "[target.mm]\ntype = \"http\"\nurl = \"http://127.0.0.1:1\"\n", `one of keys \"preset\", \"template\" and \"template_file\" is required`},
 	}
 	for _, tc := range cases {
 		t.Run("T-ADJ-28/"+tc.name, func(t *testing.T) {
