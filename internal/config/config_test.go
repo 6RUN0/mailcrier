@@ -847,3 +847,67 @@ func TestLoadRejectsRules(t *testing.T) {
 		})
 	}
 }
+
+// telegramBase declares the telegram target tg beside the http target a.
+const telegramBase = "[target.tg]\ntype = \"telegram\"\ntoken = \"1:a\"\nchat_id = 1\n\n" +
+	"[target.a]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org/a\"\n"
+
+// TestLoadDirectChats pins telegram_direct_chats normalized and the
+// default of telegram_direct_max.
+func TestLoadDirectChats(t *testing.T) {
+	cfg, err := load(t, "[general]\ntelegram_direct = \"tg\"\ntelegram_direct_chats = [1234, -100123, \"@Ops_Channel\"]\n\n"+telegramBase, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(cfg.General.TelegramDirectChats, ","); got != "1234,-100123,@ops_channel" || cfg.General.TelegramDirectMax != DefaultTelegramDirectMax {
+		t.Errorf("chats %s, max %d", got, cfg.General.TelegramDirectMax)
+	}
+	cfg, err = load(t, "[general]\ntelegram_direct = \"tg\"\ntelegram_direct_chats = [1]\ntelegram_direct_max = 3\n\n"+telegramBase, nil)
+	if err != nil || cfg.General.TelegramDirectMax != 3 {
+		t.Errorf("Load() = %v, max %v", err, cfg)
+	}
+}
+
+// TestLoadRejectsDirectChats pins the errors of the telegram_direct keys.
+func TestLoadRejectsDirectChats(t *testing.T) {
+	cases := []struct {
+		name, general, want string
+	}{
+		{"not-a-telegram-target", "telegram_direct = \"a\"\ntelegram_direct_chats = [1]\n", `:2:1: value of key "telegram_direct" must name a target of type "telegram"`},
+		{"unknown-target", "telegram_direct = \"nosuch\"\ntelegram_direct_chats = [1]\n", `:2:1: value of key "telegram_direct" must name a target of type "telegram"`},
+		{"chats-missing", "telegram_direct = \"tg\"\n", `:2:1: key "telegram_direct" needs key "telegram_direct_chats"`},
+		{"chats-empty", "telegram_direct = \"tg\"\ntelegram_direct_chats = []\n", `:3:1: value of key "telegram_direct_chats" must not be empty`},
+		{"chats-without-direct", "telegram_direct_chats = [1]\n", `:2:1: key "telegram_direct_chats" needs key "telegram_direct"`},
+		{"max-without-direct", "telegram_direct_max = 5\n", `:2:1: key "telegram_direct_max" needs key "telegram_direct"`},
+		{"max-zero", "telegram_direct = \"tg\"\ntelegram_direct_chats = [1]\ntelegram_direct_max = 0\n", `:4:1: value of key "telegram_direct_max" must be positive`},
+		{"chat-string-of-digits", "telegram_direct = \"tg\"\ntelegram_direct_chats = [1, \"1234\"]\n", `:3:1: element 2 of key "telegram_direct_chats" must be an integer or an @username`},
+		{"chat-float", "telegram_direct = \"tg\"\ntelegram_direct_chats = [1.5]\n", `:3:1: element 1 of key "telegram_direct_chats" must be an integer or an @username`},
+		{"chat-bool", "telegram_direct = \"tg\"\ntelegram_direct_chats = [true]\n", `:3:1: element 1 of key "telegram_direct_chats" must be an integer or an @username`},
+		{"chat-array", "telegram_direct = \"tg\"\ntelegram_direct_chats = [[1]]\n", `:3:1: element 1 of key "telegram_direct_chats" must be an integer or an @username`},
+		{"chat-short-username", "telegram_direct = \"tg\"\ntelegram_direct_chats = [\"@abc\"]\n", `:3:1: element 1 of key "telegram_direct_chats" must be an integer or an @username`},
+		{"chat-repeated", "telegram_direct = \"tg\"\ntelegram_direct_chats = [\"@Ops_Channel\", \"@ops_channel\"]\n", `:3:1: element 2 of key "telegram_direct_chats" repeats a chat`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := load(t, "[general]\n"+tc.general+"\n"+telegramBase, nil)
+			if err == nil {
+				t.Fatal("Load() succeeded")
+			}
+			if got, want := err.Error(), configPath+tc.want; got != want {
+				t.Errorf("Load() error\n got  %s\n want %s", got, want)
+			}
+		})
+	}
+}
+
+// TestLoadRejectsInlineRules pins the position of an error in rules
+// written as an inline array: its elements are not indexed, so the error
+// points at the key of the array, with the number of the rule right.
+func TestLoadRejectsInlineRules(t *testing.T) {
+	doc := "route = [\n  { targets = [\"a\"] },\n  { subject_regex = '(MARKER', targets = [\"a\"] },\n]\n\n" + twoHTTPTargets
+	_, err := load(t, doc, nil)
+	want := configPath + `:1:1: route 2: value of key "subject_regex" is not a valid expression: missing closing )`
+	if err == nil || err.Error() != want {
+		t.Errorf("Load() error\n got  %v\n want %s", err, want)
+	}
+}

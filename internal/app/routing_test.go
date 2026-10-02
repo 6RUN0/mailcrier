@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/6RUN0/slendmail/internal/config"
 	"github.com/6RUN0/slendmail/internal/delivery"
 	"github.com/6RUN0/slendmail/internal/route"
 	"github.com/6RUN0/slendmail/internal/spool"
@@ -321,5 +322,99 @@ func TestRouteHeldWithoutRules(t *testing.T) {
 	names, v, err := q.routeHeld(nil, &spool.Entry{}, func() ([]byte, error) { return nil, errors.New("unreadable") })
 	if err != nil || v != deliverTo || !slices.Equal(names, []string{"a", "b"}) {
 		t.Errorf("routeHeld() = %v, %v, %v; want every target", names, v, err)
+	}
+}
+
+// TestHeldUnreadable pins a held message that the spool cannot read while
+// rules need its subject: it stays in hold/ with an error, and -q exits 74.
+func TestHeldUnreadable(t *testing.T) {
+	c := newSpoolCase(t)
+	c.config = "[target.a]\ntype = \"http\"\n"
+	c.sendInput("To: root\nSubject: x\n\nb\n")
+	id := c.ids(spool.HoldDir)[0]
+	// A directory opens and locks like the file, and every read fails.
+	eml := filepath.Join(c.dir, spool.HoldDir, id+".eml")
+	if err := os.Remove(eml); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(eml, 0o770); err != nil {
+		t.Fatal(err)
+	}
+	c.config = routeRootToA
+	code, inv := c.queueRun(serviceCaller)
+	if code != 74 || !strings.Contains(inv.output(), `level=ERROR msg="held message unreadable" id=`+id) ||
+		len(c.service.got("a"))+len(c.service.got("b")) != 0 || len(c.ids(spool.HoldDir)) != 1 {
+		t.Errorf("-q = %d, hold %v; output:\n%s", code, c.ids(spool.HoldDir), inv.output())
+	}
+}
+
+// TestRouteHeldReadError pins that routeHeld tells an error of reading the
+// spool from one of parsing, which release counts differently.
+func TestRouteHeldReadError(t *testing.T) {
+	q := &queue{router: newRouter(&config.Config{Routes: []config.Route{{Targets: []string{"a"}}}}), targets: map[string]delivery.Target{"a": {ID: "a"}}}
+	_, _, err := q.routeHeld(nil, &spool.Entry{}, func() ([]byte, error) { return nil, errors.New("EIO") })
+	if !errors.Is(err, errHeldRead) {
+		t.Errorf("routeHeld() error = %v, want %v", err, errHeldRead)
+	}
+}
+
+// TestReleaseKeepsHeldCopy pins that a held entry of the default spool
+// whose copy a run killed before the removal already put into hold/ here
+// is only removed there, and the copy stays.
+func TestReleaseKeepsHeldCopy(t *testing.T) {
+	c := newSpoolCase(t)
+	own := t.TempDir()
+	c.config = "[spool]\ndir = \"" + own + "\"\n\n[target.a]\ntype = \"http\"\n"
+	c.sendInput("To: alice\nSubject: x\n\nb\n")
+	def, err := spool.Open(c.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := c.ids(spool.HoldDir)[0]
+	rec, err := def.Lock(spool.HoldDir, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := rec.Message()
+	entry := *rec.Entry
+	_ = rec.Close()
+	sp, err := spool.Open(own)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry.Reason = reasonNoRoute
+	copied, err := sp.Create(spool.HoldDir, &entry, raw, spool.Quota{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = copied.Close()
+	c.config = "[spool]\ndir = \"" + own + "\"\n\n" + routeRootToA
+	code, inv := c.queueRun(serviceCaller)
+	if code != 0 || !strings.Contains(inv.output(), `msg="held message already released" id=`+id) || strings.Contains(inv.output(), "WARN") {
+		t.Fatalf("-q = %d; output:\n%s", code, inv.output())
+	}
+	if held, _ := sp.List(spool.HoldDir); len(c.ids(spool.HoldDir)) != 0 || !slices.Equal(held, []string{id}) {
+		t.Errorf("default hold/ %v, own hold/ %v, want the copy here only", c.ids(spool.HoldDir), held)
+	}
+}
+
+// TestDirectWarningsOnceForHeld pins that the warnings about direct
+// addresses come when the message is received, and a queue run that
+// routes the held message again logs them at debug.
+func TestDirectWarningsOnceForHeld(t *testing.T) {
+	c := newSpoolCase(t)
+	c.config = "[general]\ntelegram_direct = \"tg\"\ntelegram_direct_chats = [1234]\n\n" +
+		"[target.tg]\ntype = \"telegram\"\ntoken = \"1:a\"\nchat_id = 1\n\n" + twoTargets +
+		"\n[[route]]\nrecipient = \"backup\"\ntargets = [\"a\"]\n"
+	code, inv := c.sendInput("Subject: x\n\nb\n", "abc@telegram", "999@telegram")
+	if code != 64 || !strings.Contains(inv.output(), `level=WARN msg="direct address invalid" count=1`) ||
+		!strings.Contains(inv.output(), `level=WARN msg="direct chat not allowed" count=1`) {
+		t.Fatalf("Run() = %d; output:\n%s", code, inv.output())
+	}
+	code, inv = c.queueRun(serviceCaller)
+	if code != 0 || strings.Contains(inv.output(), "WARN") ||
+		!strings.Contains(inv.output(), `level=DEBUG msg="direct address invalid"`) ||
+		!strings.Contains(inv.output(), `level=DEBUG msg="direct chat not allowed"`) {
+		t.Errorf("-q = %d; output:\n%s", code, inv.output())
 	}
 }

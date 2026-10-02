@@ -50,6 +50,9 @@ type queue struct {
 	// router applies the rules of the configuration; nil when it was
 	// rejected.
 	router *route.Router
+	// direct makes the targets of direct chats; nil without
+	// telegram_direct.
+	direct *directChats
 	// deadline bounds the delivery of one message; notices fill the
 	// template data.
 	deadline time.Duration
@@ -346,7 +349,9 @@ func (q *queue) release(rec *spool.Record) bool {
 	names, v, err := q.routeHeld(log, rec.Entry, rec.Message)
 	switch {
 	case err != nil:
-		q.hasIOError = true
+		// As in deliverEntry: a spool that cannot be read makes -q exit
+		// 74, a message that does not parse does not.
+		q.hasIOError = q.hasIOError || errors.Is(err, errHeldRead)
 		log.Error("held message unreadable", "err", err)
 		return false
 	case v == suppressed:
@@ -511,7 +516,7 @@ func (q *queue) deliverEntry(ctx context.Context, rec *spool.Record) bool {
 	isChanged := false
 	for _, name := range sortedTargets(e) {
 		state := e.Targets[name]
-		target, ok := q.targets[name]
+		target, ok := q.target(name)
 		switch {
 		case state.State != spool.Pending:
 		case !ok:

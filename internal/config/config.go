@@ -37,6 +37,11 @@ const (
 	DefaultDeadline    = 30 * time.Second
 )
 
+// DefaultTelegramDirectMax bounds the direct chats of one message when the
+// file sets no telegram_direct_max: every copy goes out with the token of
+// one bot, and a 429 for a copy does not hold back the bot's own target.
+const DefaultTelegramDirectMax = 10
+
 // Defaults of the [spool] table. The run budgets bound how long a call
 // works on the queue: a caller such as cron waits for the mailer, so the
 // run that follows the own message of a call is short and small, and the
@@ -149,6 +154,18 @@ type General struct {
 	HTTPTimeout Duration `toml:"http_timeout"`
 	// Deadline bounds the delivery of the message to all targets.
 	Deadline Duration `toml:"deadline"`
+	// TelegramDirect names the telegram target whose copies deliver to
+	// the recipients <chat>@telegram; empty for none.
+	TelegramDirect string `toml:"telegram_direct"`
+	// TelegramDirectChats are the chats a direct recipient may name, set
+	// by Load from TelegramDirectChatsValue: numeric ids without leading
+	// zeros, @usernames in lower case.
+	TelegramDirectChats []string `toml:"-"`
+	// TelegramDirectChatsValue is telegram_direct_chats as written:
+	// integers and @username strings.
+	TelegramDirectChatsValue []any `toml:"telegram_direct_chats"`
+	// TelegramDirectMax bounds the direct chats of one message.
+	TelegramDirectMax int `toml:"telegram_direct_max"`
 }
 
 // Spool is the [spool] table.
@@ -377,6 +394,10 @@ func Load(fsys fs.FS, path string) (*Config, error) {
 		return nil, err
 	}
 	if err := setChatIDs(&cfg, keys); err != nil {
+		err.Path = path
+		return nil, err
+	}
+	if err := setDirectChats(&cfg, keys); err != nil {
 		err.Path = path
 		return nil, err
 	}
@@ -832,6 +853,62 @@ func setChatIDs(cfg *Config, keys keyIndex) *Error {
 			return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("target %q: value of key %q must be an integer or a string that is not blank", name, "chat_id")}
 		}
 		cfg.Targets[name] = target
+	}
+	return nil
+}
+
+// directUsername matches an @username in telegram_direct_chats.
+var directUsername = regexp.MustCompile(`^@[A-Za-z0-9_]{5,32}$`)
+
+// setDirectChats checks the telegram_direct keys and sets
+// TelegramDirectChats. A chat is an integer or an @username: a string of
+// digits would let one chat pass under two spellings, which the list is
+// there to prevent.
+func setDirectChats(cfg *Config, keys keyIndex) *Error {
+	general := &cfg.General
+	fail := func(key, format string, args ...any) *Error {
+		pos := keys.position("general", key)
+		return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf(format, args...)}
+	}
+	if !keys.has("general", "telegram_direct") {
+		for _, key := range []string{"telegram_direct_chats", "telegram_direct_max"} {
+			if keys.has("general", key) {
+				return fail(key, "key %q needs key %q", key, "telegram_direct")
+			}
+		}
+		return nil
+	}
+	if base, ok := cfg.Targets[general.TelegramDirect]; !ok || base.Type != TypeTelegram {
+		return fail("telegram_direct", "value of key %q must name a target of type %q", "telegram_direct", TypeTelegram)
+	}
+	if !keys.has("general", "telegram_direct_chats") {
+		return fail("telegram_direct", "key %q needs key %q", "telegram_direct", "telegram_direct_chats")
+	}
+	if len(general.TelegramDirectChatsValue) == 0 {
+		return fail("telegram_direct_chats", "value of key %q must not be empty", "telegram_direct_chats")
+	}
+	for i, value := range general.TelegramDirectChatsValue {
+		var chat string
+		switch value := value.(type) {
+		case int64:
+			chat = strconv.FormatInt(value, 10)
+		case string:
+			if directUsername.MatchString(value) {
+				chat = strings.ToLower(value)
+			}
+		}
+		switch {
+		case chat == "":
+			return fail("telegram_direct_chats", "element %d of key %q must be an integer or an @username", i+1, "telegram_direct_chats")
+		case slices.Contains(general.TelegramDirectChats, chat):
+			return fail("telegram_direct_chats", "element %d of key %q repeats a chat", i+1, "telegram_direct_chats")
+		}
+		general.TelegramDirectChats = append(general.TelegramDirectChats, chat)
+	}
+	if !keys.has("general", "telegram_direct_max") {
+		general.TelegramDirectMax = DefaultTelegramDirectMax
+	} else if general.TelegramDirectMax <= 0 {
+		return fail("telegram_direct_max", "value of key %q must be positive", "telegram_direct_max")
 	}
 	return nil
 }

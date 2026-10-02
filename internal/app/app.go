@@ -229,7 +229,8 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 		return exitConfig
 	}
 	q, openErr := newQueue(d, log, redactor, spoolSettings(d, cfg), targets)
-	q.router, q.deadline, q.notices = newRouter(cfg), cfg.General.Deadline.Duration, notices(cfg.Strings)
+	q.router, q.direct = newRouter(cfg), newDirectChats(cfg, targets, &client)
+	q.deadline, q.notices = cfg.General.Deadline.Duration, notices(cfg.Strings)
 	// The own message goes first, the caller's queue after it, within its
 	// own budget: a failed service must not delay the next message.
 	defer q.drainOwn(ctx)
@@ -288,7 +289,8 @@ func runQueueMode(ctx context.Context, d Deps, log *slog.Logger, newLogger func(
 	}
 	q, openErr := newQueue(d, log, redactor, settings, targets)
 	if cfg != nil {
-		q.router, q.deadline, q.notices = newRouter(cfg), cfg.General.Deadline.Duration, notices(cfg.Strings)
+		q.router, q.direct = newRouter(cfg), newDirectChats(cfg, targets, client)
+		q.deadline, q.notices = cfg.General.Deadline.Duration, notices(cfg.Strings)
 	}
 	if openErr != nil {
 		log.Error("spool not opened", "err", openErr)
@@ -646,11 +648,7 @@ func buildTargets(cfg *config.Config, client *http.Client, hooks hook.Process) (
 		var request *delivery.RequestTemplates
 		switch target.Type {
 		case config.TypeTelegram:
-			sender = telegram.New(telegram.Options{
-				Token: target.Token, ChatID: target.ChatID, MessageThreadID: target.MessageThreadID,
-				DisableNotification: target.DisableNotification, Client: client,
-			})
-			format = text.FormatTelegramHTML
+			sender, format = telegram.New(telegramOptions(target, client)), text.FormatTelegramHTML
 		case config.TypeDiscord:
 			sender, format = discord.New(discord.Options{URL: target.URL, Client: client}), text.FormatDiscord
 		case config.TypeSlack:
@@ -716,6 +714,15 @@ func buildTargets(cfg *config.Config, client *http.Client, hooks hook.Process) (
 		})
 	}
 	return targets, nil
+}
+
+// telegramOptions returns the options of the sender of a telegram target;
+// the copies for direct chats start from them as well.
+func telegramOptions(target config.Target, client *http.Client) telegram.Options {
+	return telegram.Options{
+		Token: target.Token, ChatID: target.ChatID, MessageThreadID: target.MessageThreadID,
+		DisableNotification: target.DisableNotification, Client: client,
+	}
 }
 
 // parseRequest parses the templates of the path, query and headers of an
