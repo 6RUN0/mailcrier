@@ -269,15 +269,7 @@ func runQueueMode(ctx context.Context, d Deps, log *slog.Logger, newLogger func(
 	var targets []delivery.Target
 	configPath, err := selectConfigPath(d, inv, log)
 	if err == nil {
-		cfg, err = config.Load(d.ConfigFS, configPath)
-	}
-	if err == nil {
-		registerSecrets(redactor, cfg)
-		if cfg.General.SyslogTag != config.DefaultSyslogTag {
-			log = newLogger(cfg.General.SyslogTag)
-		}
-		client.Timeout = cfg.General.HTTPTimeout.Duration
-		targets, err = buildTargets(cfg, client, hookProcess(d, log))
+		cfg, targets, log, err = loadTargets(d, log, newLogger, redactor, client, configPath, config.Load)
 	}
 	if err != nil {
 		log.Error("configuration rejected", "err", err)
@@ -306,6 +298,27 @@ func runQueueMode(ctx context.Context, d Deps, log *slog.Logger, newLogger func(
 		return exitConfig
 	}
 	return code
+}
+
+// loadTargets loads the configuration at configPath with load, hands its
+// secrets to redactor, sets the request timeout of client and builds the
+// targets. The logger it returns carries the syslog tag of the
+// configuration once it is loaded, log before. When the targets fail, the
+// loaded configuration comes back with the error.
+func loadTargets(d Deps, log *slog.Logger, newLogger func(tag string) *slog.Logger, redactor *redact.Redactor, client *http.Client, configPath string,
+	load func(fs.FS, string) (*config.Config, error),
+) (*config.Config, []delivery.Target, *slog.Logger, error) {
+	cfg, err := load(d.ConfigFS, configPath)
+	if err != nil {
+		return nil, nil, log, err
+	}
+	registerSecrets(redactor, cfg)
+	if cfg.General.SyslogTag != config.DefaultSyslogTag {
+		log = newLogger(cfg.General.SyslogTag)
+	}
+	client.Timeout = cfg.General.HTTPTimeout.Duration
+	targets, err := buildTargets(cfg, client, hookProcess(d, log))
+	return cfg, targets, log, err
 }
 
 // listSpool answers mailq, -bp and --status without creating anything in

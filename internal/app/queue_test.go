@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"github.com/6RUN0/slendmail/internal/backend"
@@ -945,5 +946,22 @@ func TestReleaseKeepsExistingCopy(t *testing.T) {
 	if len(c.ids(spool.HoldDir)) != 0 || len(c.service.got("a"))+len(c.service.got("b")) != 0 {
 		t.Errorf("default hold/ %v, a %v, b %v, want the held entry removed and the locked copy left to its holder",
 			c.ids(spool.HoldDir), c.service.got("a"), c.service.got("b"))
+	}
+}
+
+// TestLoadTargetsKeepsConfigTag pins that a queue run whose configuration
+// loads but whose targets fail logs the rejection under the syslog tag of
+// that configuration.
+func TestLoadTargetsKeepsConfigTag(t *testing.T) {
+	inv := &invocation{
+		config: "[general]\nsyslog_tag = \"custom\"\n\n[target.dc]\ntype = \"discord\"\nurl = \"https://example.org/x\"\ntemplate = \"{{ .Nope\"\n",
+		args:   []string{"-q"},
+		stdin:  iotest.ErrReader(errors.New("stdin read")),
+	}
+	if code := inv.run(t); code != 78 {
+		t.Fatalf("Run() = %d, want 78; output:\n%s", code, inv.output())
+	}
+	if log := inv.log("custom"); !strings.Contains(log, `level=ERROR msg="configuration rejected"`) {
+		t.Errorf("log of tag custom lacks the rejection:\n%s", inv.output())
 	}
 }
