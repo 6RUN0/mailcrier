@@ -76,6 +76,27 @@ func Parse(name, source string, format text.Format) (*Template, error) {
 	return parseUser(name, source, format, nil)
 }
 
+// ParsePart parses source, a template from the configuration for a part
+// of an HTTP request: the path, a query value or a header value. It is
+// bounded as a template of Parse is, but may render nothing, as an empty
+// header or query value is valid; the caller checks the result.
+func ParsePart(name, source string) (*Template, error) {
+	tmpl, err := parseUser(name, source, text.FormatPlain, nil)
+	if err != nil {
+		return nil, err
+	}
+	tmpl.mayBeEmpty = true
+	return tmpl, nil
+}
+
+// Deadline returns the end of the budget of a copy made by WithBudget;
+// zero for any other template. A caller that renders several templates
+// for one message passes it on to their WithBudget, so that they share
+// one budget.
+func (t *Template) Deadline() time.Time {
+	return t.deadline
+}
+
 // parseUser is Parse with extra functions, which tests use to block an
 // execution.
 func parseUser(name, source string, format text.Format, extra template.FuncMap) (*Template, error) {
@@ -208,7 +229,7 @@ func (t *Template) executeUser(d Data) ([]byte, error) {
 		switch {
 		case result.err != nil:
 			return nil, &TemplateError{Err: result.err}
-		case len(bytes.TrimSpace(result.out)) == 0:
+		case !t.mayBeEmpty && len(bytes.TrimSpace(result.out)) == 0:
 			return nil, &TemplateError{Err: errEmpty}
 		}
 		return result.out, nil

@@ -12,6 +12,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"reflect"
 	"strings"
 	"text/template"
@@ -194,6 +195,8 @@ type Template struct {
 	// deadline ends every execution of a copy made by WithBudget; zero
 	// for none.
 	deadline time.Time
+	// mayBeEmpty lets a template of ParsePart render nothing.
+	mayBeEmpty bool
 }
 
 //go:embed defaults/*.tmpl
@@ -275,6 +278,7 @@ func funcs() template.FuncMap {
 		"tail":          tail,
 		"truncate":      truncate,
 		"indent":        indent,
+		"pathSegment":   url.PathEscape,
 	}
 }
 

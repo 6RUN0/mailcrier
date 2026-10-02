@@ -289,3 +289,34 @@ func TestUserTemplateBudget(t *testing.T) {
 		}
 	})
 }
+
+// TestParsePart pins the templates of request parts: they may render
+// nothing, reject nesting as any template from the configuration, and
+// pathSegment escapes a value for one path segment.
+func TestParsePart(t *testing.T) {
+	t.Run("empty-allowed", func(t *testing.T) {
+		tmpl, err := ParsePart("api.query.x", "{{ .MessageID }}")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if out, err := tmpl.Execute(Data{}); err != nil || out != "" {
+			t.Errorf("got %q, %v", out, err)
+		}
+	})
+	t.Run("nesting-rejected", func(t *testing.T) {
+		if _, err := ParsePart("api.path", `{{ template "x" }}`); err == nil || !strings.Contains(err.Error(), "api.path:1:") {
+			t.Errorf("err = %v", err)
+		}
+	})
+	t.Run("pathSegment", functionCase{`/{{ pathSegment "a b/../c?d#e" }}`, "/a%20b%2F..%2Fc%3Fd%23e"}.check)
+	t.Run("deadline", func(t *testing.T) {
+		tmpl, err := ParsePart("p", "x")
+		if err != nil {
+			t.Fatal(err)
+		}
+		deadline := time.Now().Add(time.Second)
+		if !tmpl.Deadline().IsZero() || !tmpl.WithBudget(deadline).Deadline().Equal(deadline) {
+			t.Errorf("Deadline = %v, %v", tmpl.Deadline(), tmpl.WithBudget(deadline).Deadline())
+		}
+	})
+}
