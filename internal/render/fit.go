@@ -49,9 +49,14 @@ var strictFormats = map[text.Format]bool{
 // template growing with the body, the subject and the attachments, which
 // holds for every template that writes them once or more.
 //
+// A template from the configuration whose output exceeds its size limit
+// counts as too long here, as long as there is a limit, so that a body of
+// megabytes is cut instead of failing the template.
+//
 // When nothing fits, because the rest of the template is too long or
 // ignores the body, the subject and the attachments, a template parsed for
-// a format in strictFormats gives ErrLimitTooSmall. Any other gives the
+// a format in strictFormats gives ErrLimitTooSmall, inside a
+// *TemplateError for a template from the configuration. Any other gives the
 // longest prefix that fits of the rendering with the cut subject, the
 // Truncated notice and no attachment: for Telegram HTML cut between tags
 // and entities with the open tags closed, by text.CutTelegramHTML, else
@@ -71,11 +76,18 @@ func FitLines(t *Template, d Data, limit, maxLines int, measure func(string) int
 		d.Body = withNotice(body, d.Strings.Truncated)
 	}
 	full, err := t.Execute(d)
-	if err != nil || limit <= 0 || measure(full) <= limit {
+	isOverOutputLimit := limit > 0 && errors.Is(err, errOutputLimit)
+	if isOverOutputLimit {
+		err = nil
+	}
+	if err != nil || limit <= 0 || (!isOverOutputLimit && measure(full) <= limit) {
 		return full, isCut, err
 	}
 	render := func() (string, bool, error) {
 		out, err := t.Execute(d)
+		if errors.Is(err, errOutputLimit) {
+			return "", false, nil
+		}
 		return out, err == nil && measure(out) <= limit, err
 	}
 	subject, attachments := d.Subject, d.Attachments
@@ -128,6 +140,9 @@ func FitLines(t *Template, d Data, limit, maxLines int, measure func(string) int
 	d.Subject = ""
 	if out, fits, err := render(); err != nil || fits {
 		return out, true, err
+	}
+	if strictFormats[t.format] && t.user != nil {
+		return "", false, &TemplateError{Err: ErrLimitTooSmall}
 	}
 	if strictFormats[t.format] {
 		return "", false, ErrLimitTooSmall

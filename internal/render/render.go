@@ -1,8 +1,10 @@
 // Package render turns a message into the text of one target with Go
 // templates and fits that text into the target's length limit.
 //
-// The built-in templates live in defaults/, one per text.Format. A template
-// sees Data, which never holds a Bcc address.
+// The built-in templates live in defaults/, one per text.Format; Parse
+// takes a template from the configuration, which runs under a time and
+// an output limit and reports every failure as *TemplateError. A
+// template sees Data, which never holds a Bcc address.
 package render
 
 import (
@@ -186,6 +188,9 @@ type Template struct {
 	// format is the markup of the target the template writes for; Fit
 	// takes its strictness from it, whoever wrote the template.
 	format text.Format
+	// user bounds the execution of a template from the configuration;
+	// nil for a built-in one, which runs without those bounds.
+	user *userLimits
 }
 
 //go:embed defaults/*.tmpl
@@ -210,8 +215,13 @@ func parse(name, source string, format text.Format) (*Template, error) {
 	return &Template{tmpl: tmpl, format: format}, nil
 }
 
-// Execute renders d.
+// Execute renders d. Every failure of a template from the configuration
+// is a *TemplateError.
 func (t *Template) Execute(d Data) (string, error) {
+	if t.user != nil {
+		out, err := t.executeUser(d)
+		return string(out), err
+	}
 	var b strings.Builder
 	if err := t.tmpl.Execute(&b, d); err != nil {
 		return "", err
@@ -222,6 +232,9 @@ func (t *Template) Execute(d Data) (string, error) {
 // ExecuteBytes renders d as bytes, for a text that goes as a file: a
 // conversion of the string of Execute would copy the text once more.
 func (t *Template) ExecuteBytes(d Data) ([]byte, error) {
+	if t.user != nil {
+		return t.executeUser(d)
+	}
 	var b bytes.Buffer
 	if err := t.tmpl.Execute(&b, d); err != nil {
 		return nil, err
@@ -245,6 +258,20 @@ func funcs() template.FuncMap {
 		"toJson":        toJSON,
 		"default":       defaultValue,
 		"humanizeBytes": humanizeBytes,
+		"toUpper":       strings.ToUpper,
+		"toLower":       strings.ToLower,
+		"trimSpace":     strings.TrimSpace,
+		"title":         title,
+		"join":          join,
+		"match":         match,
+		"reReplaceAll":  reReplaceAll,
+		"date":          date,
+		"tz":            inZone,
+		"lines":         lines,
+		"head":          head,
+		"tail":          tail,
+		"truncate":      truncate,
+		"indent":        indent,
 	}
 }
 
