@@ -152,7 +152,8 @@ Besides the functions of text/template it has
 .Ic head ,
 .Ic tail ,
 .Ic truncate ,
-.Ic indent
+.Ic indent ,
+.Ic pathSegment
 and
 .Ic humanizeBytes .
 A template that does not parse, or uses define, template or block, is a
@@ -166,6 +167,9 @@ error of a function or with nothing but white space, leaves that message the
 built-in template, as does a 400 to its text, once; the log records
 .Dq template failed, built-in used .
 A template that ran out of time stays failed for the rest of the process.
+A path, query or header template has no built-in one: when it fails, the
+target fails permanently for that message, logged as
+.Dq request template failed, message not sent .
 .Sh TARGETS
 Each
 .Li "[target.NAME]"
@@ -203,6 +207,31 @@ or
 or of its
 .Ic template ;
 extra headers override the Content-Type.
+A GET carries no body and takes none of
+.Ic preset ,
+.Ic template ,
+.Ic template_file ,
+.Ic max_text
+and
+.Ic max_lines .
+.Ic path
+is appended to the path of
+.Ic url
+and the values of the
+.Ic query
+table to its query; they and the header values are templates.
+Scheme, host and port come from
+.Ic url
+alone: a path that renders empty appends nothing, and a rendered path that
+does not start with a single slash, or holds
+.Dq ? ,
+.Dq # ,
+a backslash, a control character or a dot segment, and a rendered header
+value with a line break or NUL, fail the target permanently before any
+request; what
+.Ic path
+writes before its first action is checked so when the configuration is
+loaded.
 Only
 .Cm slack-webhook
 is cut, to 40000 characters, unless

@@ -115,6 +115,9 @@ with "no non-test Go files".
   `ErrLimitTooSmall`, is a `*TemplateError`; past the output limit `Fit`
   treats the text as too long when there is a limit. Built-in templates
   run without the goroutine. The functions (`funcs.go`) are shared.
+  `ParsePart` is the same for a path, query or header template of the
+  http target, which may render nothing; `Deadline` hands the budget of
+  one copy on to the next, so parts and text share it.
 - `internal/config.Load` parses strictly: an unknown key, a key of another
   target type, a bad name or value gives `*config.Error` with
   `path:line:col` and exit 78. URLs must be absolute http(s) (for
@@ -165,13 +168,18 @@ with "no non-test Go files".
   a `*render.TemplateError` renders the text with it, and a rejected text
   of `Template` goes once more in its text before the file rule;
   `Result.TemplateErr` carries the cause, which `app.logResult` logs as a
-  warning. A panic in the goroutine of a target is
-  recovered into a permanent result, so a target must not share mutable
-  state with another. `DeliverEach` also
-  hands each result to a callback as its target finishes (the spool marks
-  `Done` there). `ExitCode(results, queue)` is the exit status matrix, rules
-  in order: Temp without a spool entry 73/74, any OK or all suppressed 0,
-  any Perm 69, Temp queued 0, else 69.
+  warning. `Target.Request` (`RequestTemplates`, parsed by
+  `app.parseRequest`) renders the path, query and header values first
+  into `backend.Payload.Request`; a failure there is Perm without a send
+  and without fallback (`request template failed, message not sent`).
+  `Result.RequestErr` marks it for `app.logResult`. `Template` is nil for
+  an http GET, which sends no text. A panic in the goroutine of a target
+  is recovered into a permanent result, so a target must not share
+  mutable state with another. `DeliverEach` also hands each result to a
+  callback as its target finishes (the spool marks `Done` there).
+  `ExitCode(results, queue)` is the exit status matrix, rules in order:
+  Temp without a spool entry 73/74, any OK or all suppressed 0, any Perm
+  69, Temp queued 0, else 69.
 - `internal/spool` (imports only `message`): areas `tmp`, `queue`, `hold`,
   `failed`, `locks` under the spool directory; an entry is `<id>.eml` (the
   `message.Message.Raw` bytes, read back with `IgnoreDots`) and `<id>.json`
@@ -247,6 +255,11 @@ with "no non-test Go files".
   the context; a sender must pass the context to its requests, or the call
   deadline does not reach it. Error texts drop the request URL
   (`backend.WithoutURL`) because webhook and Bot API URLs carry tokens.
+- The http target (`webhook.buildURL`) appends the rendered path and query
+  to the configured URL and checks the result against its scheme, host,
+  port and user: `backend` never imports `render`, so the parts arrive as
+  strings. `app.registerSecrets` registers the text of header, query and
+  path templates outside `{{ }}`, never what the actions render.
 - Every target's `New` copies the client with `backend.WithoutRedirects`:
   net/http would turn a redirected POST into a bodiless GET and report
   success. A 3xx is a permanent failure.

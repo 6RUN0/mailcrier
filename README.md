@@ -110,7 +110,9 @@ preset = "generic-json"
   took neither, `attachments not delivered` (warning) one that took
   the text but not the files; the message counts as delivered there.
   `template failed, built-in used` (warning) names a target whose
-  template from the configuration failed, see "Templates".
+  template from the configuration failed, `request template failed,
+  message not sent` (warning) an `http` target whose path, query or
+  header template failed, see "Templates".
   Records about a spool entry carry its `id`. Headers and body of the
   message are never logged, nor is the response body of a service.
 - Tokens and URLs, including the content of `*_file`, are replaced by `***`
@@ -227,18 +229,30 @@ channel = "alerts"              # optional, mattermost only
 type = "http"
 preset = "generic-json"
 url = "https://api.example.org/notify"
-method = "PUT"                  # optional: POST (default), PUT or PATCH
+method = "PUT"                  # optional: POST (default), GET, PUT, PATCH
 
-[target.api.headers]            # optional, any preset
+[target.api.headers]            # optional, values are templates
 Authorization = "Bearer api-token"
+
+[target.ping]
+type = "http"
+method = "GET"
+url = "https://status.example.org/api/push/abc"
+path = "/{{ pathSegment .Hostname }}"   # optional, after the path of url
+
+[target.ping.query]             # optional, values are templates
+status = "down"
+msg = "{{ .Subject | truncate 200 }}"
 ```
 
 - `http`: one request of the JSON document of its preset, or of its
   template (see "Templates"), with `Content-Type: application/json` and no
   files. Exactly one of `preset`, `template` and `template_file` is set.
-  `method` is `POST`, the default, `PUT` or `PATCH`, in capitals; any
-  other value exits 78. `GET` is not offered, because a preset or a
-  template renders a request body.
+  `method` is `POST`, the default, `GET`, `PUT` or `PATCH`, in capitals;
+  any other value exits 78. A `GET` sends no body and no Content-Type, so
+  it takes none of `preset`, `template`, `template_file`, `max_text` and
+  `max_lines`; the message reaches the service through `path`, `query`
+  and the headers.
   `slack-webhook` is cut to 40000 characters, the length Slack keeps;
   `mattermost` has no limit, since Mattermost splits a long text into
   several posts, nor has `generic-json`. `mattermost` posts
@@ -249,12 +263,30 @@ Authorization = "Bearer api-token"
   every preset. `slack-webhook` posts `{"text": ...}` in Slack mrkdwn
   with `&`, `<` and `>` escaped; `generic-json` posts
   `{"subject": ..., "body": ..., "hostname": ...}`.
-  `[target.<name>.headers]` adds request headers after the Content-Type of
-  the preset, so a `Content-Type` there replaces it; a header name that is
-  not an HTTP token or a value with a line break or NUL exits 78. Header values of
-  8 characters or more, and the credential after a scheme such as
-  `Bearer`, are masked in the log like tokens. A redirect is not followed
-  and counts as a permanent failure.
+  `[target.<name>.headers]` adds request headers after the Content-Type,
+  so a `Content-Type` there replaces it; a header name that is not an
+  HTTP token or a value with a line break or NUL exits 78.
+  `path` is appended to the path of `url`, and `[target.<name>.query]`
+  adds its values to the query of `url`, encoded, after the query `url`
+  has. The values of `headers` and `query` and `path` are templates (see
+  "Templates") rendered for every message; scheme, host and port come
+  from `url` or `url_file` alone. A path that renders empty appends
+  nothing, and the request goes to `url` as it is. A rendered path that
+  does not start with a single `/`, holds `?`, `#`, a backslash, a control
+  character or a `.` or `..` segment (escaped once or twice, or followed by
+  a `;` parameter), or a rendered header value with a line break or NUL
+  fails the target permanently before any request; an escaped `/` in the
+  path stays escaped. What `path` writes before its first `{{ }}` action is checked
+  by these rules when the configuration is loaded, exit status 78. A
+  value from the message goes into a path segment through `pathSegment`,
+  which escapes `/` as well, but not dots: a value that is `.` or `..`, or
+  holds `/../`, still fails the target for that message. The text of
+  header and query values outside the `{{ }}` actions, 8 characters or
+  more, and the credential after a scheme such as `Bearer`, are masked in
+  the log like tokens, and so is every piece of the text of `path` outside
+  the actions between two slashes of 16 characters or more, as written
+  and unescaped. A redirect is not followed and counts as a permanent
+  failure.
 
 ```toml
 [target.run]
@@ -471,6 +503,7 @@ template = '''
   | `indent N S` | `N` spaces before every line of `S` |
   | `humanizeBytes N` | a size: `1.5 KiB` |
   | `toJson V` | `V` as a JSON value, always valid |
+  | `pathSegment S` | `S` escaped for one segment of a URL path, `/` included |
   | `tgHTML`, `discordEscape`, `discordCode`, `slackEscape`, `slackCode`, `mmEscape`, `mmCode` | the escapers above |
 
 - The text is cut to the limit of the target as a built-in one is (see
@@ -497,6 +530,15 @@ template = '''
   target took it. A Telegram target that answers 400 to the text of the
   template gets the text of the built-in template once, with the same
   record, before the full text goes as a file alone (see "Long messages").
+- The path, query and header templates of an `http` target (see
+  "Targets") are rendered under the same limits, from the same budget as
+  the text; each may render nothing, which leaves the value empty. They
+  have no built-in template to fall back to: when one fails, the target
+  fails permanently, gets nothing for that message, and the log records
+  `request template failed, message not sent` (warning) with `target`
+  and `err`. A parse error of one of them names
+  `<target>.path`, `<target>.query.<name>` or `<target>.headers.<name>`
+  and its line.
 
 ### Spool and queue
 
