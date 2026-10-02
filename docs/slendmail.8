@@ -1,4 +1,4 @@
-.Dd October 2, 2026
+.Dd October 3, 2026
 .Dt SLENDMAIL 8
 .Os
 .Sh NAME
@@ -440,6 +440,229 @@ Missing areas are created in an existing directory; with the setgid bit the
 packages create them, owned by root and the
 .Li slendmail
 group, mode 2770.
+.Sh CONFIGURATION
+The configuration is a TOML file, parsed strictly on every call: an unknown
+key, a key that the type of its target does not use, or an invalid value
+rejects the whole file, and the call exits 78.
+Errors name the file, line and column and never quote a value.
+A duration is a Go duration such as
+.Li \&"15s"
+or
+.Li \&"168h" ;
+every duration and limit must be positive.
+.Pp
+The
+.Li "[general]"
+table:
+.Bl -tag -width Ds
+.It Ic syslog_tag
+The tag of every syslog record;
+.Li slendmail
+by default.
+.It Ic http_timeout
+Bound of one HTTP request, from dialing to the end of the response body;
+15 s by default.
+.It Ic deadline
+Bound of the delivery of one message to all its targets; 30 s by default.
+Reading stdin and the configuration is not under it.
+.It Ic telegram_direct , Ic telegram_direct_chats , Ic telegram_direct_max
+The telegram target whose copies go to direct chats, the chats allowed, as
+integers and @usernames, and the most copies per message, 10 by default;
+see
+.Sx ROUTING .
+.El
+.Pp
+The
+.Li "[spool]"
+table:
+.Bl -tag -width Ds
+.It Ic dir
+The spool directory, an absolute path;
+.Pa /var/spool/slendmail
+by default, and the empty string turns the spool off.
+.It Ic drain_budget , Ic drain_max_messages
+Bound of the queue run after the own message of a call: 10 s and 20
+entries by default.
+.It Ic run_budget
+Bound of a queue run of
+.Fl q ;
+60 s by default.
+.It Ic queue_ttl , Ic hold_ttl , Ic failed_ttl
+Age after which an entry of
+.Pa queue/
+or
+.Pa hold/
+moves to
+.Pa failed/ ,
+7 days each by default, and time in
+.Pa failed/
+before it is deleted, 30 days.
+.It Ic max_queue_messages , Ic max_queue_bytes
+Limits of the whole spool: 1000 messages and 268435456 bytes (256 MiB) by
+default.
+.It Ic max_queue_messages_per_uid , Ic max_queue_bytes_per_uid
+Limits of the entries of one user: 200 messages and 67108864 bytes
+(64 MiB) by default.
+.El
+.Pp
+The
+.Li "[strings]"
+table replaces the English notices written in place of missing content;
+a key set must not be blank:
+.Ic no_subject ,
+.Ic empty_body ,
+.Ic truncated ,
+.Ic truncated_size
+with one
+.Li %s
+for the size of the full text,
+.Ic more_attachments
+with one
+.Li %d
+for the number of attachments left out, and
+.Ic not_sent .
+.Ic truncated
+without
+.Ic truncated_size
+stands for both.
+.Pp
+Each
+.Li "[target.NAME]"
+table is a target; NAME matches
+.Li [a-z0-9-]+ .
+Its keys, besides
+.Ic type :
+.Bl -tag -width Ds
+.It Ic token , Ic token_file
+The token of
+.Cm telegram
+and
+.Cm slack ,
+or the absolute path of a file holding it; exactly one of the two.
+.It Ic url , Ic url_file
+The endpoint of
+.Cm discord ,
+.Cm ntfy ,
+.Cm http
+and
+.Cm shoutrrr ,
+or the absolute path of a file holding it; exactly one of the two.
+An http or https URL, for
+.Cm shoutrrr
+any URL with a scheme.
+The content of a file has its surrounding white space removed.
+.It Ic chat_id , Ic message_thread_id , Ic disable_notification
+The chat, an integer or a string, required, the forum topic and silent
+sending of
+.Cm telegram .
+.It Ic channel
+The channel of
+.Cm slack ,
+required, or of the
+.Cm mattermost
+preset of
+.Cm http ,
+which also takes
+.Ic username .
+.It Ic preset , Ic method , Ic headers , Ic path , Ic query
+The body, the method, extra headers, the path and the query of
+.Cm http ;
+see
+.Sx TARGETS .
+.It Ic on_long , Ic long_file
+What a text over the limit gets,
+.Qq file
+by default,
+.Qq truncate
+or
+.Qq blockquote ,
+and the file of the full text,
+.Qq text
+by default or
+.Qq eml ;
+not for
+.Cm http ,
+.Cm exec
+and
+.Cm shoutrrr .
+.It Ic max_text , Ic max_lines , Ic max_file_size
+The text limit in the unit of the service, the lines of the body, and the
+size of one file in bytes.
+.It Ic argv , Ic timeout
+The command line of
+.Cm exec ,
+required, and the bound of one run, 30 s by default.
+.It Ic template , Ic template_file
+A template replacing the built-in one, or the absolute path of a file
+holding it; not for
+.Cm exec .
+.El
+.Pp
+A
+.Li "[[route]]"
+table takes
+.Ic subject ,
+.Ic subject_regex ,
+.Ic sender ,
+.Ic sender_regex ,
+.Ic recipient ,
+.Ic recipient_regex ,
+.Ic targets
+and
+.Ic continue ;
+a
+.Li "[[suppress]]"
+table the subject and sender conditions; see
+.Sx ROUTING .
+.Pp
+.Fl -check-config
+reports the errors and warnings of a file without sending anything.
+.Sh SECURITY
+The intended install is setgid: the binary
+.Li root:slendmail
+mode 2755, the configuration and its
+.Ic token_file ,
+.Ic url_file
+and
+.Ic template_file
+files
+.Li root:slendmail
+mode 0640, so that the jobs of any user can send while only root and the
+binary read the secrets.
+The spool directory and its areas are
+.Li root:slendmail
+mode 2770; entries are created with mode 0660 under the umask 007.
+.Pp
+When the setgid bit gives a user other than root the group, the process
+first executes itself once more with the environment reduced to
+.Ev USER ,
+.Ev LOGNAME ,
+.Ev HOME ,
+.Ev LANG ,
+.Ev LC_*
+and a zone name in
+.Ev TZ ;
+if that fails it replaces its environment the same way, speaks HTTP/1.1
+only and logs
+.Dq reexec failed .
+.Fl -config
+and
+.Ev SLENDMAIL_CONFIG
+are ignored with a warning, and
+.Fl -check-config
+and
+.Fl -probe
+exit 64 when given them, and 77 for everyone but the slendmail user.
+An
+.Cm exec
+program runs with the real user and group ids of the caller.
+.Pp
+Tokens, URLs and the literal text of header, query and path templates are
+masked as
+.Li ***
+in everything logged, and configuration errors never quote a value.
+Without the setgid bit, as in a container, the process runs with the ids
+of its caller, who must be able to read the configuration.
 .Sh OPTIONS
 .Bl -tag -width Ds
 .It Fl f Ar sender , Fl r Ar sender
@@ -561,8 +784,32 @@ applies.
 .El
 .Sh FILES
 .Bl -tag -width Ds
+.It Pa /usr/sbin/slendmail
+The binary;
+.Pa /usr/sbin/sendmail ,
+.Pa /usr/lib/sendmail ,
+.Pa /usr/sbin/newaliases
+and
+.Pa /usr/bin/mailq
+are links to it.
 .It Pa /etc/slendmail.conf
 The configuration.
+.It Pa /etc/slendmail.d/
+Files of
+.Ic token_file ,
+.Ic url_file
+and
+.Ic template_file ,
+by convention; any absolute path works.
+.It Pa slendmail-queue.service , Pa slendmail-queue.timer
+The systemd units that run
+.Fl q
+as
+.Li slendmail
+every 5 minutes.
+.It Pa /etc/cron.d/slendmail , Pa /etc/crontabs/slendmail
+The same queue run by cron where systemd is not running, the second on
+Alpine.
 .It Pa /var/spool/slendmail/queue/ , Pa hold/ , Pa failed/
 Entries: the message and its state beside it.
 .It Pa /var/spool/slendmail/tmp/
@@ -624,6 +871,23 @@ found an error, or
 .Fl -probe
 cannot use the configuration; nothing is held.
 .El
+.Sh EXAMPLES
+A minimal configuration that sends to one Telegram chat, with the token in
+a file:
+.Bd -literal -offset indent
+[target.ops-telegram]
+type = "telegram"
+token_file = "/etc/slendmail.d/tg.token"
+chat_id = -1001234567890
+.Ed
+.Pp
+Check it, then send a test message to that target alone:
+.Bd -literal -offset indent
+# slendmail --check-config
+/etc/slendmail.conf: 0 errors, 0 warnings
+# slendmail --probe -- ops-telegram
+target=ops-telegram class=ok
+.Ed
 .Sh SEE ALSO
 .Xr syslog 3 ,
 .Xr cron 8

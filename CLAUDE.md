@@ -19,7 +19,7 @@ SLENDMAIL_TELEGRAM_ENV=/path/to/telegram.env \
 go test ./internal/backend/webhook -update   # rewrite golden files
 go test ./internal/app -run TestCallers -update   # caller golden files
 go test ./internal/render -run TestBuiltinGolden -update   # template golden
-mandoc -T lint docs/slendmail.8         # man page; not part of make check
+mandoc -T lint -W warning docs/slendmail.8   # man page; not in make check
 ```
 
 - Tools are pinned where Dependabot updates them: golangci-lint and
@@ -126,9 +126,20 @@ with "no non-test Go files".
   integer or a non-blank string, `channel` non-blank (both trimmed).
   Targets are `[target.<name>]` tables; keys per type are in
   `allowedKeys`, which lists only implemented keys, required ones in
-  `requiredKeys`. `template_file` is read at load, but `config` does not
-  import `render`: `app.buildTargets` parses the template, and a parse
-  error rejects the configuration (78, message held). `[[route]]` and
+  `requiredKeys`; a new key goes into `docs/slendmail.8` in the same
+  change (`TestManPageListsKeys`; `TestManPageListsOptions` does the same
+  for the flags of `sendmail`). `Error.Path` is the absolute path,
+  `"/" + path` of `ConfigFS`, also inside the texts of file errors
+  (`fileErrorText`). `config.Check` is `Load` plus `Warning`s with
+  positions (files readable by all, files and directories the group of
+  the binary cannot read, the latter only with `group >= 0`, shoutrrr
+  services with a native type, `slack-webhook` on Discord, routes without
+  a catch-all, targets no route names, a hook that is not executable);
+  `SecretKeys` lists the keys `app.registerSecrets` masks
+  (`TestRegisterSecretsCoversSecretKeys` checks one way).
+  `template_file` is read at load, but `config` does not import `render`:
+  `app.buildTargets` parses the template, and a parse error rejects the
+  configuration (78, message held). `[[route]]` and
   `[[suppress]]` are compiled at load (`compileRules`, globs through
   `compileGlob` into `(?is)^...$` RE2, `FuzzGlob`) into `Match`; their
   errors name the rule number and key, never the expression. `keyIndex`
@@ -217,6 +228,17 @@ with "no non-test Go files".
   takes none. `Save` and `Remove` do not fsync the directory (a lost rename
   only repeats a delivery). Quota usage reads every sidecar for `OwnerUID`.
   `OpenExisting` is for the listing modes and creates nothing.
+- `internal/app`: `loadTargets` (load, `registerSecrets`, logger with
+  `syslog_tag`, `client.Timeout`, `buildTargets`) serves `-q`, `mailq`,
+  `--status`, `--check-config` and `--probe`; `Run` keeps its own sequence
+  for a message, which holds it on an error. `admitServiceMode`
+  (`check.go`) gives 77 to an elevated caller other than the service user
+  and 64 to an ignored `--config` or `SLENDMAIL_CONFIG` before anything is
+  loaded. `--check-config` (`check.go`) prints its findings to stderr and
+  renders `sample.go`'s message through `delivery.Deliver` with
+  `dryRunSender`; `--probe` (`probe.go`) sends it with `DeliverEach`,
+  without spool, routes or suppression, and exits by `probeExitCode`
+  (0, 69, 75), the only place of 75.
 - `internal/app/queue.go`: own message (write-ahead, deliver, record each
   result, remove), `hold/` on a rejected configuration or without a route
   (`hold` takes the reason), queue runs (`hold/` released first, then
