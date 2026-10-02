@@ -218,6 +218,8 @@ type Target struct {
 	Headers map[string]string `toml:"headers"`
 	// Preset selects the built-in payload of the http target.
 	Preset string `toml:"preset"`
+	// Method is the request method of the http target; empty means POST.
+	Method string `toml:"method"`
 	// OnLong is the policy for text longer than the target accepts.
 	OnLong string `toml:"on_long"`
 	// LongFile selects the file that carries a long text in full.
@@ -242,7 +244,7 @@ var allowedKeys = map[string][]string{
 	TypeDiscord:  {"url", "url_file", "on_long", "long_file", "max_text", "max_lines", "max_file_size"},
 	TypeSlack:    {"token", "token_file", "channel", "on_long", "long_file", "max_text", "max_lines", "max_file_size"},
 	TypeNtfy:     {"url", "url_file", "on_long", "long_file", "max_text", "max_lines", "max_file_size"},
-	TypeHTTP:     {"url", "url_file", "preset", "username", "channel", "headers", "max_text", "max_lines"},
+	TypeHTTP:     {"url", "url_file", "preset", "method", "username", "channel", "headers", "max_text", "max_lines"},
 	TypeExec:     {"argv"},
 	TypeShoutrrr: {"url", "url_file"},
 }
@@ -257,6 +259,10 @@ var requiredKeys = map[string][]string{
 
 // mattermostKeys are the http keys only the mattermost preset uses.
 var mattermostKeys = []string{"username", "channel"}
+
+// methods are the request methods of the http target. A preset renders
+// a request body, which a GET does not carry.
+var methods = []string{"POST", "PUT", "PATCH"}
 
 var (
 	presets        = []string{PresetMattermost, PresetSlackWebhook, PresetGenericJSON}
@@ -490,6 +496,9 @@ func validateTarget(name string, target Target, keys keyIndex) *Error {
 	}
 	if keys.has("target", name, "preset") && !slices.Contains(presets, target.Preset) {
 		return fail("preset", "unknown preset, want one of %s", strings.Join(presets, ", "))
+	}
+	if keys.has("target", name, "method") && !slices.Contains(methods, target.Method) {
+		return fail("method", "unknown method, want one of %s", strings.Join(methods, ", "))
 	}
 	if target.Type == TypeHTTP && target.Preset != PresetMattermost {
 		for _, key := range mattermostKeys {

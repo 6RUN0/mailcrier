@@ -573,7 +573,7 @@ func buildTargets(cfg *config.Config, client *http.Client) ([]delivery.Target, e
 				}
 			}
 			format = presetFormats[target.Preset]
-			sender = webhook.New(webhook.Options{URL: target.URL, Format: format, Fields: fields, Headers: target.Headers, Client: client})
+			sender = webhook.New(webhook.Options{URL: target.URL, Method: target.Method, Format: format, Fields: fields, Headers: target.Headers, Client: client})
 		default:
 			return nil, fmt.Errorf("target %q: type %q is not implemented", name, target.Type)
 		}

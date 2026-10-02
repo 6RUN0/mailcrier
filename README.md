@@ -218,13 +218,17 @@ channel = "alerts"              # optional, mattermost only
 type = "http"
 preset = "generic-json"
 url = "https://api.example.org/notify"
+method = "PUT"                  # optional: POST (default), PUT or PATCH
 
 [target.api.headers]            # optional, any preset
 Authorization = "Bearer api-token"
 ```
 
-- `http`: one POST of the JSON document of its preset with
+- `http`: one request of the JSON document of its preset with
   `Content-Type: application/json` and no files. `preset` is required.
+  `method` is `POST`, the default, `PUT` or `PATCH`, in capitals; any
+  other value exits 78. `GET` is not offered, because a preset renders a
+  request body.
   `slack-webhook` is cut to 40000 characters, the length Slack keeps;
   `mattermost` has no limit, since Mattermost splits a long text into
   several posts, nor has `generic-json`. `mattermost` posts
@@ -237,7 +241,7 @@ Authorization = "Bearer api-token"
   `{"subject": ..., "body": ..., "hostname": ...}`.
   `[target.<name>.headers]` adds request headers after the Content-Type of
   the preset, so a `Content-Type` there replaces it; a header name that is
-  not an HTTP token or a value with a line break exits 78. Header values of
+  not an HTTP token or a value with a line break or NUL exits 78. Header values of
   8 characters or more, and the credential after a scheme such as
   `Bearer`, are masked in the log like tokens. A redirect is not followed
   and counts as a permanent failure.

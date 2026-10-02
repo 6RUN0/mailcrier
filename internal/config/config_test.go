@@ -30,6 +30,7 @@ syslog_tag = "mail-notify"
 type = "http"
 url_file = "/etc/slendmail.d/hook.url"
 preset = "generic-json"
+method = "PUT"
 
 [target.ops-telegram]
 type = "telegram"
@@ -61,7 +62,7 @@ max_file_size = 4000000
 		t.Errorf("SyslogTag = %q", cfg.General.SyslogTag)
 	}
 	hook := cfg.Targets["hook"]
-	if hook.Type != TypeHTTP || hook.Preset != PresetGenericJSON {
+	if hook.Type != TypeHTTP || hook.Preset != PresetGenericJSON || hook.Method != "PUT" {
 		t.Errorf("hook = %+v", hook)
 	}
 	if hook.URL != "https://example.org/hooks/secret" {
@@ -137,6 +138,21 @@ func TestLoadRejects(t *testing.T) {
 			name: "http-header-value-line-break",
 			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\n\n[target.hook.headers]\nAuthorization = \"Bearer SECRET\\r\\nX-Evil: 1\"\n",
 			want: `:7:1: target "hook": value of header "Authorization" is invalid`,
+		},
+		{
+			name: "http-header-value-nul",
+			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\n\n[target.hook.headers]\nX-Token = \"SECRET\\u0000\"\n",
+			want: `:7:1: target "hook": value of header "X-Token" is invalid`,
+		},
+		{
+			name: "http-method-get",
+			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\nmethod = \"GET\"\n",
+			want: `:5:1: target "hook": unknown method, want one of POST, PUT, PATCH`,
+		},
+		{
+			name: "http-method-lowercase",
+			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\nmethod = \"put\"\n",
+			want: `:5:1: target "hook": unknown method, want one of POST, PUT, PATCH`,
 		},
 		{
 			name: "http-preset-missing",

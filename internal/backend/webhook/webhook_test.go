@@ -60,6 +60,49 @@ func TestBuildRequestHeaders(t *testing.T) {
 	}
 }
 
+// TestBuildRequestMethod pins POST as the default and the configured
+// method otherwise.
+func TestBuildRequestMethod(t *testing.T) {
+	for method, want := range map[string]string{"": http.MethodPost, http.MethodPut: http.MethodPut, http.MethodPatch: http.MethodPatch} {
+		req, err := buildRequest(context.Background(), Options{URL: "https://hooks.example.org/in", Method: method}, backend.Payload{Text: "{}"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if req.Method != want {
+			t.Errorf("method %q: request method = %s, want %s", method, req.Method, want)
+		}
+	}
+}
+
+// TestSendRejectsHeaderInjection pins that a header value with a line
+// break or NUL, which config.Load rejects, fails for good without a
+// request when it reaches the sender anyway, and that the error does not
+// quote the value.
+func TestSendRejectsHeaderInjection(t *testing.T) {
+	for name, value := range map[string]string{"crlf": "Bearer SECRET\r\nX-Evil: 1", "lf": "SECRET\nX-Evil: 1", "nul": "SECRET\x00"} {
+		t.Run(name, func(t *testing.T) {
+			requests := 0
+			server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { requests++ }))
+			defer server.Close()
+			opts := Options{URL: server.URL, Headers: map[string]string{"Authorization": value}, Client: server.Client()}
+			if _, err := buildRequest(context.Background(), opts, backend.Payload{Text: "{}"}); err == nil {
+				t.Error("buildRequest() accepted the header")
+			}
+			err := New(opts).Send(context.Background(), backend.Payload{Text: "{}"})
+			var deliveryErr *backend.Error
+			if !errors.As(err, &deliveryErr) || deliveryErr.Class != backend.Permanent {
+				t.Fatalf("Send() error = %v, want a permanent *backend.Error", err)
+			}
+			if requests != 0 {
+				t.Errorf("server got %d requests, want none", requests)
+			}
+			if strings.Contains(err.Error(), "SECRET") {
+				t.Errorf("error text quotes the header value: %v", err)
+			}
+		})
+	}
+}
+
 // TestBuildRequestFields pins the members added to the document of the
 // mattermost preset: username and channel, without escaping the text
 // again.

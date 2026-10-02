@@ -1,5 +1,6 @@
-// Package webhook implements the http target type: one POST per message
-// of the JSON document its preset template renders.
+// Package webhook implements the http target type: one request per
+// message, POST unless configured otherwise, with the JSON document its
+// preset template renders.
 package webhook
 
 import (
@@ -11,6 +12,8 @@ import (
 	"net/http"
 	"strings"
 
+	"golang.org/x/net/http/httpguts"
+
 	"github.com/6RUN0/slendmail/internal/backend"
 	"github.com/6RUN0/slendmail/internal/text"
 )
@@ -19,6 +22,8 @@ import (
 type Options struct {
 	// URL is the endpoint; it may embed a secret.
 	URL string
+	// Method is the request method; empty means POST.
+	Method string
 	// Format is the markup of the preset template; it selects the length
 	// limit.
 	Format text.Format
@@ -33,7 +38,7 @@ type Options struct {
 	Client *http.Client
 }
 
-// Sender posts the rendered payload to the configured URL.
+// Sender sends the rendered payload to the configured URL.
 type Sender struct {
 	opts Options
 }
@@ -63,7 +68,7 @@ func (s *Sender) Caps() backend.Caps {
 	return backend.Caps{}
 }
 
-// Send posts p and classifies the outcome.
+// Send sends p and classifies the outcome.
 func (s *Sender) Send(ctx context.Context, p backend.Payload) error {
 	req, err := buildRequest(ctx, s.opts, p)
 	if err != nil {
@@ -77,9 +82,20 @@ func (s *Sender) Send(ctx context.Context, p backend.Payload) error {
 	return parseResponse(resp)
 }
 
-// buildRequest posts p.Text, the JSON document of the preset template,
-// with opts.Fields added.
+// buildRequest sends p.Text, the JSON document of the preset template,
+// with opts.Fields added. A header that config.Load would reject fails
+// here as well: net/http refuses it only in Client.Do, as a transport
+// error, which would be retried in vain.
 func buildRequest(ctx context.Context, opts Options, p backend.Payload) (*http.Request, error) {
+	for name, value := range opts.Headers {
+		if !httpguts.ValidHeaderFieldName(name) || !httpguts.ValidHeaderFieldValue(value) {
+			return nil, fmt.Errorf("header %q is invalid", name)
+		}
+	}
+	method := opts.Method
+	if method == "" {
+		method = http.MethodPost
+	}
 	document := p.Text
 	if len(opts.Fields) > 0 {
 		var err error
@@ -87,7 +103,7 @@ func buildRequest(ctx context.Context, opts Options, p backend.Payload) (*http.R
 			return nil, err
 		}
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, opts.URL, strings.NewReader(document))
+	req, err := http.NewRequestWithContext(ctx, method, opts.URL, strings.NewReader(document))
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", backend.WithoutURL(err))
 	}
