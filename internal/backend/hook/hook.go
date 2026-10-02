@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -112,15 +113,30 @@ func (s *Sender) Send(ctx context.Context, p backend.Payload) error {
 	cmd.Stdin = bytes.NewReader(p.Message.Raw)
 	output := &cappedBuffer{max: maxOutput}
 	cmd.Stdout, cmd.Stderr = output, output
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Credential: s.opts.Process.Credential}
+	// Pdeathsig kills the hook itself when slendmail dies by SIGKILL,
+	// which no handler sees; children of the hook survive that.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Credential: s.opts.Process.Credential, Pdeathsig: syscall.SIGKILL}
 	cmd.Cancel = func() error {
 		return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	}
 	cmd.WaitDelay = waitDelay
-	runErr := cmd.Run()
+	runErr := start(cmd)
+	if runErr == nil {
+		runErr = cmd.Wait()
+	}
 	err := classify(ctx, cmd, runErr)
 	s.logOutput(output, err)
 	return err
+}
+
+// start starts cmd on a locked thread. The kernel sends Pdeathsig when
+// the thread that forked the hook exits, not the process; the runtime
+// ends a thread only when a goroutine exits while locked to it, so
+// unlocking after the fork returns the thread to the pool for good.
+func start(cmd *exec.Cmd) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	return cmd.Start()
 }
 
 // classify turns the outcome of a run into nil or *backend.Error. A hook

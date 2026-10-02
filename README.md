@@ -290,7 +290,16 @@ timeout = "30s"                 # optional, the default
     its own) gets `SIGKILL` and the run is a temporary failure; a child
     that left the group with `setsid` survives. After the hook exits, the
     call waits at most 2 s for children that still hold its stdout or
-    stderr, and then goes on without them.
+    stderr, and then goes on without them. `SIGINT`, `SIGTERM` or
+    `SIGHUP` to slendmail end the run the same way: the group is killed,
+    the failure is temporary and the message stays queued (a second
+    signal ends slendmail at once). This holds once the message is read;
+    a signal while it is still coming in, such as Ctrl-C while it is
+    typed, ends slendmail and discards the message, as sendmail does. A
+    signal that slendmail was started with ignored, as under `nohup`,
+    stays ignored. When slendmail dies by `SIGKILL`, the kernel kills the
+    hook itself (parent death signal), but children the hook started
+    survive and finish on their own.
   - Output: stdout and stderr together, the first 4096 bytes, go into one
     `hook output` record with `target`, `output` and `output_size` (all
     bytes printed), the secrets of the configuration masked.

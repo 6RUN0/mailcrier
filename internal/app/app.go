@@ -98,6 +98,12 @@ type Deps struct {
 	// and where a message goes when the configuration is rejected; empty
 	// turns the spool off.
 	SpoolDir string
+	// CatchSignals returns a context that a stop signal cancels, and the
+	// function that restores the default action; nil keeps the default
+	// action throughout. Run calls it once the message is read, or at once
+	// for -q: until then the default action is right, as a Ctrl-C while
+	// the message is typed must discard it.
+	CatchSignals func(ctx context.Context) (context.Context, context.CancelFunc)
 
 	// deliver sends the message to the targets; nil means
 	// delivery.Deliver. Tests set it to observe the envelope and the
@@ -165,6 +171,13 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 	switch inv.Mode {
 	case sendmail.Deliver:
 	case sendmail.RunQueue, sendmail.ListQueue, sendmail.Status:
+		if inv.Mode == sendmail.RunQueue {
+			// mailq and --status print without waiting on anything a
+			// signal could cancel.
+			var stop context.CancelFunc
+			ctx, stop = catchSignals(ctx, d)
+			defer stop()
+		}
 		return runQueueMode(ctx, d, log, newLogger, redactor, &client, inv)
 	default:
 		return runMode(d, log, inv.Mode)
@@ -180,6 +193,8 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 		log.Error("message not read, giving up", "err", err)
 		return exitNoInput
 	}
+	ctx, stop := catchSignals(ctx, d)
+	defer stop()
 	env := inv.Envelope(msg, bcc, func() string { return defaultSender(d) })
 	// Headers, body and addresses stay out of the log: they may carry
 	// anything the calling job printed. The Message-ID, when present,
@@ -220,6 +235,14 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 	// own budget: a failed service must not delay the next message.
 	q.drainOwn(ctx)
 	return code
+}
+
+// catchSignals applies d.CatchSignals to ctx when it is set.
+func catchSignals(ctx context.Context, d Deps) (context.Context, context.CancelFunc) {
+	if d.CatchSignals == nil {
+		return ctx, func() {}
+	}
+	return d.CatchSignals(ctx)
 }
 
 // runQueueMode handles -q, mailq and --status, which need the spool

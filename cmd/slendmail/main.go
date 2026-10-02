@@ -21,5 +21,6 @@ func main() {
 	args, reexecErr := app.Harden(app.CurrentProcess())
 	deps := app.SystemDeps()
 	deps.ReexecErr = reexecErr
+	deps.CatchSignals = app.CancelOnSignal
 	os.Exit(app.Run(context.Background(), deps, args, os.Stdin))
 }

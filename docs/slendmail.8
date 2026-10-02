@@ -183,7 +183,11 @@ permanent one.
 Past
 .Ic timeout ,
 30 s by default, or the deadline, the process group of the program is
-killed and the failure is temporary.
+killed and the failure is temporary; so it is after SIGINT, SIGTERM or SIGHUP
+to
+.Nm
+once the message is read, while before that such a signal discards the
+message.
 A setgid call runs the program with the real user and group ids of the
 caller; a queue run as the slendmail user runs it with the slendmail group.
 .Ic argv

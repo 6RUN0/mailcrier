@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
@@ -45,6 +46,8 @@ const (
 	helperStopWhenLocked = "stop-when-locked"
 	// helperPlain runs without a hook.
 	helperPlain = "plain"
+	// helperSignals catches signals with CancelOnSignal, as main does.
+	helperSignals = "signals"
 )
 
 // helperArgs are the parameters of the one Run of a helper process.
@@ -54,6 +57,12 @@ type helperArgs struct {
 	Creds    Credentials
 	Args     []string
 	Stdin    string
+	// ReadStdin reads the message from the stdin of the process instead
+	// of Stdin and reports "ready" on fd 3 at the first read, from inside
+	// message.Read; IgnoreHangup starts Run with SIGHUP ignored, as nohup
+	// does.
+	ReadStdin    bool
+	IgnoreHangup bool
 }
 
 // TestSpoolHelper is not a test: it is the child process of the tests
@@ -120,7 +129,31 @@ func TestSpoolHelper(t *testing.T) {
 			})
 		}
 	}
-	os.Exit(Run(context.Background(), deps, args.Args, strings.NewReader(args.Stdin)))
+	var stdin io.Reader = strings.NewReader(args.Stdin)
+	if mode == helperSignals {
+		deps.CatchSignals = CancelOnSignal
+		if args.IgnoreHangup {
+			signal.Ignore(syscall.SIGHUP)
+		}
+		if args.ReadStdin {
+			stdin = &readyReader{r: os.Stdin, report: report}
+		}
+	}
+	os.Exit(Run(context.Background(), deps, args.Args, stdin))
+}
+
+// readyReader reports "ready" on report when Run first reads from r: a
+// signal sent after the report reaches the process while it reads the
+// message, past every point Run could catch signals before reading.
+type readyReader struct {
+	r      io.Reader
+	report io.Writer
+	once   sync.Once
+}
+
+func (rr *readyReader) Read(p []byte) (int, error) {
+	rr.once.Do(func() { _, _ = fmt.Fprintln(rr.report, "ready") })
+	return rr.r.Read(p)
 }
 
 // helper is a running helper process.
@@ -131,6 +164,8 @@ type helper struct {
 	report *bufio.Reader
 	resume *os.File
 	output *strings.Builder
+	// stdin writes to the stdin of a helper started with ReadStdin.
+	stdin *os.File
 }
 
 // startHelper starts the test binary as a helper process in mode.
@@ -159,12 +194,25 @@ func startHelper(t *testing.T, mode string, args helperArgs) *helper {
 	// and releases the locks of the stopped helper.
 	h.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	h.cmd.Stdout, h.cmd.Stderr = h.output, h.output
+	var stdinR *os.File
+	if args.ReadStdin {
+		if stdinR, h.stdin, err = os.Pipe(); err != nil {
+			t.Fatal(err)
+		}
+		h.cmd.Stdin = stdinR
+	}
 	if err := h.cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
 	_ = reportW.Close()
 	_ = resumeR.Close()
+	if stdinR != nil {
+		_ = stdinR.Close()
+	}
 	t.Cleanup(func() {
+		if h.stdin != nil {
+			_ = h.stdin.Close()
+		}
 		_ = resumeW.Close()
 		_ = reportR.Close()
 		if h.cmd.ProcessState == nil {

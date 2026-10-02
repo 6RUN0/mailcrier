@@ -73,6 +73,11 @@ with "no non-test Go files".
   logger or any time formatting (the time package opens a `TZ` path): an
   elevated process re-executes itself with `sanitizeEnv(environ)` unless
   the environment is already sanitized. Nothing may move ahead of `Harden`.
+  After it `main` sets `Deps.CatchSignals` to `app.CancelOnSignal`, which
+  `Run` applies only once the message is read (or at once for `-q`; mailq
+  and `--status` keep the default action): SIGINT, SIGTERM and SIGHUP then cancel the call and
+  a hook is killed with its group; before that the default action
+  discards a message being typed. Signals ignored at start stay ignored.
   `sanitizeEnv` must stay idempotent (`FuzzSanitize`), or the re-exec loops.
   `SLENDMAIL_CONFIG` dropped by the re-exec is reported after it through
   the argv marker `--ignored-env-config`, which `sendmail.Parse` accepts
@@ -120,7 +125,8 @@ with "no non-test Go files".
   `hook` asks for `Payload.Message` through `Caps.CanTakeMessage` (raw
   message without Bcc, envelope fields), runs `argv` in its own process
   group with a fresh environment and, from `app.hookProcess`, the real
-  ids when `egid != gid`; its tests run real `/bin/sh` scripts, and
+  ids when `egid != gid`, `Pdeathsig` set from a locked thread; its tests
+  run real `/bin/sh` scripts, `TestSpoolHook*` signal a helper process, and
   `TestSetgidHookDropsGroup` checks the ids under a real setgid bit.
   `shoutrrr` sits behind `//go:build !noshoutrrr` (`without.go` makes
   `New` fail, so the target is a configuration error); its client
