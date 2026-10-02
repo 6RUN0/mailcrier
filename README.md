@@ -2,8 +2,8 @@
 
 A sendmail replacement for machines that send no email: cron, at, sudo,
 mdadm, smartd, fail2ban and every other tool that pipes a message into
-`/usr/sbin/sendmail` get it delivered to Telegram, Discord, Slack, ntfy or
-an HTTP webhook instead.
+`/usr/sbin/sendmail` get it delivered to Telegram, Discord, Slack, ntfy,
+an HTTP webhook or a program of their own instead.
 
 - Accepts the command lines of the usual callers (`-t`, `-i`, `-f`, `-F`,
   `-oi`, `-bi`, `-q` and the rest) and reads MIME messages: encoded
@@ -59,9 +59,9 @@ preset = "generic-json"
 - Exactly one of `url` and `url_file` is set; likewise `token` and
   `token_file`. A `*_file` key takes an absolute path; the file content, with
   surrounding whitespace removed, is used as the value.
-- The types `exec` and `shoutrrr` are recognized by the parser but
-  rejected with exit status 78 until implemented; the other types are
-  described under "Targets".
+- The type `shoutrrr` is recognized by the parser but rejected with exit
+  status 78 until implemented; the other types are described under
+  "Targets".
 - `[strings]` replaces the English notices that stand in for missing
   content: `no_subject` for a message without a subject, `empty_body` for
   a body without visible text, `truncated` at the end of a body cut to the
@@ -98,6 +98,8 @@ preset = "generic-json"
   and `size` (bytes read) for the message, `target`, `class` (`temp` or
   `perm`), `status` (the HTTP status, when the service answered) and
   `retry_after` (the delay the service asked for) for a failed target.
+  `hook output` (info, warning when the run failed) carries what an
+  `exec` hook printed, see "Targets".
   `text truncated for target` (info) names a target that got a cut text,
   `text rejected, sent as file` (warning) one that refused the text and
   got it as a file, `text rejected, file failed too` (warning) one that
@@ -122,15 +124,16 @@ preset = "generic-json"
 
 All targets of the file receive every message, at the same time. Each
 sends the text in the markup of its service, escaped so that nothing in the
-message becomes markup, a link preview or a mention.
+message becomes markup, a link preview or a mention; `exec` hands on the
+message itself instead.
 
-`max_file_size`, a key of every type but `http`, sets the size limit of one
-file in bytes, in place of the one given below for the type (`slack` has
-none); it must be a positive integer, else exit status 78. A file over it
-is listed with the `not_sent` notice and not sent, and a cut text whose
-full text exceeds it ends with the `truncated_size` notice. A value above
-the limit of the service is taken as it is, and the service rejects a
-bigger file.
+`max_file_size`, a key of every type but `http` and `exec`, sets the size
+limit of one file in bytes, in place of the one given below for the type
+(`slack` has none); it must be a positive integer, else exit status 78. A
+file over it is listed with the `not_sent` notice and not sent, and a cut
+text whose full text exceeds it ends with the `truncated_size` notice. A
+value above the limit of the service is taken as it is, and the service
+rejects a bigger file.
 
 ```toml
 [target.ops-telegram]
@@ -245,6 +248,64 @@ Authorization = "Bearer api-token"
   8 characters or more, and the credential after a scheme such as
   `Bearer`, are masked in the log like tokens. A redirect is not followed
   and counts as a permanent failure.
+
+```toml
+[target.run]
+type = "exec"
+argv = ["/usr/local/bin/notify", "--channel", "ops"]
+timeout = "30s"                 # optional, the default
+```
+
+- `exec`: runs a program once per message. `argv` is the command line,
+  run without a shell; `argv[0]` must be an absolute path, and no element
+  may hold a NUL, else exit status 78. Nothing of the message goes into
+  `argv`.
+  - stdin: the message as it was read, without its Bcc and Resent-Bcc
+    fields. The hook gets no text and no files, so the keys about text
+    and files are not valid for it.
+  - Environment: only `PATH=/usr/sbin:/usr/bin:/sbin:/bin`,
+    `LANG=C.UTF-8`, `TZ` when the caller set it (a setgid call keeps only
+    a zone name), and `SLENDMAIL_SUBJECT` (the decoded subject),
+    `SLENDMAIL_FROM` (the address of From, or the envelope sender),
+    `SLENDMAIL_TO` (the envelope recipients joined by `, `, without the
+    addresses only Bcc or Resent-Bcc named), `SLENDMAIL_HOSTNAME`,
+    `SLENDMAIL_TARGET` (the target name), `SLENDMAIL_MSGID` (the
+    Message-ID, empty when there is none) and `SLENDMAIL_SIZE` (the bytes
+    on stdin). In each value CR, LF and NUL become spaces, and the value
+    is cut at a character to 4096 bytes; the whole environment stays
+    within 64 KiB. The values come from whoever wrote the message: a hook
+    quotes them (`"$SLENDMAIL_SUBJECT"`) and never hands them to `eval`
+    or `sh -c`.
+  - Outcome: exit status 0 is a delivery; 75 (`EX_TEMPFAIL`) a temporary
+    failure, queued and retried; any other status, or death by a signal,
+    a permanent failure. A hook that cannot be started (missing file, no
+    execute permission, `E2BIG`) fails permanently.
+  - Time: `timeout`, a positive Go duration, 30 s by default, bounds one
+    run; so do `deadline` and the budget of a queue run, whichever ends
+    first. Past it the process group of the hook (each hook starts in
+    its own) gets `SIGKILL` and the run is a temporary failure; a child
+    that left the group with `setsid` survives. After the hook exits, the
+    call waits at most 2 s for children that still hold its stdout or
+    stderr, and then goes on without them.
+  - Output: stdout and stderr together, the first 4096 bytes, go into one
+    `hook output` record with `target`, `output` and `output_size` (all
+    bytes printed), the secrets of the configuration masked.
+  - Ids: a setgid call starts the hook with the real uid and gid of the
+    caller and the caller's supplementary groups, without the `slendmail`
+    group, so the hook reads neither the configuration nor the spool. A
+    queue run as the `slendmail` user (the systemd timer or the cron file)
+    starts the hooks of queued messages as `slendmail` with the group
+    `slendmail`, which reads the configuration with all tokens and every
+    spool entry: the hook program must be trusted that far. The working
+    directory is that of the caller.
+  - Secrets: `argv` is visible to every local user through `ps` and
+    `/proc/<pid>/cmdline` while the hook runs, and slendmail does not
+    mask it in the log, so it holds no token. A hook that needs one reads
+    it itself; started by a setgid call it runs as the caller, so the
+    secret is readable by every user who can run `sendmail`. Where that is
+    not acceptable, the hook has to refuse to run as anyone but
+    `slendmail` (exit 75 keeps the message queued for the queue run of
+    that user), and then reads what `slendmail` reads, as said above.
 
 ### Long messages
 

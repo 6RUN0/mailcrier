@@ -231,8 +231,12 @@ type Target struct {
 	// MaxFileSize replaces the size limit of one file of the service, in
 	// bytes.
 	MaxFileSize int64 `toml:"max_file_size"`
-	// Argv is the command line of the exec target.
+	// Argv is the command line of the exec target; Argv[0] is an
+	// absolute path.
 	Argv []string `toml:"argv"`
+	// Timeout bounds one run of the exec target; zero when the file sets
+	// none, which leaves the default to the target.
+	Timeout Duration `toml:"timeout"`
 }
 
 // allowedKeys lists, per target type, the keys it uses besides "type". A
@@ -245,7 +249,7 @@ var allowedKeys = map[string][]string{
 	TypeSlack:    {"token", "token_file", "channel", "on_long", "long_file", "max_text", "max_lines", "max_file_size"},
 	TypeNtfy:     {"url", "url_file", "on_long", "long_file", "max_text", "max_lines", "max_file_size"},
 	TypeHTTP:     {"url", "url_file", "preset", "method", "username", "channel", "headers", "max_text", "max_lines"},
-	TypeExec:     {"argv"},
+	TypeExec:     {"argv", "timeout"},
 	TypeShoutrrr: {"url", "url_file"},
 }
 
@@ -255,6 +259,7 @@ var requiredKeys = map[string][]string{
 	TypeTelegram: {"chat_id"},
 	TypeSlack:    {"channel"},
 	TypeHTTP:     {"preset"},
+	TypeExec:     {"argv"},
 }
 
 // mattermostKeys are the http keys only the mattermost preset uses.
@@ -528,6 +533,19 @@ func validateTarget(name string, target Target, keys keyIndex) *Error {
 	}
 	if keys.has("target", name, "long_file") && !slices.Contains(longFiles, target.LongFile) {
 		return fail("long_file", "unknown file, want one of %s", strings.Join(longFiles, ", "))
+	}
+	if keys.has("target", name, "argv") {
+		switch {
+		case len(target.Argv) == 0:
+			return fail("argv", "value of key %q is empty", "argv")
+		case !strings.HasPrefix(target.Argv[0], "/"):
+			return fail("argv", "first element of key %q must be an absolute path", "argv")
+		case slices.ContainsFunc(target.Argv, func(arg string) bool { return strings.Contains(arg, "\x00") }):
+			return fail("argv", "value of key %q holds a NUL character", "argv")
+		}
+	}
+	if keys.has("target", name, "timeout") && target.Timeout.Duration <= 0 {
+		return fail("timeout", "value of key %q must be positive", "timeout")
 	}
 	for _, limit := range []struct {
 		key   string

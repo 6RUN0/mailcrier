@@ -52,6 +52,11 @@ type = "slack"
 token = "xoxb-1"
 channel = "#ops"
 max_file_size = 4000000
+
+[target.run]
+type = "exec"
+argv = ["/usr/local/bin/notify", "--to", "ops"]
+timeout = "10s"
 `
 	secret := fstest.MapFS{"etc/slendmail.d/hook.url": {Data: []byte("https://example.org/hooks/secret\n")}}
 	cfg, err := load(t, doc, secret)
@@ -70,6 +75,9 @@ max_file_size = 4000000
 	}
 	if tg := cfg.Targets["ops-telegram"]; tg.Token != "123:abc" || tg.ChatID != "-100123" || tg.OnLong != OnLongBlockquote || tg.LongFile != LongFileMessage || tg.MaxText != 1000 || tg.MaxLines != 40 || tg.MaxFileSize != 2000000 {
 		t.Errorf("ops-telegram = %+v", tg)
+	}
+	if run := cfg.Targets["run"]; strings.Join(run.Argv, " ") != "/usr/local/bin/notify --to ops" || run.Timeout.Duration != 10*time.Second {
+		t.Errorf("run = %+v", run)
 	}
 	if dc, sl := cfg.Targets["dc"], cfg.Targets["sl"]; dc.MaxFileSize != 3000000 || sl.MaxFileSize != 4000000 {
 		t.Errorf("max_file_size of discord %d, of slack %d", dc.MaxFileSize, sl.MaxFileSize)
@@ -153,6 +161,36 @@ func TestLoadRejects(t *testing.T) {
 			name: "http-method-lowercase",
 			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\nmethod = \"put\"\n",
 			want: `:5:1: target "hook": unknown method, want one of POST, PUT, PATCH`,
+		},
+		{
+			name: "exec-argv-missing",
+			doc:  "[target.run]\ntype = \"exec\"\ntimeout = \"5s\"\n",
+			want: `:1:9: target "run": key "argv" is required`,
+		},
+		{
+			name: "exec-argv-empty",
+			doc:  "[target.run]\ntype = \"exec\"\nargv = []\n",
+			want: `:3:1: target "run": value of key "argv" is empty`,
+		},
+		{
+			name: "exec-argv-relative",
+			doc:  "[target.run]\ntype = \"exec\"\nargv = [\"notify.sh\", \"SECRET\"]\n",
+			want: `:3:1: target "run": first element of key "argv" must be an absolute path`,
+		},
+		{
+			name: "exec-argv-nul",
+			doc:  "[target.run]\ntype = \"exec\"\nargv = [\"/usr/local/bin/notify\", \"SECRET\\u0000\"]\n",
+			want: `:3:1: target "run": value of key "argv" holds a NUL character`,
+		},
+		{
+			name: "exec-timeout-zero",
+			doc:  "[target.run]\ntype = \"exec\"\nargv = [\"/usr/local/bin/notify\"]\ntimeout = \"0s\"\n",
+			want: `:4:1: target "run": value of key "timeout" must be positive`,
+		},
+		{
+			name: "exec-url",
+			doc:  "[target.run]\ntype = \"exec\"\nargv = [\"/usr/local/bin/notify\"]\nurl = \"https://example.org\"\n",
+			want: `:4:1: target "run": key "url" is not valid for type "exec"`,
 		},
 		{
 			name: "http-preset-missing",

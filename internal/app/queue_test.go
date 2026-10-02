@@ -709,7 +709,7 @@ func TestHold(t *testing.T) {
 	})
 	t.Run("not-implemented-target-type-holds", func(t *testing.T) {
 		c := newSpoolCase(t)
-		c.config = "[target.x]\ntype = \"exec\"\nargv = [\"/bin/true\"]\n"
+		c.config = "[target.x]\ntype = \"shoutrrr\"\nurl = \"generic://example.org\"\n"
 		if code, _ := c.send("held", elevatedUser); code != 78 || len(c.ids(spool.HoldDir)) != 1 {
 			t.Errorf("Run() = %d, hold %v", code, c.ids(spool.HoldDir))
 		}

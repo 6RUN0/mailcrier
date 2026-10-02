@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -258,6 +259,58 @@ func TestSetgidSpool(t *testing.T) {
 		t.Fatalf("call with the receiver down = %v, want 0 for a queued message\n%s", err, out)
 	}
 	checkEntryFiles(t, spoolDir+"/queue")
+}
+
+// TestSetgidHookDropsGroup runs an exec target from a call of an
+// unprivileged user to the setgid binary. The hook must start, not fail
+// with EPERM on the change of ids, and run without the service group: it
+// cannot read the configuration, and the group is not among its groups.
+func TestSetgidHookDropsGroup(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Fatal("must run as root: it installs a setgid binary and a system group")
+	}
+	if *slendmailBinary == "" {
+		t.Fatal("-slendmail-binary is required")
+	}
+	dir, err := os.MkdirTemp("", "setgid-hook-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	if err := os.Chmod(dir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	report := filepath.Join(dir, "report")
+	hook := filepath.Join(dir, "hook")
+	script := "#!/bin/sh\n{ echo \"groups $(id -G)\"; echo \"egid $(id -g)\"; cat /etc/slendmail.conf >/dev/null 2>&1 && echo \"config readable\"; } >> " + report + "\nexit 0\n"
+	writeFile(t, hook, []byte(script), 0, 0, 0o755)
+	installSetgid(t)
+	writeFile(t, "/etc/slendmail.conf", []byte("[target.run]\ntype = \"exec\"\nargv = [\""+hook+"\"]\n"), 0, serviceID, 0o640)
+
+	out, err := runAs(t, &syscall.Credential{Uid: nobodyID, Gid: nobodyID}, "Subject: hook\n\nbody\n", "/usr/sbin/slendmail", "-ti")
+	if err != nil {
+		t.Fatalf("call with an exec target = %v, want 0\n%s", err, out)
+	}
+	content, err := os.ReadFile(report)
+	if err != nil {
+		t.Fatalf("the hook did not run: %v", err)
+	}
+	t.Logf("hook report:\n%s", content)
+	for line := range strings.Lines(string(content)) {
+		key, value, _ := strings.Cut(strings.TrimSpace(line), " ")
+		switch key {
+		case "groups":
+			if slices.Contains(strings.Fields(value), fmt.Sprint(serviceID)) {
+				t.Errorf("the hook runs with the service group: groups %s", value)
+			}
+		case "egid":
+			if value != fmt.Sprint(nobodyID) {
+				t.Errorf("the hook runs with group %s, want %d", value, nobodyID)
+			}
+		default:
+			t.Errorf("hook reported %q", line)
+		}
+	}
 }
 
 // checkEntryFiles checks that dir holds one entry, both files owned by

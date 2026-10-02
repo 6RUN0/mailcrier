@@ -86,7 +86,7 @@ Text without a charset or declared US-ASCII that is not valid UTF-8, and text
 declared ISO-8859-1, is read as windows-1252.
 .Pp
 The message goes to all targets at the same time, each in the markup of its
-service.
+service, or as it is to a program.
 A text longer than a target accepts is cut, counted the way the service counts
 it: a subject longer than a quarter of the limit is cut at a word and ends
 with
@@ -158,11 +158,45 @@ Only
 is cut, to 40000 characters, unless
 .Ic max_text
 sets a limit.
+.It Cm exec
+Runs the program of
+.Ic argv ,
+an array whose first element is an absolute path, without a shell.
+Its stdin is the message without its Bcc and Resent-Bcc fields; its
+environment holds only
+.Ev PATH ,
+.Ev LANG Ns = Ns Li C.UTF-8 ,
+.Ev TZ
+when set, and
+.Ev SLENDMAIL_SUBJECT ,
+.Ev SLENDMAIL_FROM ,
+.Ev SLENDMAIL_TO
+(the recipients without blind copies),
+.Ev SLENDMAIL_HOSTNAME ,
+.Ev SLENDMAIL_TARGET ,
+.Ev SLENDMAIL_MSGID
+and
+.Ev SLENDMAIL_SIZE ,
+each with line breaks and NUL turned into spaces and cut to 4096 bytes.
+Exit status 0 is a delivery, 75 a temporary failure, anything else a
+permanent one.
+Past
+.Ic timeout ,
+30 s by default, or the deadline, the process group of the program is
+killed and the failure is temporary.
+A setgid call runs the program with the real user and group ids of the
+caller; a queue run as the slendmail user runs it with the slendmail group.
+.Ic argv
+is visible to all local users and holds no secret; a secret the program reads
+itself is readable by every caller of a setgid call.
+Its stdout and stderr, up to 4096 bytes, are logged.
 .El
 .Pp
 .Ic max_file_size
 replaces the size limit of one file, in bytes, for every type but
-.Cm http ;
+.Cm http
+and
+.Cm exec ;
 a bigger file is listed as not sent.
 .Pp
 429 and 5xx answers, and any answer with a Retry-After header, are temporary

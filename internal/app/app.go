@@ -17,10 +17,12 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/6RUN0/slendmail/internal/backend"
 	"github.com/6RUN0/slendmail/internal/backend/discord"
+	"github.com/6RUN0/slendmail/internal/backend/hook"
 	"github.com/6RUN0/slendmail/internal/backend/ntfy"
 	"github.com/6RUN0/slendmail/internal/backend/slack"
 	"github.com/6RUN0/slendmail/internal/backend/telegram"
@@ -199,7 +201,7 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 		log = newLogger(cfg.General.SyslogTag).With(msgAttrs...)
 	}
 	client.Timeout = cfg.General.HTTPTimeout.Duration
-	targets, err := buildTargets(cfg, &client)
+	targets, err := buildTargets(cfg, &client, hookProcess(d, log))
 	if err != nil {
 		log.Error("configuration rejected, message not delivered", "err", err)
 		q, openErr := newQueue(d, log, redactor, spoolSettings(d, cfg), nil)
@@ -238,7 +240,7 @@ func runQueueMode(ctx context.Context, d Deps, log *slog.Logger, newLogger func(
 			log = newLogger(cfg.General.SyslogTag)
 		}
 		client.Timeout = cfg.General.HTTPTimeout.Duration
-		targets, err = buildTargets(cfg, client)
+		targets, err = buildTargets(cfg, client, hookProcess(d, log))
 	}
 	if err != nil {
 		log.Error("configuration rejected", "err", err)
@@ -538,10 +540,23 @@ var presetFormats = map[string]text.Format{
 	config.PresetMattermost: text.FormatMattermost, config.PresetSlackWebhook: text.FormatSlackWebhook, config.PresetGenericJSON: text.FormatGenericJSON,
 }
 
+// hookProcess returns what the exec targets of an invocation share. A
+// process with a group its caller does not have, that of the setgid
+// binary, starts a hook with the real ids, so that the hook cannot read
+// the configuration and the spool; root keeps its ids either way.
+func hookProcess(d Deps, log *slog.Logger) hook.Process {
+	process := hook.Process{Log: log}
+	process.TZ, _ = lookupEnv(d.Environ, "TZ")
+	if c := d.Credentials; c.EGID != c.GID {
+		process.Credential = &syscall.Credential{Uid: uint32(c.UID), Gid: uint32(c.GID), NoSetGroups: true}
+	}
+	return process
+}
+
 // buildTargets maps configured targets to senders and templates, in name
 // order so that logs do not depend on map iteration. All targets share
-// client, which carries the request timeout.
-func buildTargets(cfg *config.Config, client *http.Client) ([]delivery.Target, error) {
+// client, which carries the request timeout, and the exec targets hooks.
+func buildTargets(cfg *config.Config, client *http.Client, hooks hook.Process) ([]delivery.Target, error) {
 	var targets []delivery.Target
 	for _, name := range cfg.TargetNames() {
 		target := cfg.Targets[name]
@@ -574,6 +589,12 @@ func buildTargets(cfg *config.Config, client *http.Client) ([]delivery.Target, e
 			}
 			format = presetFormats[target.Preset]
 			sender = webhook.New(webhook.Options{URL: target.URL, Method: target.Method, Format: format, Fields: fields, Headers: target.Headers, Client: client})
+		case config.TypeExec:
+			// The hook gets the message, not the text; the plain template
+			// has no limit and nothing to escape, so rendering it is cheap
+			// and cannot fail on the message.
+			sender = hook.New(hook.Options{Name: name, Argv: target.Argv, Timeout: target.Timeout.Duration, Process: hooks})
+			format = text.FormatPlain
 		default:
 			return nil, fmt.Errorf("target %q: type %q is not implemented", name, target.Type)
 		}

@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/6RUN0/slendmail/internal/backend"
+	"github.com/6RUN0/slendmail/internal/backend/hook"
 	"github.com/6RUN0/slendmail/internal/config"
 	"github.com/6RUN0/slendmail/internal/delivery"
 	"github.com/6RUN0/slendmail/internal/redact"
@@ -225,7 +226,7 @@ func TestBuildTargetsCarriesLimits(t *testing.T) {
 	cfg := &config.Config{Targets: map[string]config.Target{"phone": {
 		Type: config.TypeNtfy, URL: "https://ntfy.example.org/alerts", MaxText: 1000, MaxLines: 40, MaxFileSize: 2000000,
 	}}}
-	targets, err := buildTargets(cfg, http.DefaultClient)
+	targets, err := buildTargets(cfg, http.DefaultClient, hook.Process{})
 	if err != nil {
 		t.Fatal(err)
 	}

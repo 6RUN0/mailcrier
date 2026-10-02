@@ -108,15 +108,21 @@ with "no non-test Go files".
   integer or a non-blank string, `channel` non-blank (both trimmed).
   Targets are `[target.<name>]` tables; keys per type are in
   `allowedKeys`, which lists only implemented keys, required ones in
-  `requiredKeys`. Types `exec` and `shoutrrr` are parsed
-  but rejected by `app` as not implemented.
+  `requiredKeys`. Type `shoutrrr` is parsed but rejected by `app` as not
+  implemented.
 - `internal/backend`: `Sender`, `Caps`, `Payload`, `*Error` with `Class`,
   `IsPartial` (text arrived, files did not: counts as delivered),
   `Classify`, and the HTTP guards every target uses (`WithoutRedirects`,
   `TransportError`, `StatusError`, `Drain`). Targets live in
-  `internal/backend/<name>` (`webhook` is type `http`; Slack is plain Web
+  `internal/backend/<name>` (`webhook` is type `http`, `hook` is type
+  `exec`, both named off the stdlib package they use; Slack is plain Web
   API calls, no client library) and are mapped from config only in
   `internal/app.buildTargets`, each with its built-in template.
+  `hook` asks for `Payload.Message` through `Caps.CanTakeMessage` (raw
+  message without Bcc, envelope fields), runs `argv` in its own process
+  group with a fresh environment and, from `app.hookProcess`, the real
+  ids when `egid != gid`; its tests run real `/bin/sh` scripts, and
+  `TestSetgidHookDropsGroup` checks the ids under a real setgid bit.
   `TestLiveTelegram` sends to the real Bot API only with
   `SLENDMAIL_TELEGRAM_ENV` naming a file with `TELEGRAM_BOT_TOKEN` and
   `TELEGRAM_CHAT_ID`.
@@ -130,7 +136,8 @@ with "no non-test Go files".
   over `Caps.MaxText`, `MaxLines`),
   puts the full text first among the files of a cut text per `OnLong`
   (`message.txt` in the plain template, or `message.eml` from
-  `message.WithoutBlindCopies`), and sends; after a `backend.Error` with
+  `message.WithoutBlindCopies`, also the `Raw` of `Payload.Message`),
+  and sends; after a `backend.Error` with
   `IsTextRejected` it sends that file alone once more. A panic there is
   recovered into a permanent result, so a target must not share mutable
   state with another. `DeliverEach` also
