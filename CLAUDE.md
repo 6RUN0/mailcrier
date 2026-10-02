@@ -10,6 +10,7 @@ make check        # all CI checks of a push; govulncheck only warns here
 make lint         # other targets: tidy test fuzz build licenses vuln
                   # check-refs check-commits snapshot
 make fuzz FUZZTIME=10m   # longer fuzzing; check runs each target 10s
+make fuzz FUZZPARALLEL=8  # fuzzing processes per target, default 4
 make setgid-e2e   # needs docker: TestSetgid* in a root container
 make units-verify # needs docker: systemd-analyze verify of packaging/systemd
 go build -o slendmail ./cmd/slendmail   # the binary; the name is gitignored

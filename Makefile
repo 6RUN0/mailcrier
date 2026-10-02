@@ -38,8 +38,10 @@ BASE ?= $(shell git rev-parse -q --verify origin/develop >/dev/null && echo orig
 
 # Each fuzz target runs this long in check; a longer run takes
 # FUZZTIME=10m. Inputs that fail are saved under testdata/fuzz and belong
-# in the commit that fixes them.
+# in the commit that fixes them. Without -parallel each target starts
+# GOMAXPROCS fuzzing processes; FUZZPARALLEL=N changes the number.
 FUZZTIME ?= 10s
+FUZZPARALLEL ?= 4
 FUZZ_TARGETS := ./internal/app:FuzzSanitize ./internal/sendmail:FuzzParse ./internal/message:FuzzRead \
 	./internal/message:FuzzHTMLToText ./internal/text:FuzzEscapeTelegram ./internal/text:FuzzEscapeChat \
 	./internal/text:FuzzCutTelegramHTML \
@@ -85,7 +87,7 @@ test:
 
 fuzz:
 	for target in $(FUZZ_TARGETS); do \
-		$(GO) test -run '^$$' -fuzz "^$${target#*:}$$" -fuzztime $(FUZZTIME) "$${target%%:*}" || exit 1; \
+		$(GO) test -run '^$$' -fuzz "^$${target#*:}$$" -fuzztime $(FUZZTIME) -parallel $(FUZZPARALLEL) "$${target%%:*}" || exit 1; \
 	done
 
 build:
