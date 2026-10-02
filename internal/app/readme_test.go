@@ -1,12 +1,14 @@
 package app
 
 import (
+	"errors"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
 	"testing"
 	"testing/fstest"
+	"testing/iotest"
 
 	"github.com/6RUN0/slendmail/internal/backend/hook"
 	"github.com/6RUN0/slendmail/internal/config"
@@ -37,5 +39,30 @@ func TestReadmeTemplatesParse(t *testing.T) {
 	}
 	if found == 0 {
 		t.Error("README has no toml block with a template")
+	}
+}
+
+// readmeCheckExample is the example of the README section "Checking the
+// configuration": a toml block and, after it, the text block of the
+// output of --check-config.
+var readmeCheckExample = regexp.MustCompile("(?s)### Checking the configuration\n.*?```toml\n(.*?)```.*?```text\n(.*?)```")
+
+// TestReadmeCheckConfigOutput runs --check-config on the example of the
+// README and compares its stderr with the output shown there.
+func TestReadmeCheckConfigOutput(t *testing.T) {
+	readme, err := os.ReadFile("../../README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	example := readmeCheckExample.FindStringSubmatch(string(readme))
+	if example == nil {
+		t.Fatal("README has no example of --check-config")
+	}
+	inv := &invocation{config: example[1], args: []string{"--check-config"}, creds: plainUser, stdin: iotest.ErrReader(errors.New("stdin read"))}
+	if code := inv.run(t); code != 0 {
+		t.Fatalf("Run() = %d, want 0; output:\n%s", code, inv.output())
+	}
+	if got := inv.stderr.String(); got != example[2] {
+		t.Errorf("stderr\n%s\nREADME\n%s", got, example[2])
 	}
 }

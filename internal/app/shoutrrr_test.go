@@ -38,3 +38,26 @@ func TestRunDeliversToShoutrrrTarget(t *testing.T) {
 		t.Fatal("receiver got no request")
 	}
 }
+
+// shoutrrrTargetConfig is a shoutrrr target for tests that cover every
+// target type; empty in a build without the library.
+const shoutrrrTargetConfig = "[target.bus]\ntype = \"shoutrrr\"\nurl = \"generic://hooks.example.org/in\"\n"
+
+// TestCheckConfigShoutrrr runs --check-config on the shoutrrr URLs that
+// only the library can judge.
+func TestCheckConfigShoutrrr(t *testing.T) {
+	cases := []struct {
+		name string
+		checkConfigCase
+	}{
+		{"unknown-service", checkConfigCase{doc: "[target.bus]\ntype = \"shoutrrr\"\nurl = \"foo://example.org\"\n", want: 78,
+			line: `error: /etc/slendmail.conf: target "bus": unknown shoutrrr service "foo"`}},
+		{"url-rejected", checkConfigCase{doc: "[target.bus]\ntype = \"shoutrrr\"\nurl = \"telegram://telegram?chats=1\"\n", want: 78,
+			line: `error: /etc/slendmail.conf: target "bus": URL rejected by shoutrrr service "telegram"`}},
+		{"native-type", checkConfigCase{doc: "[target.bus]\ntype = \"shoutrrr\"\nurl = \"telegram://123456:ABC@telegram?chats=1\"\n",
+			line: `warning: /etc/slendmail.conf:3:1: target "bus": shoutrrr service "telegram" has a native target type "telegram"`}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, tc.check)
+	}
+}

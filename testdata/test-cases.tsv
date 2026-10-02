@@ -180,7 +180,7 @@ T-TPL-11	critical	done	Bcc never reaches template data, even with -t	https://git
 T-TPL-12	critical	done	A bot token or webhook URL never appears in logs or exit messages; it is replaced by ***	https://github.com/KostyaEsmukov/smtp_to_telegram/blob/279f5fc/smtp_to_telegram.go#L644-L646
 T-TPL-13	critical	done	The default MarkdownV2 template escapes the body, so dots and dashes do not cause an API error	https://github.com/nadiamoe/sendmail-telegram/blob/b76fa85b4572/sendmail-telegram.go
 T-TPL-14	critical	done	An ISO-8859-1 base64 body and a Q-encoded ISO-8859-1 Subject reach the template as UTF-8	https://github.com/KostyaEsmukov/smtp_to_telegram/blob/279f5fc/smtp_to_telegram_test.go#L641
-T-TPL-15	critical	todo	--check-config reports a template parse error with the target and exits 78	https://github.com/binwiederhier/ntfy/blob/6560158/docs/publish.md
+T-TPL-15	critical	done	--check-config reports a template parse error with the target and exits 78	https://github.com/binwiederhier/ntfy/blob/6560158/docs/publish.md
 T-TPL-16	critical	done	A path template result that does not start with a single slash, names another host, or holds a dot segment, ? or # fails the target permanently before any request	https://www.rfc-editor.org/rfc/rfc3986#section-5.2.4
 T-TPL-17	high	done	Query values from templates are URL-encoded and added to the query of the configured URL	https://pkg.go.dev/net/url#Values.Encode
 T-TPL-18	critical	done	A header template that renders CR, LF or NUL fails the target permanently before the request	https://www.rfc-editor.org/rfc/rfc9110#section-5.5

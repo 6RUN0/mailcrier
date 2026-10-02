@@ -218,36 +218,46 @@ func TestRunHonoursConfigOverride(t *testing.T) {
 	}
 }
 
-// TestRunRefusesServiceModes pins that --probe and --check-config are
-// refused with 77 to an elevated caller other than root and the slendmail
-// user, before stdin is read.
+// TestRunRefusesServiceModes pins who may use --probe and --check-config,
+// decided before stdin is read: an elevated caller other than root and the
+// slendmail user gets 77, and an elevated caller that names another
+// configuration gets 64 instead of a report on the default one.
 func TestRunRefusesServiceModes(t *testing.T) {
+	const overrideRefused = " is ignored for a setgid-elevated caller\n"
 	cases := []struct {
-		name  string
-		creds Credentials
-		mode  string
-		want  int
+		name       string
+		creds      Credentials
+		args       []string
+		want       int
+		wantStderr string
 	}{
-		{"user-probe", elevatedUser, "--probe", 77},
-		{"user-check-config", elevatedUser, "--check-config", 77},
-		{"root-probe", elevatedRoot, "--probe", 64},
-		{"service-user-check-config", elevatedService, "--check-config", 64},
-		{"unelevated-probe", plainUser, "--probe", 64},
+		{"user-probe", elevatedUser, []string{"--probe"}, 77, "slendmail: --probe: permission denied\n"},
+		{"user-check-config", elevatedUser, []string{"--check-config"}, 77, "slendmail: --check-config: permission denied\n"},
+		{"root-probe", elevatedRoot, []string{"--probe"}, 64, "slendmail: --probe: not implemented\n"},
+		{"root-check-config", elevatedRoot, []string{"--check-config"}, 0, checkSummaryClean},
+		{"service-user-check-config", elevatedService, []string{"--check-config"}, 0, checkSummaryClean},
+		{"unelevated-probe", plainUser, []string{"--probe"}, 64, "slendmail: --probe: not implemented\n"},
+		{"unelevated-check-config", plainUser, []string{"--check-config"}, 0, checkSummaryClean},
+		{"service-user-config-option-check-config", elevatedService, []string{"--check-config", "--config", "/etc/other.conf"}, 64, "slendmail: --config" + overrideRefused},
+		{"service-user-config-variable-check-config", elevatedService, []string{sendmail.MarkerEnvConfig, "--check-config"}, 64, "slendmail: SLENDMAIL_CONFIG" + overrideRefused},
+		{"unelevated-marker-check-config", plainUser, []string{sendmail.MarkerEnvConfig, "--check-config"}, 0, checkSummaryClean},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			inv := &invocation{
 				config: httpTargetConfig("http://127.0.0.1:1"),
-				args:   []string{tc.mode},
+				args:   tc.args,
 				creds:  tc.creds,
 				stdin:  iotest.ErrReader(fmt.Errorf("stdin read")),
 			}
 			if code := inv.run(t); code != tc.want {
 				t.Fatalf("Run() = %d, want %d; output:\n%s", code, tc.want, inv.output())
 			}
-			wantText := map[int]string{77: "permission denied", 64: "not implemented"}[tc.want]
-			if got := inv.stderr.String(); got != "slendmail: "+tc.mode+": "+wantText+"\n" {
-				t.Errorf("stderr = %q", got)
+			if got := inv.stderr.String(); got != tc.wantStderr {
+				t.Errorf("stderr = %q, want %q", got, tc.wantStderr)
+			}
+			if inv.stdout.Len() != 0 {
+				t.Errorf("stdout = %q, want nothing", inv.stdout.String())
 			}
 		})
 	}

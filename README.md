@@ -798,8 +798,12 @@ preset = "generic-json"
 - `--config PATH` or the environment variable `SLENDMAIL_CONFIG` names
   another configuration file; `--config` wins. sendmail's `-C` is always
   ignored with a warning.
-- `--probe` and `--check-config` are reserved and exit 64 (not
-  implemented).
+- `--check-config` checks the configuration, see "Checking the
+  configuration": it reads neither stdin nor the spool and sends nothing,
+  writes its findings to stderr and exits 0 without an error, 78 with
+  one. It takes no arguments (64). root, the `slendmail` user and a
+  caller without the setgid bit may run it.
+- `--probe` is reserved and exits 64 (not implemented).
 - The intended install is setgid: binary `root:slendmail 2755`,
   configuration and `*_file` files `root:slendmail 0640`, so that cron jobs
   of any user can send while only root and the binary read the secrets.
@@ -813,8 +817,10 @@ preset = "generic-json"
     privilege. If both fail, it replaces its environment the same way and
     goes on with HTTP/2 off, the Go debug output dropped and no proxy, and
     logs `reexec failed` as an error;
-  - `--config` and `SLENDMAIL_CONFIG` are ignored with a warning;
-  - `--probe` and `--check-config` exit 77 unless the caller is the
+  - `--config` and `SLENDMAIL_CONFIG` are ignored with a warning; with
+    `--check-config` they exit 64 instead, so that the check never
+    reports on another file than the one named;
+  - `--probe` and `--check-config` exit 77 for everyone but root and the
     `slendmail` user.
 - Without the setgid bit taking effect the binary runs with the ids of its
   caller, and that is the normal mode for containers: Docker with
@@ -835,6 +841,77 @@ preset = "generic-json"
 - On a host with the setgid install, a caller running under
   `NoNewPrivileges=yes` or `RestrictSUIDSGID=yes` does not get the group:
   the configuration is unreadable and the call exits 78.
+
+### Checking the configuration
+
+`slendmail --check-config` loads the configuration and builds its targets
+as every call does, so it finds every error that would reject a message
+with 78, and adds warnings about what loads but may not work as meant.
+The errors and warnings go to stderr, one per line, and a last line counts
+them; stdout stays empty. A call stops at the first error: after an error
+in the file nothing else is reported, after an error of a target (a
+template that does not parse, an unknown shoutrrr service) the warnings
+about the file still are. The exit status is 78 with an error and 0
+otherwise, warnings included. Run it as root after each change of the
+configuration: root gets the group of a setgid binary like any other
+user, so the checks of permissions below run.
+
+```toml
+[target.ops]
+type = "http"
+url = "https://discord.com/api/webhooks/123/abc/slack"
+preset = "slack-webhook"
+
+[target.backup]
+type = "discord"
+url = "https://discord.com/api/webhooks/456/def"
+
+[[route]]
+subject = "*backup*"
+targets = ["ops"]
+```
+
+<!-- rumdl-disable MD013 -->
+```text
+warning: /etc/slendmail.conf:4:1: target "ops": preset "slack-webhook" on a Discord host does not disable mentions, use type "discord"
+warning: /etc/slendmail.conf:6:9: target "backup": no route names this target
+warning: /etc/slendmail.conf:10:3: routes have no rule without conditions: a message no rule matches is held and the call exits 64, or the message is lost with the spool off
+/etc/slendmail.conf: 0 errors, 3 warnings
+```
+<!-- rumdl-enable MD013 -->
+
+| Warning | Cause | What to do |
+|---|---|---|
+| `file of key "token_file" is readable by all users` (or `url_file`) | the secret file has the read bit for others | `chmod o-r`, owner group `slendmail`, mode `0640` |
+| `file is readable by all users and holds secrets` | the configuration writes out `token`, `url`, `headers`, `query` or `path` and has the read bit for others | `chmod 0640`, or move the secrets into `*_file` files |
+| `file of key "..." is not readable by the group of the binary, every call of another user exits 78` | a `*_file` or `template_file`, or the configuration itself, belongs to the group of the binary without the read bit for the group, or to another group without the read bit for others: the kernel applies the bits of one class only | `chgrp slendmail` and `chmod g+r` |
+| `directory of key "..." is not searchable by the group of the binary, ...` | a directory on the way to the file, `/` included, belongs to the group of the binary without the search bit for the group, or to another group without the search bit for others | `chmod o+x`, or group `slendmail` with `g+x` |
+| `shoutrrr service "telegram" has a native target type "telegram"` (also `slack`, `discord`, `ntfy`) | the shoutrrr target sends plain text without the escaping, length limits and files of the service | use the target type of the service |
+| `preset "slack-webhook" on a Discord host does not disable mentions` | the Slack-compatible endpoint of a Discord webhook lets `@everyone` from a message ping the channel | use type `discord` |
+| `routes have no rule without conditions` | routes exist, but no rule matches every message | add a last `[[route]]` with `targets` only; a condition such as `subject = "*"` does not count |
+| `no route names this target` | routes exist, and neither a route nor `telegram_direct` names the target | add it to a route, or remove it |
+| `first element of key "argv" is not an executable file` | the program of an `exec` target is missing or has no execute bit | install it, `chmod +x` |
+| `template fails on the sample message, the built-in one is used` | the template from the configuration fails or does not fit the limit of the target | fix the template; calls use the built-in one meanwhile |
+| `request template fails on the sample message, the target gets nothing` | a `path`, `query` or `headers` template fails | fix the template; the target gets no message meanwhile |
+| `the sample message does not render, the target gets nothing` | the built-in template does not fit `max_text`, for JSON or MarkdownV2 | raise `max_text` |
+
+The four checks of permissions run only when the setgid bit applied to
+the process, which is the case for root and for the `slendmail` user with
+another primary group; without the bit (a container, a binary without
+the bit, `sudo -u slendmail` with the primary group `slendmail`) they are
+skipped, because the group that reads the files is unknown. They read the
+mode and the owner group only: access control lists are not seen, and for
+a directory that is a symbolic link the target directory is checked but
+not the directories on the way to it. The check of `argv` runs with the
+ids of the caller of `--check-config`, while a hook runs with those of
+the caller of each message.
+
+The warnings that end in "sample message" come from rendering a built-in
+sample message, the one `--probe` sends, for every target, with nothing
+sent and no hook run. The sample has no attachments, no HTML, no long text
+and no Bcc, so a template branch for those is not tried; and the URL an
+`http` target builds from its rendered `path` is checked only when it
+sends.
 
 ### sendmail command line
 
@@ -940,12 +1017,15 @@ option: `-f --probe` names a sender.
 | a target failed temporarily and the spool entry could not be created: directory missing or not writable, or a limit reached | 73 |
 | a target failed temporarily and the spool entry could not be written; `-q` or `--status` could not read the spool, `mailq` a spool that exists | 74 |
 | usage error: `-f` or `-r` without a value, a line break in the sender, the full name or a recipient, `-bs`, `--config` without a value; stdin is not read | 64 |
-| `--probe`, `--check-config`: not implemented | 64 |
+| `--check-config` found no error, with or without warnings | 0 |
+| `--probe`: not implemented | 64 |
+| `--check-config` with an argument, or from an elevated caller with `--config` or `SLENDMAIL_CONFIG` | 64 |
 | no route selects a target; the message is held, or lost with the spool off | 64 |
 | stdin cannot be read | 66 |
 | panic in the main goroutine (a bug; the redacted record in the log carries the details) | 70 |
 | `--probe` or `--check-config` from an elevated caller other than root and the `slendmail` user | 77 |
-| the configuration cannot be read, parsed or validated, defines no targets, or holds a template that does not parse; the message is held | 78 |
+| for a call with a message: the configuration cannot be read, parsed or validated, defines no targets, or holds a template that does not parse; the message is held | 78 |
+| `--check-config` found an error | 78 |
 
 The targets are sent to at the same time. A panic while rendering or
 sending for one target (a bug) fails that target permanently, logged

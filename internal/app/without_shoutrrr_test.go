@@ -22,3 +22,7 @@ func TestRunRejectsShoutrrrWithoutLibrary(t *testing.T) {
 		t.Errorf("log lacks %q:\n%s", shoutrrrRejection, log)
 	}
 }
+
+// shoutrrrTargetConfig is empty: a build without the library rejects any
+// shoutrrr target.
+const shoutrrrTargetConfig = ""

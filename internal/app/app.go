@@ -183,6 +183,11 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 			defer stop()
 		}
 		return runQueueMode(ctx, d, log, newLogger, redactor, &client, inv)
+	case sendmail.CheckConfig:
+		if code, isAdmitted := admitServiceMode(d, log, inv); !isAdmitted {
+			return code
+		}
+		return runCheckConfig(ctx, d, log, newLogger, redactor, &client, inv)
 	default:
 		return runMode(d, log, inv.Mode)
 	}
@@ -433,17 +438,21 @@ func runMode(d Deps, log *slog.Logger, mode sendmail.Mode) int {
 	case sendmail.Probe:
 		return refuseMode(d, log, sendmail.OptionProbe)
 	default:
-		return refuseMode(d, log, sendmail.OptionCheckConfig)
+		// A mode that Run does not dispatch is a bug, not a request for
+		// help.
+		log.Error("unknown mode", "mode", int(mode))
+		return exitSoftware
 	}
 }
 
 // usage is the text of --help.
 const usage = `usage: slendmail [flags] [--] [recipient ...]
-       slendmail --version | --help | --config PATH
+       slendmail --version | --help | --status | --check-config
 Reads a message on stdin and delivers it to the targets of
-/etc/slendmail.conf. sendmail flags: -t -i -oi -f ADDR -r ADDR -F NAME;
--bi, -I and newaliases do nothing; -bp and mailq list the queue; -q runs it;
---status prints the queue counts.
+/etc/slendmail.conf, or of --config PATH. sendmail flags: -t -i -oi
+-f ADDR -r ADDR -F NAME; -bi, -I and newaliases do nothing; -bp and mailq
+list the queue; -q runs it. The modes read no message: --status prints the
+queue counts, --check-config checks the configuration without sending.
 Other sendmail flags are accepted and ignored. See slendmail(8).
 `
 
@@ -479,10 +488,9 @@ func newCallID() string {
 	return hex.EncodeToString(id)
 }
 
-// refuseMode answers --probe and --check-config, which do not exist yet.
-// Both read the whole configuration or send to every target, so an
-// elevated caller other than root and the slendmail user gets 77; everyone
-// else gets a usage error.
+// refuseMode answers --probe, which does not exist yet. It sends to every
+// target, so an elevated caller other than root and the slendmail user
+// gets 77; everyone else gets a usage error.
 func refuseMode(d Deps, log *slog.Logger, mode string) int {
 	if !d.Credentials.isPrivilegedCaller() {
 		_, _ = fmt.Fprintf(d.Stderr, "slendmail: %s: permission denied\n", mode)
@@ -579,7 +587,9 @@ const minHeaderSecret = 8
 // the {{ }} actions, is registered the same way, and so is every fragment
 // of such path text between slashes, as written and unescaped, from
 // minPathSecret characters on; what the actions render comes from the
-// message and is never logged.
+// message and is never logged. config.SecretKeys lists the keys covered
+// here and grows with this function: a file that writes one of them out is
+// one --check-config warns about.
 func registerSecrets(redactor *redact.Redactor, cfg *config.Config) {
 	for _, name := range cfg.TargetNames() {
 		target := cfg.Targets[name]

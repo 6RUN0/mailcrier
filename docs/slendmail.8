@@ -19,7 +19,7 @@
 .Op Fl -
 .Op Ar recipient ...
 .Nm
-.Fl -version | -help | -status
+.Fl -version | -help | -status | -check-config
 .Nm newaliases
 .Nm mailq
 .Sh DESCRIPTION
@@ -493,7 +493,31 @@ Print a usage summary.
 Print the numbers of queued, held and failed messages, the files in
 .Pa tmp/ ,
 the bytes of the spool and the age of the oldest entry as one logfmt line.
+.It Fl -check-config
+Check the configuration and send nothing: load it and build its targets as
+a call does, which stops at the first error, then warn about
+a secret file or a configuration with secrets readable by all users,
+a file or a directory on the way to it that the group of the binary cannot
+read (these only when the setgid bit applies, root included),
+a shoutrrr URL of a service with a target type of its own,
+the
+.Cm slack-webhook
+preset on a Discord host,
+routes without a rule without conditions,
+a target that no route names,
+an
+.Cm exec
+program that is not executable,
+and a template that fails on a built-in sample message.
+The sample has no attachments, HTML, long text or Bcc; access control lists
+are not seen.
+Errors and warnings go to standard error, one per line, followed by a line
+with their numbers; standard output stays empty, and stdin and the spool are
+not read.
+Takes no arguments.
 .El
+.Pp
+Of several mode options the last one wins.
 .Pp
 Called as
 .Nm newaliases
@@ -531,13 +555,22 @@ Queue run locks, one per user.
 .Bl -tag -width Ds
 .It 0
 At least one target accepted the message, the rest is queued, a suppress
-rule matched, or a mode without a message succeeded.
+rule matched, or a mode without a message succeeded;
+.Fl -check-config
+found no error, warnings aside.
 .It 64
 Usage error: a sender flag without a value, a line break in an address
 or in the full name,
 .Fl bs ,
-or a mode that does not exist yet; or no route selects a target, and the
-message is held.
+.Fl -probe ,
+which does not exist yet,
+.Fl -check-config
+with an argument, or with
+.Fl -config
+or
+.Ev SLENDMAIL_CONFIG
+from a caller the setgid bit applies to; or no route selects a target, and
+the message is held.
 .It 66
 Standard input cannot be read.
 .It 69
@@ -557,7 +590,9 @@ found no spool directory.
 .It 77
 A service mode requested by a caller without the right to it.
 .It 78
-The configuration cannot be read or is invalid; the message is held.
+The configuration cannot be read or is invalid; a message is held.
+.Fl -check-config
+found an error.
 .El
 .Sh SEE ALSO
 .Xr syslog 3 ,
