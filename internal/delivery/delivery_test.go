@@ -201,6 +201,7 @@ func TestDeliverLongText(t *testing.T) {
 	t.Run("file-over-size-notes-full-size", longTextCase{Target{}, backend.Caps{MaxText: 300, MaxFiles: 10, MaxFileSize: 1000}, nil, []string{"a.log"}, "[truncated, 1.9 KiB in full]"}.check)
 	t.Run("eml-without-bcc", longTextCase{Target{LongFile: LongFileMessage}, withFiles, raw, []string{"message.eml", "a.log"}, "message.eml (message/rfc822"}.check)
 	t.Run("eml-unknown-gives-text", longTextCase{Target{LongFile: LongFileMessage}, withFiles, nil, []string{"message.txt", "a.log"}, "message.txt"}.check)
+	t.Run("max-file-size-over-full-text-notes-full-size", longTextCase{Target{MaxFileSize: 1000}, withFiles, nil, []string{"a.log"}, "[truncated, 1.9 KiB in full]"}.check)
 	t.Run("max-text-replaces-the-limit", longTextCase{Target{MaxText: 200}, backend.Caps{MaxText: 4000, MaxFiles: 10}, nil, []string{"message.txt", "a.log"}, "message.txt"}.check)
 	t.Run("T-LIM-19/max-lines-then-file", longTextCase{Target{MaxLines: 3}, backend.Caps{MaxText: 4000, MaxFiles: 10}, nil, []string{"message.txt", "a.log"}, "a line of the body\na line of the body\na line of the body\n[truncated]\nmessage.txt"}.check)
 }
@@ -355,20 +356,22 @@ func TestDeliverSelectsFiles(t *testing.T) {
 		d.Attachments = append(d.Attachments, render.Attachment{Name: name, ContentType: "text/plain", Size: int64(size)})
 	}
 	cases := []struct {
-		name      string
-		caps      backend.Caps
-		wantSent  []string
-		wantMarks int
+		name        string
+		caps        backend.Caps
+		maxFileSize int64
+		wantSent    []string
+		wantMarks   int
 	}{
-		{"T-LIM-09/at-most-max-files", backend.Caps{MaxFiles: 2}, []string{"f0.log", "f1.log"}, 3},
-		{"T-LIM-07/file-over-size-skipped", backend.Caps{MaxFiles: 10, MaxFileSize: 20}, []string{"f0.log", "f2.log", "attachment-4", "f4.log"}, 1},
-		{"T-LIM-09/request-over-total-skipped", backend.Caps{MaxFiles: 10, MaxFilesSize: 60}, []string{"f0.log", "f1.log", "f2.log"}, 2},
-		{"text-only-target", backend.Caps{}, nil, 0},
+		{"T-LIM-09/at-most-max-files", backend.Caps{MaxFiles: 2}, 0, []string{"f0.log", "f1.log"}, 3},
+		{"T-LIM-07/file-over-size-skipped", backend.Caps{MaxFiles: 10, MaxFileSize: 20}, 0, []string{"f0.log", "f2.log", "attachment-4", "f4.log"}, 1},
+		{"T-LIM-09/request-over-total-skipped", backend.Caps{MaxFiles: 10, MaxFilesSize: 60}, 0, []string{"f0.log", "f1.log", "f2.log"}, 2},
+		{"max-file-size-replaces-the-limit", backend.Caps{MaxFiles: 10, MaxFileSize: 100}, 20, []string{"f0.log", "f2.log", "attachment-4", "f4.log"}, 1},
+		{"text-only-target", backend.Caps{}, 0, nil, 0},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			sender := &fakeSender{caps: tc.caps}
-			Deliver(context.Background(), []Target{{ID: "t", Sender: sender, Template: plainTemplate(t)}}, d, files)
+			Deliver(context.Background(), []Target{{ID: "t", Sender: sender, Template: plainTemplate(t), MaxFileSize: tc.maxFileSize}}, d, files)
 			var sent []string
 			for _, file := range sender.sent[0].Attachments {
 				sent = append(sent, file.Name)

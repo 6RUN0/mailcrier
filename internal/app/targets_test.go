@@ -219,6 +219,21 @@ func TestRunLongTextAsMessage(t *testing.T) {
 	}
 }
 
+// TestBuildTargetsCarriesLimits pins that the limits of a target in the
+// configuration reach delivery, where they replace those of the service.
+func TestBuildTargetsCarriesLimits(t *testing.T) {
+	cfg := &config.Config{Targets: map[string]config.Target{"phone": {
+		Type: config.TypeNtfy, URL: "https://ntfy.example.org/alerts", MaxText: 1000, MaxLines: 40, MaxFileSize: 2000000,
+	}}}
+	targets, err := buildTargets(cfg, http.DefaultClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := targets[0]; got.MaxText != 1000 || got.MaxLines != 40 || got.MaxFileSize != 2000000 {
+		t.Errorf("target limits %d, %d, %d; want 1000, 40, 2000000", got.MaxText, got.MaxLines, got.MaxFileSize)
+	}
+}
+
 // TestLogTextRejected pins the warning for a target that rejected the
 // text: sent as file only when the file went through, so that a failed
 // retry does not claim a delivery.

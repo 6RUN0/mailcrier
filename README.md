@@ -124,6 +124,14 @@ All targets of the file receive every message, at the same time. Each
 sends the text in the markup of its service, escaped so that nothing in the
 message becomes markup, a link preview or a mention.
 
+`max_file_size`, a key of every type but `http`, sets the size limit of one
+file in bytes, in place of the one given below for the type (`slack` has
+none); it must be a positive integer, else exit status 78. A file over it
+is listed with the `not_sent` notice and not sent, and a cut text whose
+full text exceeds it ends with the `truncated_size` notice. A value above
+the limit of the service is taken as it is, and the service rejects a
+bigger file.
+
 ```toml
 [target.ops-telegram]
 type = "telegram"
@@ -186,15 +194,17 @@ channel = "#alerts"                          # channel name or ID
 type = "ntfy"
 # https://ntfy.sh/<topic>, user:password@ allowed
 url_file = "/etc/slendmail.d/ntfy.url"
+max_file_size = 2000000         # optional, ntfy.sh takes files of 2 MB
 ```
 
 - `ntfy`: a JSON publish to the server root with the topic, the subject
   as title (line breaks as spaces, at most 1 KB) and the text of at most
   4096 bytes, then one PUT per attachment to the topic with `filename` and
   `title` in the query; up to 10 files of at most 15 MiB each, the
-  defaults of an ntfy server. The URL must end with the topic, otherwise
-  exit status 78; user information and a query such as `auth` are sent
-  with every request.
+  defaults of an ntfy server. ntfy.sh takes files of at most 2 MB, so a
+  target there sets `max_file_size`. The URL must end with the topic,
+  otherwise exit status 78; user information and a query such as `auth`
+  are sent with every request.
 
 ```toml
 [target.mm]

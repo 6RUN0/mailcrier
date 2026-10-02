@@ -39,6 +39,18 @@ on_long = "blockquote"
 long_file = "eml"
 max_text = 1000
 max_lines = 40
+max_file_size = 2000000
+
+[target.dc]
+type = "discord"
+url = "https://example.org/x"
+max_file_size = 3000000
+
+[target.sl]
+type = "slack"
+token = "xoxb-1"
+channel = "#ops"
+max_file_size = 4000000
 `
 	secret := fstest.MapFS{"etc/slendmail.d/hook.url": {Data: []byte("https://example.org/hooks/secret\n")}}
 	cfg, err := load(t, doc, secret)
@@ -55,8 +67,11 @@ max_lines = 40
 	if hook.URL != "https://example.org/hooks/secret" {
 		t.Errorf("hook.URL = %q, want the trimmed content of url_file", hook.URL)
 	}
-	if tg := cfg.Targets["ops-telegram"]; tg.Token != "123:abc" || tg.ChatID != "-100123" || tg.OnLong != OnLongBlockquote || tg.LongFile != LongFileMessage || tg.MaxText != 1000 || tg.MaxLines != 40 {
+	if tg := cfg.Targets["ops-telegram"]; tg.Token != "123:abc" || tg.ChatID != "-100123" || tg.OnLong != OnLongBlockquote || tg.LongFile != LongFileMessage || tg.MaxText != 1000 || tg.MaxLines != 40 || tg.MaxFileSize != 2000000 {
 		t.Errorf("ops-telegram = %+v", tg)
+	}
+	if dc, sl := cfg.Targets["dc"], cfg.Targets["sl"]; dc.MaxFileSize != 3000000 || sl.MaxFileSize != 4000000 {
+		t.Errorf("max_file_size of discord %d, of slack %d", dc.MaxFileSize, sl.MaxFileSize)
 	}
 }
 
@@ -272,6 +287,21 @@ func TestLoadRejects(t *testing.T) {
 			name: "max-lines-negative",
 			doc:  "[target.api]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org/x\"\nmax_lines = -1\n",
 			want: `:5:1: target "api": value of key "max_lines" must be positive`,
+		},
+		{
+			name: "max-file-size-zero",
+			doc:  "[target.nt]\ntype = \"ntfy\"\nurl = \"https://ntfy.example.org/x\"\nmax_file_size = 0\n",
+			want: `:4:1: target "nt": value of key "max_file_size" must be positive`,
+		},
+		{
+			name: "max-file-size-not-integer",
+			doc:  "[target.nt]\ntype = \"ntfy\"\nurl = \"https://ntfy.example.org/x\"\nmax_file_size = \"2M\"\n",
+			want: `:4:17: toml: cannot decode TOML string into struct field config.Target.MaxFileSize of type int64`,
+		},
+		{
+			name: "max-file-size-of-http",
+			doc:  "[target.api]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org/x\"\nmax_file_size = 1000\n",
+			want: `:5:1: target "api": key "max_file_size" is not valid for type "http"`,
 		},
 		{
 			name: "unknown-long-file",

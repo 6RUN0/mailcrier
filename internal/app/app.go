@@ -583,7 +583,7 @@ func buildTargets(cfg *config.Config, client *http.Client) ([]delivery.Target, e
 		}
 		targets = append(targets, delivery.Target{
 			ID: name, Sender: sender, Template: tmpl, OnLong: onLongPolicies[target.OnLong], LongFile: longFiles[target.LongFile],
-			MaxText: target.MaxText, MaxLines: target.MaxLines,
+			MaxText: target.MaxText, MaxLines: target.MaxLines, MaxFileSize: target.MaxFileSize,
 		})
 	}
 	return targets, nil

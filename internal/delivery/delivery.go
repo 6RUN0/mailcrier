@@ -42,6 +42,9 @@ type Target struct {
 	// MaxLines bounds the lines of the body in the text when positive; a
 	// body of more lines counts as a text over the limit.
 	MaxLines int
+	// MaxFileSize replaces Caps.MaxFileSize of the sender when positive,
+	// in bytes.
+	MaxFileSize int64
 }
 
 // OnLong is the policy for a text over the limit of a target. Every
@@ -176,6 +179,9 @@ func deliverOne(ctx context.Context, target Target, d render.Data, files []messa
 		}
 	}()
 	caps := target.Sender.Caps()
+	if target.MaxFileSize > 0 {
+		caps.MaxFileSize = target.MaxFileSize
+	}
 	limit := caps.MaxText
 	if target.MaxText > 0 {
 		limit = target.MaxText

@@ -226,6 +226,9 @@ type Target struct {
 	MaxText int `toml:"max_text"`
 	// MaxLines bounds the lines of the body in the text.
 	MaxLines int `toml:"max_lines"`
+	// MaxFileSize replaces the size limit of one file of the service, in
+	// bytes.
+	MaxFileSize int64 `toml:"max_file_size"`
 	// Argv is the command line of the exec target.
 	Argv []string `toml:"argv"`
 }
@@ -233,12 +236,12 @@ type Target struct {
 // allowedKeys lists, per target type, the keys it uses besides "type". A
 // type lists only what its implementation honours, so that a key it would
 // ignore rejects the file instead: the http target sends no files, so the
-// keys about the file of a long text are not among its keys.
+// keys about files and the file of a long text are not among its keys.
 var allowedKeys = map[string][]string{
-	TypeTelegram: {"token", "token_file", "chat_id", "message_thread_id", "disable_notification", "on_long", "long_file", "max_text", "max_lines"},
-	TypeDiscord:  {"url", "url_file", "on_long", "long_file", "max_text", "max_lines"},
-	TypeSlack:    {"token", "token_file", "channel", "on_long", "long_file", "max_text", "max_lines"},
-	TypeNtfy:     {"url", "url_file", "on_long", "long_file", "max_text", "max_lines"},
+	TypeTelegram: {"token", "token_file", "chat_id", "message_thread_id", "disable_notification", "on_long", "long_file", "max_text", "max_lines", "max_file_size"},
+	TypeDiscord:  {"url", "url_file", "on_long", "long_file", "max_text", "max_lines", "max_file_size"},
+	TypeSlack:    {"token", "token_file", "channel", "on_long", "long_file", "max_text", "max_lines", "max_file_size"},
+	TypeNtfy:     {"url", "url_file", "on_long", "long_file", "max_text", "max_lines", "max_file_size"},
 	TypeHTTP:     {"url", "url_file", "preset", "username", "channel", "headers", "max_text", "max_lines"},
 	TypeExec:     {"argv"},
 	TypeShoutrrr: {"url", "url_file"},
@@ -519,8 +522,8 @@ func validateTarget(name string, target Target, keys keyIndex) *Error {
 	}
 	for _, limit := range []struct {
 		key   string
-		value int
-	}{{"max_text", target.MaxText}, {"max_lines", target.MaxLines}} {
+		value int64
+	}{{"max_text", int64(target.MaxText)}, {"max_lines", int64(target.MaxLines)}, {"max_file_size", target.MaxFileSize}} {
 		if keys.has("target", name, limit.key) && limit.value <= 0 {
 			return fail(limit.key, "value of key %q must be positive", limit.key)
 		}

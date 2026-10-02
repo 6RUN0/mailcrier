@@ -125,8 +125,9 @@ with "no non-test Go files".
   `config.Load`; a new secret-bearing config key must be registered in
   `app.registerSecrets`.
 - `internal/delivery`: `Deliver` runs one goroutine per target that picks
-  the files within `Caps`, fits the target's template with
-  `render.FitLines` (`Target.MaxText` over `Caps.MaxText`, `MaxLines`),
+  the files within `Caps` (`Target.MaxFileSize` over `Caps.MaxFileSize`),
+  fits the target's template with `render.FitLines` (`Target.MaxText`
+  over `Caps.MaxText`, `MaxLines`),
   puts the full text first among the files of a cut text per `OnLong`
   (`message.txt` in the plain template, or `message.eml` from
   `message.WithoutBlindCopies`), and sends; after a `backend.Error` with

@@ -1,4 +1,4 @@
-.Dd October 1, 2026
+.Dd October 2, 2026
 .Dt SLENDMAIL 8
 .Os
 .Sh NAME
@@ -157,6 +157,11 @@ is cut, to 40000 characters, unless
 .Ic max_text
 sets a limit.
 .El
+.Pp
+.Ic max_file_size
+replaces the size limit of one file, in bytes, for every type but
+.Cm http ;
+a bigger file is listed as not sent.
 .Pp
 429 and 5xx answers, and any answer with a Retry-After header, are temporary
 failures; other rejections are permanent.
