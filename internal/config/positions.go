@@ -95,6 +95,16 @@ func (k keyIndex) position(path ...string) unstable.Position {
 	return unstable.Position{}
 }
 
+// keyPosition is position for a key whose last part may be the empty
+// string, a valid TOML key such as "" = 1, which position takes for "the
+// table itself".
+func (k keyIndex) keyPosition(path ...string) unstable.Position {
+	if pos, ok := k[strings.Join(path, keySeparator)]; ok {
+		return pos
+	}
+	return k.position(path...)
+}
+
 // children returns the direct child keys of the table at path, sorted.
 func (k keyIndex) children(path ...string) []string {
 	prefix := strings.Join(path, keySeparator) + keySeparator

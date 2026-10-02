@@ -7,6 +7,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"net/url"
+	"slices"
 	"sync"
 	"time"
 
@@ -31,13 +34,17 @@ type Target struct {
 	ID string
 	// Sender performs the actual delivery.
 	Sender backend.Sender
-	// Template renders the text of the target.
+	// Template renders the text of the target; nil for a target that
+	// sends no text, an http target with method GET.
 	Template *render.Template
 	// Fallback is the built-in template of the target when Template comes
 	// from the configuration, nil otherwise. It renders the text when
 	// Template fails, and once more when the target rejects the text of
 	// Template.
 	Fallback *render.Template
+	// Request renders the path, query and headers of the request of an
+	// http target; nil for any other target.
+	Request *RequestTemplates
 	// OnLong is what the target gets for a text over its limit.
 	OnLong OnLong
 	// LongFile selects the file that carries a long text in full.
@@ -51,6 +58,18 @@ type Target struct {
 	// MaxFileSize replaces Caps.MaxFileSize of the sender when positive,
 	// in bytes.
 	MaxFileSize int64
+}
+
+// RequestTemplates are the templates of the parts of an HTTP request, each
+// from render.ParsePart. They have no built-in fallback: when one fails,
+// the target fails permanently and gets nothing.
+type RequestTemplates struct {
+	// Path renders the path appended to the configured URL; nil for none.
+	Path *render.Template
+	// Query renders the query values by name.
+	Query map[string]*render.Template
+	// Headers render the header values by name.
+	Headers map[string]*render.Template
 }
 
 // OnLong is the policy for a text over the limit of a target. Every
@@ -140,6 +159,10 @@ type Result struct {
 	// a *render.TemplateError, or the error of the target that rejected
 	// its text, when Fallback rendered the text instead; nil otherwise.
 	TemplateErr error
+	// RequestErr is the failure of a template of Target.Request; the
+	// target then failed permanently without a request, and Err holds the
+	// same failure. nil otherwise.
+	RequestErr error
 }
 
 // Deliver renders d for every target, fitted to its length limit, and
@@ -208,6 +231,14 @@ func deliverOne(ctx context.Context, target Target, d render.Data, files []messa
 	job.deadline, _ = ctx.Deadline()
 	job.d = d
 	job.d.Target, job.d.Limit = target.ID, limit
+	var request *backend.Request
+	if target.Request != nil {
+		var err error
+		if request, err = job.renderRequest(target.Request); err != nil {
+			err = fmt.Errorf("render request: %w", err)
+			return Result{TargetID: target.ID, Status: Perm, Err: &backend.Error{Class: backend.Permanent, Err: err}, RequestErr: err}
+		}
+	}
 	out, err := job.fit(target.Template)
 	var templateErr error
 	var userErr *render.TemplateError
@@ -224,7 +255,7 @@ func deliverOne(ctx context.Context, target Target, d render.Data, files []messa
 		title = job.d.Strings.NoSubject
 	}
 	send := func(out *fitted) error {
-		payload := backend.Payload{Title: title, Text: out.text, Attachments: out.sent}
+		payload := backend.Payload{Title: title, Text: out.text, Attachments: out.sent, Request: request}
 		if caps.CanTakeMessage {
 			payload.Message = long.whole()
 		}
@@ -269,6 +300,46 @@ func deliverOne(ctx context.Context, target Target, d render.Data, files []messa
 	return Result{TargetID: target.ID, Status: statusOf(err), Err: err, IsTruncated: out.isTruncated, TextRejected: result.Err, TemplateErr: templateErr}
 }
 
+// renderRequest renders the parts of the request with one budget, which
+// the text then shares: j.deadline becomes the end of that budget.
+func (j *textJob) renderRequest(parts *RequestTemplates) (*backend.Request, error) {
+	request := &backend.Request{}
+	execute := func(tmpl *render.Template) (string, error) {
+		tmpl = tmpl.WithBudget(j.deadline)
+		if deadline := tmpl.Deadline(); !deadline.IsZero() {
+			j.deadline = deadline
+		}
+		return tmpl.Execute(j.d)
+	}
+	var err error
+	if parts.Path != nil {
+		if request.Path, err = execute(parts.Path); err != nil {
+			return nil, fmt.Errorf("path: %w", err)
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(parts.Query)) {
+		value, err := execute(parts.Query[name])
+		if err != nil {
+			return nil, fmt.Errorf("query %q: %w", name, err)
+		}
+		if request.Query == nil {
+			request.Query = url.Values{}
+		}
+		request.Query.Add(name, value)
+	}
+	for _, name := range slices.Sorted(maps.Keys(parts.Headers)) {
+		value, err := execute(parts.Headers[name])
+		if err != nil {
+			return nil, fmt.Errorf("header %q: %w", name, err)
+		}
+		if request.Headers == nil {
+			request.Headers = map[string]string{}
+		}
+		request.Headers[name] = value
+	}
+	return request, nil
+}
+
 // textJob is what rendering the text of one target needs, for each
 // template it tries.
 type textJob struct {
@@ -302,6 +373,9 @@ type fitted struct {
 // the configuration gets one budget for both renderings, ending no later
 // than the delivery.
 func (j *textJob) fit(tmpl *render.Template) (*fitted, error) {
+	if tmpl == nil {
+		return &fitted{}, nil
+	}
 	tmpl = tmpl.WithBudget(j.deadline)
 	d, caps := j.d, j.caps
 	out := &fitted{}

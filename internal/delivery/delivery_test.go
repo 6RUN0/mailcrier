@@ -163,7 +163,8 @@ func TestDeliverRecoversPanic(t *testing.T) {
 		}
 	})
 	t.Run("panic-in-rendering", func(t *testing.T) {
-		results := Deliver(context.Background(), []Target{{ID: "no-template", Sender: &fakeSender{}}}, testData(), nil)
+		sender := &fakeSender{caps: backend.Caps{MaxText: 10, Measure: func(string) int { panic("bug in measure") }}}
+		results := Deliver(context.Background(), []Target{{ID: "bad-measure", Sender: sender, Template: plainTemplate(t)}}, testData(), nil)
 		if results[0].Status != Perm || results[0].Err == nil || !strings.HasPrefix(results[0].Err.Error(), "panic: ") {
 			t.Errorf("result = %+v", results[0])
 		}
@@ -521,7 +522,7 @@ func (c fallbackCase) check(t *testing.T) {
 	target := Target{ID: "t", Sender: sender, Template: userTemplate(t, c.source), Fallback: plainTemplate(t)}
 	result := Deliver(context.Background(), []Target{target}, testData(), nil)[0]
 	var templateErr *render.TemplateError
-	if result.Status != OK || result.Err != nil || !errors.As(result.TemplateErr, &templateErr) {
+	if result.Status != OK || result.Err != nil || !errors.As(result.TemplateErr, &templateErr) || result.RequestErr != nil {
 		t.Fatalf("result = %+v", result)
 	}
 	if len(sender.sent) != 1 || sender.sent[0].Text != c.builtin {
@@ -604,5 +605,83 @@ func TestDeliverRenderBudgetEndsWithDelivery(t *testing.T) {
 	}
 	if len(sender.sent) != 1 || sender.sent[0].Text != builtin {
 		t.Errorf("sent = %+v, want the built-in text", sender.sent)
+	}
+}
+
+// partTemplate parses source as a template of a request part.
+func partTemplate(t *testing.T, source string) *render.Template {
+	t.Helper()
+	tmpl, err := render.ParsePart("part", source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tmpl
+}
+
+// TestDeliverRequestParts pins that the parts of a request are rendered
+// from the data of the message and reach the sender, and that a failed
+// part fails the target for good without a request and without a
+// fallback.
+func TestDeliverRequestParts(t *testing.T) {
+	d := testData()
+	d.Subject = "disk a/b"
+	t.Run("rendered", func(t *testing.T) {
+		sender := &fakeSender{}
+		request := &RequestTemplates{
+			Path:    partTemplate(t, "/hosts/{{ pathSegment .Subject }}"),
+			Query:   map[string]*render.Template{"host": partTemplate(t, "{{ .Hostname }}"), "empty": partTemplate(t, "")},
+			Headers: map[string]*render.Template{"X-Subject": partTemplate(t, "{{ .Subject | toUpper }}"), "Authorization": partTemplate(t, "Bearer t0ken")},
+		}
+		result := Deliver(context.Background(), []Target{{ID: "t", Sender: sender, Template: plainTemplate(t), Request: request}}, d, nil)[0]
+		if result.Status != OK || len(sender.sent) != 1 || sender.sent[0].Request == nil {
+			t.Fatalf("result = %+v, sent %+v", result, sender.sent)
+		}
+		got := sender.sent[0].Request
+		if got.Path != "/hosts/disk%20a%2Fb" || got.Query.Encode() != "empty=&host=h" ||
+			got.Headers["X-Subject"] != "DISK A/B" || got.Headers["Authorization"] != "Bearer t0ken" {
+			t.Errorf("request = %+v", got)
+		}
+	})
+	t.Run("T-TPL-20/path-fails", requestFailureCase{"path"}.check)
+	t.Run("T-TPL-20/query-fails", requestFailureCase{"query"}.check)
+	t.Run("T-TPL-20/header-fails", requestFailureCase{"header"}.check)
+	t.Run("T-TPL-19/get-without-text", func(t *testing.T) {
+		sender := &fakeSender{}
+		request := &RequestTemplates{Query: map[string]*render.Template{"s": partTemplate(t, "{{ .Subject }}")}}
+		result := Deliver(context.Background(), []Target{{ID: "t", Sender: sender, Request: request}}, d, nil)[0]
+		if result.Status != OK || len(sender.sent) != 1 || sender.sent[0].Text != "" || sender.sent[0].Request.Query.Get("s") != "disk a/b" {
+			t.Errorf("result = %+v, sent %+v", result, sender.sent)
+		}
+	})
+}
+
+// requestFailureCase is a request part, path, query or header, whose
+// template fails.
+type requestFailureCase struct {
+	part string
+}
+
+func (c requestFailureCase) check(t *testing.T) {
+	failing := partTemplate(t, "{{ index .To 3 }}")
+	request := &RequestTemplates{}
+	switch c.part {
+	case "path":
+		request.Path = failing
+	case "query":
+		request.Query = map[string]*render.Template{"q": failing}
+	default:
+		request.Headers = map[string]*render.Template{"X-H": failing}
+	}
+	sender := &fakeSender{}
+	target := Target{ID: "t", Sender: sender, Template: userTemplate(t, "{{ .Subject }}"), Fallback: plainTemplate(t), Request: request}
+	result := Deliver(context.Background(), []Target{target}, testData(), nil)[0]
+	var deliveryErr *backend.Error
+	var templateErr *render.TemplateError
+	if result.Status != Perm || !errors.As(result.Err, &deliveryErr) || deliveryErr.Class != backend.Permanent ||
+		!errors.As(result.Err, &templateErr) || !errors.As(result.RequestErr, &templateErr) || result.TemplateErr != nil || len(sender.sent) != 0 {
+		t.Errorf("result = %+v, %d sends", result, len(sender.sent))
+	}
+	if code := ExitCode([]Result{result}, QueueOff); code != 69 {
+		t.Errorf("exit code %d", code)
 	}
 }

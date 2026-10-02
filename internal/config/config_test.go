@@ -153,14 +153,89 @@ func TestLoadRejects(t *testing.T) {
 			want: `:7:1: target "hook": value of header "X-Token" is invalid`,
 		},
 		{
-			name: "http-method-get",
+			name: "get-with-preset",
 			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\nmethod = \"GET\"\n",
-			want: `:5:1: target "hook": unknown method, want one of POST, PUT, PATCH`,
+			want: `:3:1: target "hook": key "preset" is not valid with method "GET"`,
+		},
+		{
+			name: "get-with-template",
+			doc:  "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\nmethod = \"GET\"\ntemplate = \"{}\"\n",
+			want: `:5:1: target "hook": key "template" is not valid with method "GET"`,
+		},
+		{
+			name: "get-with-max-text",
+			doc:  "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\nmethod = \"GET\"\nmax_text = 10\n",
+			want: `:5:1: target "hook": key "max_text" is not valid with method "GET"`,
+		},
+		{
+			name: "path-blank",
+			doc:  "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\nmethod = \"GET\"\npath = \" \"\n",
+			want: `:5:1: target "hook": value of key "path" must not be blank`,
+		},
+		{
+			name: "query-name-empty",
+			doc:  "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\nmethod = \"GET\"\n[target.hook.query]\n\"\" = \"x\"\n",
+			want: `:6:1: target "hook": query name must not be empty`,
+		},
+		{
+			name: "get-with-max-lines",
+			doc:  "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\nmethod = \"GET\"\nmax_lines = 10\n",
+			want: `:5:1: target "hook": key "max_lines" is not valid with method "GET"`,
+		},
+		{
+			name: "path-without-slash",
+			doc:  "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\nmethod = \"GET\"\npath = \"hooks/{{ .Hostname }}\"\n",
+			want: `:5:1: target "hook": value of key "path" must start with a single /`,
+		},
+		{
+			name: "path-other-host",
+			doc:  "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\nmethod = \"GET\"\npath = \"//evil.example/{{ .Hostname }}\"\n",
+			want: `:5:1: target "hook": value of key "path" must start with a single /`,
+		},
+		{
+			name: "path-dot-dot",
+			doc:  "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\nmethod = \"GET\"\npath = \"/a/..;x/{{ .Hostname }}\"\n",
+			want: `:5:1: target "hook": value of key "path" must not hold a . or .. segment`,
+		},
+		{
+			name: "path-double-escaped-dot-dot",
+			doc:  "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\nmethod = \"GET\"\npath = \"/a/%252e%252e/b\"\n",
+			want: `:5:1: target "hook": value of key "path" must not hold a . or .. segment`,
+		},
+		{
+			name: "path-double-escaped-dot-dot-bad-parameter",
+			doc:  "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\nmethod = \"GET\"\npath = \"/x/%252e%252e;%25zz/y\"\n",
+			want: `:5:1: target "hook": value of key "path" must not hold a . or .. segment`,
+		},
+		{
+			name: "path-bad-escape",
+			doc:  "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\nmethod = \"GET\"\npath = \"/a%zz/{{ .Hostname }}\"\n",
+			want: `:5:1: target "hook": value of key "path" must not hold an invalid escape`,
+		},
+		{
+			name: "path-control-character",
+			doc:  "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\nmethod = \"GET\"\npath = \"/a\\u0001/{{ .Hostname }}\"\n",
+			want: `:5:1: target "hook": value of key "path" must not hold a control character`,
+		},
+		{
+			name: "path-escaped-control-character",
+			doc:  "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\nmethod = \"GET\"\npath = \"/a%0A/{{ .Hostname }}\"\n",
+			want: `:5:1: target "hook": value of key "path" must not hold a control character or a backslash, escaped or not`,
+		},
+		{
+			name: "path-query",
+			doc:  "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\nmethod = \"GET\"\npath = \"/a?b={{ .Hostname }}\"\n",
+			want: `:5:1: target "hook": value of key "path" must not hold ?, # or a backslash`,
+		},
+		{
+			name: "path-of-other-type",
+			doc:  "[target.dc]\ntype = \"discord\"\nurl = \"https://example.org\"\npath = \"/x\"\n",
+			want: `:4:1: target "dc": key "path" is not valid for type "discord"`,
 		},
 		{
 			name: "http-method-lowercase",
 			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\nmethod = \"put\"\n",
-			want: `:5:1: target "hook": unknown method, want one of POST, PUT, PATCH`,
+			want: `:5:1: target "hook": unknown method, want one of GET, POST, PUT, PATCH`,
 		},
 		{
 			name: "exec-argv-missing",
@@ -471,6 +546,34 @@ func TestLoadTemplates(t *testing.T) {
 	_, err = load(t, "[target.tg]\ntype = \"telegram\"\ntoken = \"1:a\"\nchat_id = 1\ntemplate_file = \"/t.tmpl\"\n", fstest.MapFS{"t.tmpl": {Data: []byte("\n")}})
 	if want := configPath + `:5:1: target "tg": file of key "template_file" is blank`; err == nil || err.Error() != want {
 		t.Errorf("blank template_file: %v, want %s", err, want)
+	}
+}
+
+// TestLoadRequestParts pins the keys of the parts of an http request: a
+// GET needs neither preset nor template, path and query values are kept
+// as written.
+func TestLoadRequestParts(t *testing.T) {
+	doc := "[target.hook]\ntype = \"http\"\nurl = \"https://example.org/in\"\nmethod = \"GET\"\npath = \"/h/{{ pathSegment .Hostname }}\"\n" +
+		"[target.hook.query]\nsubject = \"{{ .Subject }}\"\nempty = \"\"\n[target.hook.headers]\nX-Host = \"{{ .Hostname }}\"\n"
+	cfg, err := load(t, doc, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := cfg.Targets["hook"]
+	if target.Path != "/h/{{ pathSegment .Hostname }}" || target.Query["subject"] != "{{ .Subject }}" || target.Query["empty"] != "" || target.Headers["X-Host"] != "{{ .Hostname }}" {
+		t.Errorf("target = %+v", target)
+	}
+}
+
+// TestLoadPathPrefix pins the paths whose fixed start the file cannot
+// judge, or judges fine: the action may complete a segment or write the
+// whole path, and an escaped percent sign stays allowed.
+func TestLoadPathPrefix(t *testing.T) {
+	for _, path := range []string{"{{ .Hostname }}", "/{{ .Hostname }}", "/a/.{{ .Hostname }}", "/a/..{{ .Hostname }}", "/100%25/{{ .Hostname }}", "/hooks/x", "/a/%2{{ .Hostname }}"} {
+		doc := "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\nmethod = \"GET\"\npath = '" + path + "'\n"
+		if _, err := load(t, doc, nil); err != nil {
+			t.Errorf("path %q: %v", path, err)
+		}
 	}
 }
 

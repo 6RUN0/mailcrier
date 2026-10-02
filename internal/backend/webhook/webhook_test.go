@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -47,8 +48,9 @@ func TestBuildRequestGenericJSON(t *testing.T) {
 // TestBuildRequestHeaders pins that configured headers are set after the
 // Content-Type of the preset and override it.
 func TestBuildRequestHeaders(t *testing.T) {
-	opts := Options{URL: "https://hooks.example.org/in", Headers: map[string]string{"Content-Type": "text/plain", "Authorization": "Bearer t0ken"}}
-	req, err := buildRequest(context.Background(), opts, backend.Payload{Text: "{}"})
+	opts := Options{URL: "https://hooks.example.org/in"}
+	headers := map[string]string{"Content-Type": "text/plain", "Authorization": "Bearer t0ken"}
+	req, err := buildRequest(context.Background(), opts, backend.Payload{Text: "{}", Request: &backend.Request{Headers: headers}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,31 +77,39 @@ func TestBuildRequestMethod(t *testing.T) {
 }
 
 // TestSendRejectsHeaderInjection pins that a header value with a line
-// break or NUL, which config.Load rejects, fails for good without a
-// request when it reaches the sender anyway, and that the error does not
-// quote the value.
+// break or NUL, which a header template may render from the message,
+// fails for good without a request, and that the error does not quote the
+// value.
 func TestSendRejectsHeaderInjection(t *testing.T) {
-	for name, value := range map[string]string{"crlf": "Bearer SECRET\r\nX-Evil: 1", "lf": "SECRET\nX-Evil: 1", "nul": "SECRET\x00"} {
-		t.Run(name, func(t *testing.T) {
-			requests := 0
-			server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { requests++ }))
-			defer server.Close()
-			opts := Options{URL: server.URL, Headers: map[string]string{"Authorization": value}, Client: server.Client()}
-			if _, err := buildRequest(context.Background(), opts, backend.Payload{Text: "{}"}); err == nil {
-				t.Error("buildRequest() accepted the header")
-			}
-			err := New(opts).Send(context.Background(), backend.Payload{Text: "{}"})
-			var deliveryErr *backend.Error
-			if !errors.As(err, &deliveryErr) || deliveryErr.Class != backend.Permanent {
-				t.Fatalf("Send() error = %v, want a permanent *backend.Error", err)
-			}
-			if requests != 0 {
-				t.Errorf("server got %d requests, want none", requests)
-			}
-			if strings.Contains(err.Error(), "SECRET") {
-				t.Errorf("error text quotes the header value: %v", err)
-			}
-		})
+	t.Run("T-TPL-18/crlf", headerInjectionCase{"Bearer SECRET\r\nX-Evil: 1"}.check)
+	t.Run("T-TPL-18/lf", headerInjectionCase{"SECRET\nX-Evil: 1"}.check)
+	t.Run("T-TPL-18/nul", headerInjectionCase{"SECRET\x00"}.check)
+}
+
+// headerInjectionCase is a rendered header value the sender must refuse.
+type headerInjectionCase struct {
+	value string
+}
+
+func (c headerInjectionCase) check(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { requests++ }))
+	defer server.Close()
+	opts := Options{URL: server.URL, Client: server.Client()}
+	payload := backend.Payload{Text: "{}", Request: &backend.Request{Headers: map[string]string{"Authorization": c.value}}}
+	if _, err := buildRequest(context.Background(), opts, payload); err == nil {
+		t.Error("buildRequest() accepted the header")
+	}
+	err := New(opts).Send(context.Background(), payload)
+	var deliveryErr *backend.Error
+	if !errors.As(err, &deliveryErr) || deliveryErr.Class != backend.Permanent {
+		t.Fatalf("Send() error = %v, want a permanent *backend.Error", err)
+	}
+	if requests != 0 {
+		t.Errorf("server got %d requests, want none", requests)
+	}
+	if strings.Contains(err.Error(), "SECRET") {
+		t.Errorf("error text quotes the header value: %v", err)
 	}
 }
 
@@ -297,4 +307,93 @@ func TestCapsPerPreset(t *testing.T) {
 			t.Errorf("%s: Caps = %+v, want MaxText %d", format, caps, want)
 		}
 	}
+}
+
+// TestBuildRequestParts pins how the rendered path and query join the
+// configured URL: the path after its path, the query after its query,
+// scheme, host, port and user information unchanged.
+func TestBuildRequestParts(t *testing.T) {
+	for _, tc := range []struct {
+		name, url, path string
+		query           url.Values
+		want            string
+	}{
+		{"path-after-path", "https://user:pw@hooks.example.org:8443/in/", "/x/a%20b%2Fc", nil, "https://user:pw@hooks.example.org:8443/in/x/a%20b%2Fc"},
+		{"path-keeps-query", "https://hooks.example.org/in?token=abc", "/x", nil, "https://hooks.example.org/in/x?token=abc"},
+		{"path-on-bare-host", "https://hooks.example.org", "/x", nil, "https://hooks.example.org/x"},
+		{"T-TPL-17/query-encoded-and-added", "https://hooks.example.org/in?token=a+b", "", url.Values{"msg": {"a&b=c d/é"}}, "https://hooks.example.org/in?token=a+b&msg=a%26b%3Dc+d%2F%C3%A9"},
+		{"T-TPL-17/query-on-url-without-query", "https://hooks.example.org/in", "", url.Values{"a": {"1", "2"}, "b": {""}}, "https://hooks.example.org/in?a=1&a=2&b="},
+		{"escaped-slash-kept", "https://hooks.example.org/in%2Fx", "/a b%2Fc;v=1", nil, "https://hooks.example.org/in%2Fx/a%20b%2Fc;v=1"},
+		{"escaped-percent-allowed", "https://hooks.example.org/in", "/100%25/a%25zz", nil, "https://hooks.example.org/in/100%25/a%25zz"},
+		{"empty-path-appends-nothing", "https://hooks.example.org/in", "", url.Values{"a": {"1"}}, "https://hooks.example.org/in?a=1"},
+		{"nothing-to-add", "https://hooks.example.org/in?x=%41", "", nil, "https://hooks.example.org/in?x=%41"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := buildRequest(context.Background(), Options{URL: tc.url}, backend.Payload{Text: "{}", Request: &backend.Request{Path: tc.path, Query: tc.query}})
+			if err != nil || req.URL.String() != tc.want {
+				t.Errorf("URL = %v, %v, want %s", req, err, tc.want)
+			}
+		})
+	}
+}
+
+// pathCase is a rendered path the sender must refuse.
+type pathCase struct {
+	path string
+}
+
+func (c pathCase) check(t *testing.T) {
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { requests++ }))
+	defer server.Close()
+	err := New(Options{URL: server.URL + "/in", Client: server.Client()}).Send(context.Background(), backend.Payload{Text: "{}", Request: &backend.Request{Path: c.path}})
+	var deliveryErr *backend.Error
+	if !errors.As(err, &deliveryErr) || deliveryErr.Class != backend.Permanent || requests != 0 {
+		t.Fatalf("Send() = %v, %d requests, want a permanent failure without a request", err, requests)
+	}
+	if strings.Contains(err.Error(), "evil") || strings.Contains(err.Error(), "127.0.0.1") {
+		t.Errorf("error text quotes the path or the URL: %v", err)
+	}
+}
+
+// TestSendRejectsPath pins the paths that would leave the configured host
+// or path, or smuggle a query, rejected before any request.
+func TestSendRejectsPath(t *testing.T) {
+	t.Run("T-TPL-16/other-host", pathCase{"//evil.example/"}.check)
+	t.Run("T-TPL-16/url-with-host", pathCase{"http://evil.example/x"}.check)
+	t.Run("T-TPL-16/no-leading-slash", pathCase{"evil.example/x"}.check)
+	t.Run("T-TPL-16/userinfo-like", pathCase{"@evil.example/x"}.check)
+	t.Run("T-TPL-16/dot-dot", pathCase{"/a/../evil"}.check)
+	t.Run("T-TPL-16/dot", pathCase{"/a/./evil"}.check)
+	t.Run("T-TPL-16/escaped-dot-dot", pathCase{"/a/%2e%2E/evil"}.check)
+	t.Run("T-TPL-16/escaped-slash-dot-dot", pathCase{"/a%2F..%2Fevil"}.check)
+	t.Run("T-TPL-16/backslash", pathCase{"/a\\..\\evil"}.check)
+	t.Run("T-TPL-16/query", pathCase{"/a?evil=1"}.check)
+	t.Run("T-TPL-16/fragment", pathCase{"/a#evil"}.check)
+	t.Run("T-TPL-16/control-character", pathCase{"/a%0Aevil"}.check)
+	t.Run("T-TPL-16/bad-escape", pathCase{"/evil%zz"}.check)
+	t.Run("T-TPL-16/dot-dot-with-parameter", pathCase{"/x/..;/evil"}.check)
+	t.Run("T-TPL-16/double-escaped-dot-dot", pathCase{"/x/%252e%252e/evil"}.check)
+	t.Run("T-TPL-16/double-escaped-slash-dot-dot", pathCase{"/x/a%252F..%252Fevil"}.check)
+	t.Run("T-TPL-16/double-escaped-dot-dot-bad-parameter", pathCase{"/x/%252e%252e;%25zz/evil"}.check)
+}
+
+// TestBuildRequestGet pins that a GET carries neither a body nor a
+// Content-Type, and that a GET target has no text limit.
+func TestBuildRequestGet(t *testing.T) {
+	t.Run("T-TPL-19/no-body", func(t *testing.T) {
+		req, err := buildRequest(context.Background(), Options{URL: "https://hooks.example.org/in", Method: http.MethodGet},
+			backend.Payload{Text: "ignored", Request: &backend.Request{Query: url.Values{"m": {"x"}}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if req.Body != nil || req.ContentLength != 0 || req.Header.Get("Content-Type") != "" || req.URL.RawQuery != "m=x" {
+			t.Errorf("request = %+v", req)
+		}
+	})
+	t.Run("no-limit", func(t *testing.T) {
+		if caps := New(Options{Method: http.MethodGet, Format: text.FormatSlackWebhook, Client: &http.Client{}}).Caps(); caps.MaxText != 0 {
+			t.Errorf("Caps = %+v", caps)
+		}
+	})
 }

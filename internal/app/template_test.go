@@ -110,3 +110,109 @@ func TestRunUserTemplates(t *testing.T) {
 		}
 	})
 }
+
+// requestServer records every request: method, URL, headers and body.
+type requestServer struct {
+	mu       sync.Mutex
+	requests []*http.Request
+	bodies   []string
+}
+
+func newRequestServer(t *testing.T) (*requestServer, *httptest.Server) {
+	t.Helper()
+	s := &requestServer{}
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Error(err)
+		}
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		s.requests, s.bodies = append(s.requests, r), append(s.bodies, string(body))
+	}))
+	t.Cleanup(server.Close)
+	return s, server
+}
+
+// TestRunRequestParts runs whole invocations of http targets with
+// templates in the path, the query and the headers.
+func TestRunRequestParts(t *testing.T) {
+	stdin := "Subject: disk a/b failed\n\nbody\n"
+	t.Run("T-TPL-19/get-with-parts", func(t *testing.T) {
+		received, server := newRequestServer(t)
+		config := "[target.api]\ntype = \"http\"\nmethod = \"GET\"\nurl = \"" + server.URL + "/in?token=abc\"\n" +
+			"path = \"/hosts/{{ pathSegment .Hostname }}/{{ pathSegment .Subject }}\"\n" +
+			"[target.api.query]\nsubject = \"{{ .Subject }}\"\n[target.api.headers]\nX-Host = \"{{ .Hostname | toUpper }}\"\n"
+		inv := &invocation{config: config, stdin: strings.NewReader(stdin)}
+		if code := inv.run(t); code != 0 || len(received.requests) != 1 {
+			t.Fatalf("Run() = %d, %d requests; log:\n%s", code, len(received.requests), inv.log("slendmail"))
+		}
+		req := received.requests[0]
+		if req.Method != http.MethodGet || req.URL.EscapedPath() != "/in/hosts/host1.example.org/disk%20a%2Fb%20failed" ||
+			req.URL.RawQuery != "token=abc&subject=disk+a%2Fb+failed" || req.Header.Get("X-Host") != "HOST1.EXAMPLE.ORG" ||
+			req.Header.Get("Content-Type") != "" || received.bodies[0] != "" {
+			t.Errorf("request %s %s, headers %v, body %q", req.Method, req.URL, req.Header, received.bodies[0])
+		}
+	})
+	t.Run("T-TPL-16/path-to-other-host", rejectedRequestCase{"path", `{{ "//evil.example/" }}`, "path: must start with a single /"}.check)
+	t.Run("T-TPL-16/fixed-path-to-other-host", func(t *testing.T) {
+		config := "[target.api]\ntype = \"http\"\nmethod = \"GET\"\nurl = \"http://127.0.0.1:1\"\npath = \"//evil.example/{{ .Hostname }}\"\n"
+		inv := &invocation{config: config, spoolDir: t.TempDir(), stdin: strings.NewReader(stdin)}
+		if code := inv.run(t); code != 78 || !strings.Contains(inv.log("slendmail"), `value of key \"path\" must start with a single /`) {
+			t.Errorf("Run() = %d; log:\n%s", code, inv.log("slendmail"))
+		}
+	})
+	t.Run("T-TPL-16/path-renders-host", rejectedRequestCase{"path", "{{ .Subject }}", "path: must start with a single /"}.check)
+	t.Run("T-TPL-20/header-fails", rejectedRequestCase{"headers", "{{ index .To 5 }}", `level=WARN msg="request template failed, message not sent" target=api`}.check)
+	t.Run("T-TPL-18/header-renders-line-break", rejectedRequestCase{"headers", "{{ .Body }}", `header \"X-H\" is invalid`}.check)
+	// A permanent failure finishes the entry for the target like any
+	// other: it is removed, not moved to failed/, and -q has nothing to
+	// retry.
+	t.Run("T-TPL-20/spool-entry-finished", func(t *testing.T) {
+		received, server := newRequestServer(t)
+		dir := t.TempDir()
+		config := "[target.api]\ntype = \"http\"\nmethod = \"GET\"\nurl = \"" + server.URL + "/in\"\n[target.api.headers]\nX-H = '{{ index .To 5 }}'\n"
+		inv := &invocation{config: config, spoolDir: dir, stdin: strings.NewReader(stdin)}
+		if code := inv.run(t); code != 69 {
+			t.Fatalf("Run() = %d, want 69; log:\n%s", code, inv.log("slendmail"))
+		}
+		queueRun := &invocation{config: config, spoolDir: dir, args: []string{"-q"}, stdin: strings.NewReader("")}
+		if code := queueRun.run(t); code != 0 {
+			t.Fatalf("Run(-q) = %d; log:\n%s", code, queueRun.log("slendmail"))
+		}
+		entries, _ := filepath.Glob(filepath.Join(dir, "*", "*.eml"))
+		if len(entries) != 0 || len(received.requests) != 0 || !strings.Contains(inv.log("slendmail"), "request template failed") {
+			t.Errorf("entries %v, %d requests; log:\n%s", entries, len(received.requests), inv.log("slendmail"))
+		}
+	})
+	t.Run("T-TPL-04/header-parse-error", func(t *testing.T) {
+		config := "[target.api]\ntype = \"http\"\nmethod = \"GET\"\nurl = \"http://127.0.0.1:1\"\n[target.api.headers]\nX-H = \"{{ .Subject \"\n"
+		inv := &invocation{config: config, spoolDir: t.TempDir(), stdin: strings.NewReader(stdin)}
+		if code := inv.run(t); code != 78 || !strings.Contains(inv.log("slendmail"), `template: api.headers.X-H:1:`) {
+			t.Errorf("Run() = %d; log:\n%s", code, inv.log("slendmail"))
+		}
+	})
+}
+
+// rejectedRequestCase is a request part whose template, or what it
+// renders for the message, fails the target before any request.
+type rejectedRequestCase struct {
+	key, source, want string
+}
+
+func (c rejectedRequestCase) check(t *testing.T) {
+	received, server := newRequestServer(t)
+	config := "[target.api]\ntype = \"http\"\nmethod = \"GET\"\nurl = \"" + server.URL + "/in\"\n"
+	if c.key == "path" {
+		config += "path = '" + c.source + "'\n"
+	} else {
+		config += "[target.api.headers]\nX-H = '" + c.source + "'\n"
+	}
+	inv := &invocation{config: config, stdin: strings.NewReader("Subject: http://evil.example/x\n\nline one\nline two\n")}
+	if code := inv.run(t); code != 69 || len(received.requests) != 0 {
+		t.Fatalf("Run() = %d, %d requests, want 69 and none; log:\n%s", code, len(received.requests), inv.log("slendmail"))
+	}
+	if log := inv.log("slendmail"); !strings.Contains(log, c.want) || strings.Contains(log, "evil") {
+		t.Errorf("log lacks %q or quotes the message:\n%s", c.want, log)
+	}
+}

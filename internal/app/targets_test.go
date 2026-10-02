@@ -276,3 +276,31 @@ func TestRegisterHeaderSecrets(t *testing.T) {
 		t.Errorf("redacted = %q, want %q", got, want)
 	}
 }
+
+// TestRegisterTemplateSecrets pins that the text of header and query
+// templates outside the actions is masked like a plain value, and that
+// the path is masked like the segments of a URL.
+func TestRegisterTemplateSecrets(t *testing.T) {
+	cfg := &config.Config{Targets: map[string]config.Target{"api": {
+		Type: config.TypeHTTP, URL: "https://api.example.org/in", Path: "/hooks/path-secret-0123456789/{{ .Hostname }}",
+		Headers: map[string]string{"Authorization": "Bearer hdr-token-123{{ .Hostname }}"},
+		Query:   map[string]string{"key": "{{ .Subject }}qry-key-4567", "host": "{{ .Hostname }}"},
+	}}}
+	redactor := &redact.Redactor{}
+	registerSecrets(redactor, cfg)
+	got := redactor.String("h hdr-token-123 q qry-key-4567 p path-secret-0123456789 host db1")
+	if want := "h *** q *** p *** host db1"; got != want {
+		t.Errorf("redacted = %q, want %q", got, want)
+	}
+	for _, tc := range []struct{ url, path, line string }{
+		{"https://api.example.org/in?token=abc", "/hooks/path-secret-0123456789/{{ .Hostname }}", "p /in/hooks/path-secret-0123456789/h1"},
+		{"https://api.example.org/in", "/{{ .Hostname }}-path-secret-0123456789", "p /in/h1-path-secret-0123456789"},
+		{"https://api.example.org/in", "/x/path%20secret%200123456789/", "p path secret 0123456789 and path%20secret%200123456789"},
+	} {
+		redactor := &redact.Redactor{}
+		registerSecrets(redactor, &config.Config{Targets: map[string]config.Target{"api": {Type: config.TypeHTTP, URL: tc.url, Path: tc.path}}})
+		if got := redactor.String(tc.line); strings.Contains(got, "secret") {
+			t.Errorf("url %s, path %s: redacted = %q", tc.url, tc.path, got)
+		}
+	}
+}

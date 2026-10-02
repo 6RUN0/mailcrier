@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/http"
 	"net/url"
 	"regexp"
 	"slices"
@@ -213,12 +214,19 @@ type Target struct {
 	// Username replaces the name a Mattermost webhook posts under.
 	Username string `toml:"username"`
 	// Headers are extra request headers of the http target, set after the
-	// Content-Type of the preset, so that they override it. Values may
-	// hold secrets.
+	// Content-Type, so that they override it. Each value is a template.
+	// Values may hold secrets.
 	Headers map[string]string `toml:"headers"`
+	// Path is the template of the path the http target appends to the
+	// path of its URL.
+	Path string `toml:"path"`
+	// Query maps names to the templates of the query values the http
+	// target adds to the query of its URL.
+	Query map[string]string `toml:"query"`
 	// Preset selects the built-in payload of the http target.
 	Preset string `toml:"preset"`
 	// Method is the request method of the http target; empty means POST.
+	// A GET carries no body, so it takes neither preset nor template.
 	Method string `toml:"method"`
 	// OnLong is the policy for text longer than the target accepts.
 	OnLong string `toml:"on_long"`
@@ -256,7 +264,7 @@ var allowedKeys = map[string][]string{
 	TypeDiscord:  {"url", "url_file", "on_long", "long_file", "max_text", "max_lines", "max_file_size", "template", "template_file"},
 	TypeSlack:    {"token", "token_file", "channel", "on_long", "long_file", "max_text", "max_lines", "max_file_size", "template", "template_file"},
 	TypeNtfy:     {"url", "url_file", "on_long", "long_file", "max_text", "max_lines", "max_file_size", "template", "template_file"},
-	TypeHTTP:     {"url", "url_file", "preset", "method", "username", "channel", "headers", "max_text", "max_lines", "template", "template_file"},
+	TypeHTTP:     {"url", "url_file", "preset", "method", "username", "channel", "headers", "path", "query", "max_text", "max_lines", "template", "template_file"},
 	TypeExec:     {"argv", "timeout"},
 	TypeShoutrrr: {"url", "url_file", "template", "template_file"},
 }
@@ -272,9 +280,12 @@ var requiredKeys = map[string][]string{
 // mattermostKeys are the http keys only the mattermost preset uses.
 var mattermostKeys = []string{"username", "channel"}
 
-// methods are the request methods of the http target. A preset renders
-// a request body, which a GET does not carry.
-var methods = []string{"POST", "PUT", "PATCH"}
+// methods are the request methods of the http target.
+var methods = []string{"GET", "POST", "PUT", "PATCH"}
+
+// bodyKeys are the http keys about the request body, which a GET does not
+// carry: a key it would ignore rejects the file instead.
+var bodyKeys = []string{"preset", "template", "template_file", "max_text", "max_lines"}
 
 var (
 	presets        = []string{PresetMattermost, PresetSlackWebhook, PresetGenericJSON}
@@ -511,6 +522,12 @@ func validateTarget(name string, target Target, keys keyIndex) *Error {
 		return fail("template_file", "keys %q and %q are mutually exclusive", "template", "template_file")
 	case keys.has("target", name, "template") && strings.TrimSpace(target.Template) == "":
 		return fail("template", "value of key %q must not be blank", "template")
+	case target.Type == TypeHTTP && target.Method == http.MethodGet:
+		for _, key := range bodyKeys {
+			if keys.has("target", name, key) {
+				return fail(key, "key %q is not valid with method %q", key, http.MethodGet)
+			}
+		}
 	case target.Type == TypeHTTP && hasTemplate && keys.has("target", name, "preset"):
 		return fail("preset", "key %q and a template are mutually exclusive", "preset")
 	case target.Type == TypeHTTP && !hasTemplate && !keys.has("target", name, "preset"):
@@ -536,6 +553,16 @@ func validateTarget(name string, target Target, keys keyIndex) *Error {
 	}
 	if keys.has("target", name, "channel") && strings.TrimSpace(target.Channel) == "" {
 		return fail("channel", "value of key %q is empty", "channel")
+	}
+	if keys.has("target", name, "path") && strings.TrimSpace(target.Path) == "" {
+		return fail("path", "value of key %q must not be blank", "path")
+	}
+	if msg := checkPathPrefix(target.Path); msg != "" {
+		return fail("path", "value of key %q %s", "path", msg)
+	}
+	if _, ok := target.Query[""]; ok {
+		pos := keys.keyPosition("target", name, "query", "")
+		return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("target %q: query name must not be empty", name)}
 	}
 	for _, header := range sortedKeys(target.Headers) {
 		msg := ""
@@ -578,6 +605,64 @@ func validateTarget(name string, target Target, keys keyIndex) *Error {
 		}
 	}
 	return nil
+}
+
+// checkPathPrefix checks what the path template of an http target writes
+// before its first action, which every rendering starts with: the target
+// would refuse each message for it, so the file is refused instead. It
+// returns what is wrong, empty when nothing is. The rules are those the
+// target applies to the rendered path; of the segment the action
+// continues only the characters are checked, as an escape there may be
+// cut short, the rest only once rendered.
+func checkPathPrefix(path string) string {
+	prefix, _, hasAction := strings.Cut(path, "{{")
+	switch {
+	case prefix == "":
+		return ""
+	case !strings.HasPrefix(prefix, "/") || strings.HasPrefix(prefix, "//"):
+		return "must start with a single /"
+	case strings.ContainsAny(prefix, "?#\\"):
+		return "must not hold ?, # or a backslash"
+	case strings.ContainsFunc(prefix, isControl):
+		return "must not hold a control character"
+	}
+	segments := strings.Split(prefix, "/")
+	if hasAction {
+		segments = segments[:len(segments)-1]
+	}
+	for _, segment := range segments {
+		decoded, err := url.PathUnescape(segment)
+		switch {
+		case err != nil:
+			return "must not hold an invalid escape"
+		case strings.ContainsFunc(decoded, func(r rune) bool { return isControl(r) || r == '\\' }):
+			return "must not hold a control character or a backslash, escaped or not"
+		}
+		for _, part := range strings.Split(decoded, "/") {
+			name, _, _ := strings.Cut(part, ";")
+			if isDotName(name) {
+				return "must not hold a . or .. segment"
+			}
+			if twice, err := url.PathUnescape(name); err == nil {
+				for _, inner := range strings.Split(twice, "/") {
+					if innerName, _, _ := strings.Cut(inner, ";"); isDotName(innerName) {
+						return "must not hold a . or .. segment"
+					}
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// isControl reports a control character of ASCII.
+func isControl(r rune) bool {
+	return r < 0x20 || r == 0x7f
+}
+
+// isDotName reports a dot segment, "." or "..".
+func isDotName(name string) bool {
+	return name == "." || name == ".."
 }
 
 // setChatIDs sets ChatID of every telegram target from chat_id, an integer

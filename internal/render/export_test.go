@@ -18,3 +18,14 @@ func ParseWithClock(source string, format text.Format, extra template.FuncMap, b
 	tmpl.user.budget, tmpl.user.now = budget, now
 	return tmpl, nil
 }
+
+// ParsePartWithClock is ParsePart with extra functions, a budget and the
+// clock of the budget.
+func ParsePartWithClock(source string, extra template.FuncMap, budget time.Duration, now func() time.Time) (*Template, error) {
+	tmpl, err := ParseWithClock(source, text.FormatPlain, extra, budget, now)
+	if err != nil {
+		return nil, err
+	}
+	tmpl.mayBeEmpty = true
+	return tmpl, nil
+}

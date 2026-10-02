@@ -7,6 +7,7 @@ package backend
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"time"
 )
 
@@ -55,6 +56,21 @@ type Payload struct {
 	// Message is set only for a target whose Caps.CanTakeMessage is set;
 	// the target only reads it, as all targets share it.
 	Message *Message
+	// Request holds the rendered parts of the request of an http target;
+	// nil for any other target.
+	Request *Request
+}
+
+// Request is the rendered path, query and headers of the request of an
+// http target. The target checks them before it sends anything.
+type Request struct {
+	// Path is appended to the path of the configured URL, escaped as it
+	// goes into the URL; empty for none.
+	Path string
+	// Query is added to the query of the configured URL.
+	Query url.Values
+	// Headers are set after Content-Type, so that they override it.
+	Headers map[string]string
 }
 
 // Message is the message itself and its envelope, for a target that

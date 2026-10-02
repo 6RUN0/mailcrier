@@ -13,9 +13,13 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"maps"
 	"net/http"
+	"net/url"
 	"path/filepath"
+	"regexp"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -510,6 +514,12 @@ func logResult(log *slog.Logger, r delivery.Result) {
 	case r.TextRejected != nil:
 		log.Warn("text rejected, file failed too", "target", r.TargetID, "err", r.TextRejected)
 	}
+	// A request part has no built-in template to fall back to: the
+	// target gets nothing, which the warning names as the cause.
+	if r.RequestErr != nil {
+		log.Warn("request template failed, message not sent", "target", r.TargetID, "err", r.RequestErr)
+		return
+	}
 	switch {
 	case r.Status == delivery.OK && r.Err != nil:
 		log.Warn("attachments not delivered", "target", r.TargetID, "err", r.Err)
@@ -541,24 +551,60 @@ const minHeaderSecret = 8
 // registerSecrets hands every value that may hold a secret to the redactor:
 // tokens and URLs, including those read from *_file, and the values of
 // extra HTTP headers, such as Authorization, with the credential after
-// the scheme ("Bearer <token>") on its own as well.
+// the scheme ("Bearer <token>") on its own as well. Header and query
+// values and the path are templates: what they write as it is, outside
+// the {{ }} actions, is registered the same way, and so is every fragment
+// of such path text between slashes, as written and unescaped, from
+// minPathSecret characters on; what the actions render comes from the
+// message and is never logged.
 func registerSecrets(redactor *redact.Redactor, cfg *config.Config) {
 	for _, name := range cfg.TargetNames() {
 		target := cfg.Targets[name]
 		redactor.Add(target.Token)
 		redactor.AddURL(target.URL)
-		for _, value := range target.Headers {
-			secrets := []string{strings.TrimSpace(value)}
-			if fields := strings.Fields(value); len(fields) > 1 {
-				secrets = append(secrets, fields[len(fields)-1])
+		for _, source := range slices.Concat(slices.Collect(maps.Values(target.Headers)), slices.Collect(maps.Values(target.Query))) {
+			for _, value := range templateText(source) {
+				secrets := []string{strings.TrimSpace(value)}
+				if fields := strings.Fields(value); len(fields) > 1 {
+					secrets = append(secrets, fields[len(fields)-1])
+				}
+				for _, secret := range secrets {
+					if len(secret) >= minHeaderSecret {
+						redactor.Add(secret)
+					}
+				}
 			}
-			for _, secret := range secrets {
-				if len(secret) >= minHeaderSecret {
-					redactor.Add(secret)
+		}
+		for _, value := range templateText(target.Path) {
+			for _, fragment := range strings.Split(value, "/") {
+				secrets := []string{fragment}
+				if unescaped, err := url.PathUnescape(fragment); err == nil {
+					secrets = append(secrets, unescaped)
+				}
+				for _, secret := range secrets {
+					if len(secret) >= minPathSecret {
+						redactor.Add(secret)
+					}
 				}
 			}
 		}
 	}
+}
+
+// minPathSecret is the shortest fragment of the path of an http target
+// that registerSecrets masks, the length from which redact.AddURL masks a
+// segment of a URL: a shorter one is a word such as "api" or "v1".
+const minPathSecret = 16
+
+// templateAction matches a {{ }} action of a template, as far as the
+// first }}; an action that holds "}}" in a string is cut there, which
+// only registers a little more text as a secret.
+var templateAction = regexp.MustCompile(`(?s)\{\{.*?\}\}`)
+
+// templateText returns the parts of a template source outside its
+// actions; the source itself when it has none.
+func templateText(source string) []string {
+	return templateAction.Split(source, -1)
 }
 
 // presetFormats maps the presets of the http target to their built-in
@@ -589,6 +635,7 @@ func buildTargets(cfg *config.Config, client *http.Client, hooks hook.Process) (
 		target := cfg.Targets[name]
 		var sender backend.Sender
 		var format text.Format
+		var request *delivery.RequestTemplates
 		switch target.Type {
 		case config.TypeTelegram:
 			sender = telegram.New(telegram.Options{
@@ -620,7 +667,11 @@ func buildTargets(cfg *config.Config, client *http.Client, hooks hook.Process) (
 			if target.Preset != "" {
 				format = presetFormats[target.Preset]
 			}
-			sender = webhook.New(webhook.Options{URL: target.URL, Method: target.Method, Format: format, Fields: fields, Headers: target.Headers, Client: client})
+			sender = webhook.New(webhook.Options{URL: target.URL, Method: target.Method, Format: format, Fields: fields, Client: client})
+			var err error
+			if request, err = parseRequest(name, target); err != nil {
+				return nil, err
+			}
 		case config.TypeExec:
 			// The hook gets the message, not the text; the plain template
 			// has no limit and nothing to escape, so rendering it is cheap
@@ -641,18 +692,57 @@ func buildTargets(cfg *config.Config, client *http.Client, hooks hook.Process) (
 			return nil, fmt.Errorf("target %q: %w", name, err)
 		}
 		tmpl, fallback := builtin, (*render.Template)(nil)
-		if target.Template != "" {
+		switch {
+		case target.Type == config.TypeHTTP && target.Method == http.MethodGet:
+			// A GET carries no body, so there is no text to render.
+			tmpl = nil
+		case target.Template != "":
 			if tmpl, err = render.Parse(name, target.Template, format); err != nil {
 				return nil, fmt.Errorf("target %q: %w", name, err)
 			}
 			fallback = builtin
 		}
 		targets = append(targets, delivery.Target{
-			ID: name, Sender: sender, Template: tmpl, Fallback: fallback, OnLong: onLongPolicies[target.OnLong], LongFile: longFiles[target.LongFile],
+			ID: name, Sender: sender, Template: tmpl, Fallback: fallback, Request: request, OnLong: onLongPolicies[target.OnLong], LongFile: longFiles[target.LongFile],
 			MaxText: target.MaxText, MaxLines: target.MaxLines, MaxFileSize: target.MaxFileSize,
 		})
 	}
 	return targets, nil
+}
+
+// parseRequest parses the templates of the path, query and headers of an
+// http target; nil when it has none. A template is named after the target
+// and its key, such as "api.headers.Authorization", which the errors
+// quote with the line.
+func parseRequest(name string, target config.Target) (*delivery.RequestTemplates, error) {
+	if target.Path == "" && len(target.Query) == 0 && len(target.Headers) == 0 {
+		return nil, nil
+	}
+	parse := func(key, source string) (*render.Template, error) {
+		tmpl, err := render.ParsePart(name+"."+key, source)
+		if err != nil {
+			return nil, fmt.Errorf("target %q: %w", name, err)
+		}
+		return tmpl, nil
+	}
+	request := &delivery.RequestTemplates{Query: map[string]*render.Template{}, Headers: map[string]*render.Template{}}
+	var err error
+	if target.Path != "" {
+		if request.Path, err = parse("path", target.Path); err != nil {
+			return nil, err
+		}
+	}
+	for key, source := range target.Query {
+		if request.Query[key], err = parse("query."+key, source); err != nil {
+			return nil, err
+		}
+	}
+	for key, source := range target.Headers {
+		if request.Headers[key], err = parse("headers."+key, source); err != nil {
+			return nil, err
+		}
+	}
+	return request, nil
 }
 
 // onLongPolicies and longFiles map the values of on_long and long_file;
