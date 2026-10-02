@@ -118,6 +118,51 @@ replaces the limit of the service and
 cuts the body after that many lines.
 A target that rejects the text with 400, as Telegram does with markup it cannot
 parse, gets the full text once more as a file alone.
+.Pp
+.Ic template ,
+a Go text/template, or
+.Ic template_file ,
+the absolute path of a file holding one, replaces the built-in template of a
+target of any type but
+.Cm exec .
+It writes the markup of the target, Telegram HTML for
+.Cm telegram
+and the JSON body for
+.Cm http ,
+and escapes what comes from the message with
+.Ic tgHTML ,
+.Ic discordEscape ,
+.Ic slackEscape ,
+.Ic mmEscape ,
+.Ic toJson
+and the like.
+Besides the functions of text/template it has
+.Ic toUpper ,
+.Ic toLower ,
+.Ic trimSpace ,
+.Ic trimEnd ,
+.Ic title ,
+.Ic default ,
+.Ic join ,
+.Ic match ,
+.Ic reReplaceAll ,
+.Ic tz ,
+.Ic date ,
+.Ic lines ,
+.Ic head ,
+.Ic tail ,
+.Ic truncate ,
+.Ic indent
+and
+.Ic humanizeBytes .
+A template that does not parse, or uses define, template or block, is a
+configuration error.
+One rendering may take 1 s and write 1 MiB.
+A template that fails while rendering a message, past either limit, with an
+error of a function or with nothing but white space, leaves that message the
+built-in template, as does a 400 to its text, once; the log records
+.Dq template failed, built-in used .
+A template that ran out of time stays failed for the rest of the process.
 .Sh TARGETS
 Each
 .Li "[target.NAME]"
@@ -147,12 +192,14 @@ more message per attachment, up to 10 files of 15 MiB.
 .It Cm http
 One POST, or PUT or PATCH with
 .Ic method ,
-of the JSON document of its preset:
+of the JSON document of its preset,
 .Cm mattermost ,
 .Cm slack-webhook
 or
-.Cm generic-json ;
-extra headers override the Content-Type of the preset.
+.Cm generic-json ,
+or of its
+.Ic template ;
+extra headers override the Content-Type.
 Only
 .Cm slack-webhook
 is cut, to 40000 characters, unless

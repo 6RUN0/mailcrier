@@ -105,7 +105,16 @@ with "no non-test Go files".
   `ErrLimitTooSmall`; strictness comes from the format a template is
   parsed for, not from who wrote it; `FitLines` adds `max_lines`). Golden
   output of every template for every caller fixture is in
-  `internal/render/testdata/golden`.
+  `internal/render/testdata/golden`. `Parse` takes a template from the
+  configuration: `define`/`template`/`block` rejected after parsing; it
+  runs in a goroutine with a 1 s timeout and a writer that fails past
+  1 MiB (the fields `userLimits`, which tests shrink); `WithBudget`
+  gives a copy that `delivery` uses for the text of one target, all its
+  executions within 2 s and the delivery deadline; a timed-out
+  template stays broken for the process, and every failure, including
+  `ErrLimitTooSmall`, is a `*TemplateError`; past the output limit `Fit`
+  treats the text as too long when there is a limit. Built-in templates
+  run without the goroutine. The functions (`funcs.go`) are shared.
 - `internal/config.Load` parses strictly: an unknown key, a key of another
   target type, a bad name or value gives `*config.Error` with
   `path:line:col` and exit 78. URLs must be absolute http(s) (for
@@ -113,7 +122,9 @@ with "no non-test Go files".
   integer or a non-blank string, `channel` non-blank (both trimmed).
   Targets are `[target.<name>]` tables; keys per type are in
   `allowedKeys`, which lists only implemented keys, required ones in
-  `requiredKeys`.
+  `requiredKeys`. `template_file` is read at load, but `config` does not
+  import `render`: `app.buildTargets` parses the template, and a parse
+  error rejects the configuration (78, message held).
 - `internal/backend`: `Sender`, `Caps`, `Payload`, `*Error` with `Class`,
   `IsPartial` (text arrived, files did not: counts as delivered),
   `Classify`, and the HTTP guards every target uses (`WithoutRedirects`,
@@ -149,7 +160,12 @@ with "no non-test Go files".
   (`message.txt` in the plain template, or `message.eml` from
   `message.WithoutBlindCopies`, also the `Raw` of `Payload.Message`),
   and sends; after a `backend.Error` with
-  `IsTextRejected` it sends that file alone once more. A panic there is
+  `IsTextRejected` it sends that file alone once more. `Target.Fallback`
+  is the built-in template when `Template` comes from the configuration:
+  a `*render.TemplateError` renders the text with it, and a rejected text
+  of `Template` goes once more in its text before the file rule;
+  `Result.TemplateErr` carries the cause, which `app.logResult` logs as a
+  warning. A panic in the goroutine of a target is
   recovered into a permanent result, so a target must not share mutable
   state with another. `DeliverEach` also
   hands each result to a callback as its target finishes (the spool marks
