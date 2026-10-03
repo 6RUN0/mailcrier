@@ -34,6 +34,91 @@ The binary goes to `/usr/sbin/slendmail`, with `/usr/sbin/sendmail`,
 to it; see "Options, privileges and containers" for ownership and modes.
 The manual page is `docs/slendmail.8`.
 
+## Install
+
+Each release has deb, rpm and apk packages of the full build for amd64,
+arm64 and armv7, without signatures (`apk add --allow-untrusted`):
+
+```sh
+apt install ./slendmail_<version>_linux_amd64.deb
+dnf install ./slendmail_<version>_linux_amd64.rpm
+apk add --allow-untrusted ./slendmail_<version>_linux_amd64.apk
+```
+
+| Path | Owner and mode |
+|---|---|
+| `/usr/sbin/slendmail` | `root:slendmail 2755`, set by the scripts after unpacking |
+| `/usr/sbin/sendmail`, `/usr/lib/sendmail`, `/usr/bin/mailq`, `/usr/bin/newaliases` | links to it; in rpm the alternative `mta` |
+| `/etc/slendmail.conf` | `root:slendmail 0640`, no target |
+| `/etc/slendmail.d/` | `root:slendmail 0750`, for `token_file` and the like |
+| `/var/spool/slendmail/` | `root:slendmail 0750`; `tmp`, `queue`, `hold`, `failed`, `locks` in it `2770` |
+| `slendmail-queue.timer` and `.service`, `/etc/cron.d/slendmail` | queue run, deb and rpm |
+| `/etc/crontabs/slendmail` | queue run, apk |
+| `/usr/share/doc/slendmail/examples/` | example configurations, see "Configuration" |
+
+The install creates the system group and user `slendmail` (home
+`/var/spool/slendmail`, no login shell) unless they exist. Then, as root:
+
+1. Write a target into `/etc/slendmail.conf`; its comments and the examples
+   show how. A secret goes alone into a file under `/etc/slendmail.d`,
+   `root:slendmail 0640`.
+2. `slendmail --check-config` reports errors and warnings, exit status 0
+   when the file loads.
+3. `slendmail --probe` sends a test message to every target.
+
+On upgrade, rpm and apk set the owner and mode of `/etc/slendmail.conf`
+back to `root:slendmail 0640` when its content is that of the package;
+dpkg keeps them. A secret therefore belongs in a file under
+`/etc/slendmail.d/`, where the package ships no file and changes none.
+
+Until a target is set, every message is held in `hold/` with exit status
+78, and `slendmail-queue.service` exits 78 every 5 minutes and is listed by
+`systemctl --failed`; the first queue run after the configuration is fixed
+delivers the held messages.
+
+The timer is enabled on install and started where systemd runs; where it
+does not, the cron file runs the queue. The package scripts never run
+slendmail and never touch the configuration.
+
+- Debian and Ubuntu: the package provides, conflicts with and replaces
+  `mail-transport-agent`, so installing it removes the MTA in place
+  (postfix, exim4, msmtp-mta, ...), and removing slendmail does not bring
+  that one back. The setgid bit is a `dpkg-statoverride` entry, which dpkg
+  applies to every later version; one the administrator set before is
+  kept.
+- RHEL, Rocky, Alma, Fedora: the links are the alternative `mta` with
+  priority 100, above postfix (60) and sendmail (90), so slendmail is the
+  active one after install; `alternatives --config mta` chooses another.
+  After removal the remaining MTA is active again.
+- Alpine: the package replaces the BusyBox link `/usr/sbin/sendmail`, and
+  BusyBox puts it back after removal. ssmtp, dma and opensmtpd own
+  `/usr/sbin/sendmail` as well: apk refuses to overwrite it (`trying to
+  overwrite usr/sbin/sendmail owned by ...`), so remove them first. The
+  queue runs from BusyBox crond, which Alpine does not start by default:
+  `rc-update add crond && rc-service crond start`. Without it a message
+  that failed is retried only by the next call of the same user.
+
+In rpm and apk the binary is unpacked as `root:root 0755` on install and on
+every upgrade, and the install script then gives it the group and the
+setgid bit. Consequences:
+
+- `rpm -V slendmail` reports `.M....G..  /usr/sbin/slendmail` and `apk audit
+  --check-permissions` reports `M usr/sbin/slendmail`; that is expected.
+- During an upgrade, between unpacking and the script, a call of a user
+  other than root cannot read the configuration: it exits 78 and the
+  message is lost, since `hold/` is not writable for that user either.
+- `rpm --setperms`, `rpm --setugids`, `rpm --restore`, an install or
+  upgrade with `--noscripts`, `apk fix` and `apk add --no-scripts` remove
+  the bit for good, with the same result for every such call until it is
+  restored as root:
+  `chgrp slendmail /usr/sbin/slendmail && chmod 2755 /usr/sbin/slendmail`
+  (`chgrp` first: it clears the bit).
+
+Removal (`dpkg -r`, `rpm -e`, `apk del`) stops the timer. It keeps the
+user, the group, a changed configuration (`dpkg -P` deletes it, `rpm -e`
+keeps it as `/etc/slendmail.conf.rpmsave`) and a spool that still holds
+messages, whose path the scripts print (deb on `dpkg -P`).
+
 ## Configuration
 
 The program reads `/etc/slendmail.conf`, a TOML file. Every run parses the
@@ -42,6 +127,22 @@ an invalid value rejects the file, the message is not delivered but held
 in the spool (see "Spool and queue"), and the exit status is 78. A package
 installs an example without targets, so until targets are configured every
 message is held with status 78; that is expected.
+
+Example configurations to copy whole are installed in
+`/usr/share/doc/slendmail/examples/` and kept in
+[`packaging/examples/`](packaging/examples/):
+
+| File | Shows |
+|---|---|
+| `slendmail.conf` | every table with its defaults and one minimal target of each type, as comments like the installed file |
+| `telegram.conf` | one Telegram chat with a forum topic, `on_long` and `max_lines` |
+| `team-chat.conf` | Slack, Discord and Mattermost together |
+| `ntfy.conf` | ntfy with the file limit of ntfy.sh and a template |
+| `webhook.conf` | `http` targets with `method`, headers, path and query templates and `generic-json` |
+| `hook.conf` | an `exec` hook with `argv` and `timeout`, the message on stdin |
+| `routes.conf` | several targets, routes by recipient and subject, `continue`, a catch-all rule, `[[suppress]]` for a noisy cron job, `telegram_direct` |
+| `templates.conf` | `template` and `template_file` with the template functions |
+| `container.conf` | a container without the setgid bit: the spool on a volume, secrets in `/run/secrets` |
 
 ```toml
 [general]
