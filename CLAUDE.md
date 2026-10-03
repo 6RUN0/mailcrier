@@ -87,7 +87,9 @@ with "no non-test Go files".
   getopt-style short flags from the `shortFlags` table, long options before
   `--` only, usage errors exit 64 before stdin is read.
   `Invocation.Envelope` builds sender and recipients. The flag table is
-  repeated in README and `docs/slendmail.8`; change all three together.
+  repeated in README, `docs/slendmail.8` and `--help` (`sendmail.Usage`);
+  change all four together. `TestUsage*` check `Usage` against the parser
+  tables and the exit statuses of the manual page, and its layout.
 - `internal/message.Read` returns the message without Bcc and Resent-Bcc,
   their addresses separately as `BlindCopies` (routing only, never
   rendered), and constant warning texts that `app` logs as they are.

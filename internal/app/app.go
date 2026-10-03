@@ -442,7 +442,7 @@ func runMode(d Deps, log *slog.Logger, mode sendmail.Mode) int {
 		_, _ = fmt.Fprintln(d.Stdout, "slendmail", buildVersion())
 		return exitOK
 	case sendmail.Help:
-		_, _ = io.WriteString(d.Stdout, usage)
+		_, _ = io.WriteString(d.Stdout, sendmail.Usage)
 		return exitOK
 	default:
 		// A mode that Run does not dispatch is a bug, not a request for
@@ -451,19 +451,6 @@ func runMode(d Deps, log *slog.Logger, mode sendmail.Mode) int {
 		return exitSoftware
 	}
 }
-
-// usage is the text of --help.
-const usage = `usage: slendmail [flags] [--] [recipient ...]
-       slendmail --version | --help | --status | --check-config |
-                 --probe [-- target ...]
-Reads a message on stdin and delivers it to the targets of
-/etc/slendmail.conf, or of --config PATH. sendmail flags: -t -i -oi
--f ADDR -r ADDR -F NAME; -bi, -I and newaliases do nothing; -bp and mailq
-list the queue; -q runs it. The modes read no message: --status prints the
-queue counts, --check-config checks the configuration without sending,
---probe sends a test message to every target or to the targets named.
-Other sendmail flags are accepted and ignored. See slendmail(8).
-`
 
 // buildVersion returns the module version stamped into the binary.
 func buildVersion() string {

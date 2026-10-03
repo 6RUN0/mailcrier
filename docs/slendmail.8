@@ -714,7 +714,7 @@ bit of the binary applies to a caller other than root.
 .It Fl -version
 Print the version.
 .It Fl -help
-Print a usage summary.
+Print the modes, flags, configuration files and exit statuses.
 .It Fl -status
 Print the numbers of queued, held and failed messages, the files in
 .Pa tmp/ ,
@@ -824,12 +824,13 @@ Queue run locks, one per user.
 .Sh EXIT STATUS
 .Bl -tag -width Ds
 .It 0
-At least one target accepted the message, the rest is queued, a suppress
-rule matched, or a mode without a message succeeded;
+A target accepted the message, even if another rejected it; or none
+rejected it and it is queued for those that failed temporarily; or a
+suppress rule matched; or a mode without a message succeeded, which for
 .Fl -check-config
-found no error, warnings aside;
+means no error, warnings aside, and for
 .Fl -probe
-reached every target.
+that every target was reached.
 .It 64
 Usage error: a sender flag without a value, a line break in an address
 or in the full name,

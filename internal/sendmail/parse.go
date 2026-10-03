@@ -21,7 +21,7 @@ const (
 	RunQueue
 	// Version prints the version: --version.
 	Version
-	// Help prints a usage summary: --help.
+	// Help prints Usage: --help.
 	Help
 	// Probe sends a test message to every target: --probe.
 	Probe
