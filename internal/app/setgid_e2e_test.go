@@ -14,8 +14,10 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -27,9 +29,16 @@ import (
 // slendmailBinary is the binary under test, built with CGO_ENABLED=0.
 var slendmailBinary = flag.String("slendmail-binary", "", "path of the slendmail binary to install setgid")
 
-// Ids of the throwaway system user and group; nobody runs the binary.
+// isInstalled runs the tests against /usr/sbin/slendmail of a package,
+// whose user and group slendmail have ids of their own.
+var isInstalled = flag.Bool("installed", false, "test the binary, user, group and spool a package installed")
+
+// Ids of the throwaway system user and group, one number for both; the
+// package smoke tests run against the ids a package created instead.
+var serviceUID, serviceGID = 990, 990
+
+// nobody runs the binary.
 const (
-	serviceID  = 990
 	nobodyID   = 65534
 	nobodyUser = "nobody"
 )
@@ -47,8 +56,8 @@ func TestSetgidReexec(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Fatal("must run as root: it installs a setgid binary and a system group")
 	}
-	if *slendmailBinary == "" {
-		t.Fatal("-slendmail-binary is required")
+	if *slendmailBinary == "" && !*isInstalled {
+		t.Fatal("-slendmail-binary or -installed is required")
 	}
 	strace, err := exec.LookPath("strace")
 	if err != nil {
@@ -83,7 +92,7 @@ func TestSetgidReexec(t *testing.T) {
 	installSetgid(t)
 	ca := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: receiver.Certificate().Raw})
 	writeFile(t, "/etc/ssl/certs/ca-certificates.crt", ca, 0, 0, 0o644)
-	writeFile(t, "/etc/slendmail.conf", []byte(httpTargetConfig(receiver.URL+"/hook/"+secretToken)), 0, serviceID, 0o640)
+	writeFile(t, "/etc/slendmail.conf", []byte(httpTargetConfig(receiver.URL+"/hook/"+secretToken)), 0, serviceGID, 0o640)
 	evilConfig := filepath.Join(dir, "evil.conf")
 	writeFile(t, evilConfig, []byte(httpTargetConfig(evil.URL)), 0, 0, 0o644)
 	// Both variables, because with an empty SSL_CERT_FILE alone Go still
@@ -169,21 +178,36 @@ func TestSetgidReexec(t *testing.T) {
 }
 
 // installOnce guards installSetgid: the tests share the container.
-var installOnce sync.Once
+// isInstallFailed tells the later tests that the first one could not set
+// up, which would otherwise leave them with the default ids.
+var (
+	installOnce     sync.Once
+	isInstallFailed bool
+)
 
 // installSetgid adds the service user and group, installs the binary
-// setgid and creates the spool as the packages lay it out, once.
+// setgid and creates the spool as the packages lay it out, once. With
+// -installed it takes the ids of the package and checks its binary and
+// spool areas instead.
 func installSetgid(t *testing.T) {
 	t.Helper()
+	// A failure the test had before the install is not one of the install.
+	before := t.Failed()
 	installOnce.Do(func() {
-		appendFile(t, "/etc/group", fmt.Sprintf("slendmail:x:%d:\n", serviceID))
-		appendFile(t, "/etc/passwd", fmt.Sprintf("slendmail:x:%d:%d::/nonexistent:/usr/sbin/nologin\n", serviceID, serviceID))
-		installFile(t, *slendmailBinary, "/usr/sbin/slendmail", 0, serviceID, 0o755|os.ModeSetgid)
-		for _, dir := range []string{spoolDir, spoolDir + "/tmp", spoolDir + "/queue", spoolDir + "/hold", spoolDir + "/failed", spoolDir + "/locks"} {
+		// Deferred, so that it runs after a t.Fatal as well.
+		defer func() { isInstallFailed = t.Failed() && !before }()
+		if *isInstalled {
+			checkInstalled(t)
+			return
+		}
+		appendFile(t, "/etc/group", fmt.Sprintf("slendmail:x:%d:\n", serviceGID))
+		appendFile(t, "/etc/passwd", fmt.Sprintf("slendmail:x:%d:%d::/nonexistent:/usr/sbin/nologin\n", serviceUID, serviceGID))
+		installFile(t, *slendmailBinary, "/usr/sbin/slendmail", 0, serviceGID, 0o755|os.ModeSetgid)
+		for _, dir := range append([]string{spoolDir}, spoolAreas()...) {
 			if err := os.MkdirAll(dir, 0o755); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.Chown(dir, 0, serviceID); err != nil {
+			if err := os.Chown(dir, 0, serviceGID); err != nil {
 				t.Fatal(err)
 			}
 			if err := os.Chmod(dir, 0o770|os.ModeSetgid); err != nil {
@@ -191,6 +215,50 @@ func installSetgid(t *testing.T) {
 			}
 		}
 	})
+	if isInstallFailed {
+		t.Fatal("the setgid binary and spool are not set up, see the first test")
+	}
+}
+
+// spoolAreas are the directories of the spool the packages create.
+func spoolAreas() []string {
+	return []string{spoolDir + "/tmp", spoolDir + "/queue", spoolDir + "/hold", spoolDir + "/failed", spoolDir + "/locks"}
+}
+
+// checkInstalled sets the service ids from the user and group slendmail
+// and checks that the binary is root:slendmail 2755 and every spool area
+// root:slendmail 2770.
+func checkInstalled(t *testing.T) {
+	t.Helper()
+	account, err := user.Lookup("slendmail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	group, err := user.LookupGroup("slendmail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if serviceUID, err = strconv.Atoi(account.Uid); err != nil {
+		t.Fatal(err)
+	}
+	if serviceGID, err = strconv.Atoi(group.Gid); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]os.FileMode{"/usr/sbin/slendmail": 0o755 | os.ModeSetgid}
+	for _, dir := range spoolAreas() {
+		want[dir] = os.ModeDir | 0o770 | os.ModeSetgid
+	}
+	for path, mode := range want {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		stat := info.Sys().(*syscall.Stat_t)
+		if stat.Uid != 0 || int(stat.Gid) != serviceGID || info.Mode() != mode {
+			t.Errorf("%s: owner %d:%d mode %v, want 0:%d %v", path, stat.Uid, stat.Gid, info.Mode(), serviceGID, mode)
+		}
+	}
 }
 
 // spoolDir is the spool directory of the packages.
@@ -207,8 +275,8 @@ func TestSetgidSpool(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Fatal("must run as root: it installs a setgid binary and a system group")
 	}
-	if *slendmailBinary == "" {
-		t.Fatal("-slendmail-binary is required")
+	if *slendmailBinary == "" && !*isInstalled {
+		t.Fatal("-slendmail-binary or -installed is required")
 	}
 	var isUp atomic.Bool
 	delivered := make(chan string, 4)
@@ -222,9 +290,9 @@ func TestSetgidSpool(t *testing.T) {
 	defer receiver.Close()
 	installSetgid(t)
 	nobody := &syscall.Credential{Uid: nobodyID, Gid: nobodyID}
-	service := &syscall.Credential{Uid: serviceID, Gid: serviceID}
+	service := &syscall.Credential{Uid: uint32(serviceUID), Gid: uint32(serviceGID)}
 
-	writeFile(t, "/etc/slendmail.conf", []byte("[target.hook]\ntype = \"http\"\n"), 0, serviceID, 0o640)
+	writeFile(t, "/etc/slendmail.conf", []byte("[target.hook]\ntype = \"http\"\n"), 0, serviceGID, 0o640)
 	out, err := runAs(t, nobody, "Subject: held\n\nbody\n", "/usr/sbin/slendmail", "-ti")
 	if code := exitCode(err); code != 78 {
 		t.Fatalf("call with a broken configuration = %d (%v), want 78\n%s", code, err, out)
@@ -237,7 +305,7 @@ func TestSetgidSpool(t *testing.T) {
 		t.Errorf("mailq as the caller = %v, output:\n%s\nwant the counts line only", err, out)
 	}
 
-	writeFile(t, "/etc/slendmail.conf", []byte(httpTargetConfig(receiver.URL+"/hook")), 0, serviceID, 0o640)
+	writeFile(t, "/etc/slendmail.conf", []byte(httpTargetConfig(receiver.URL+"/hook")), 0, serviceGID, 0o640)
 	isUp.Store(true)
 	if out, err := runAs(t, service, "", "/usr/sbin/slendmail", "-q"); err != nil {
 		t.Fatalf("-q as slendmail failed: %v\n%s", err, out)
@@ -269,8 +337,8 @@ func TestSetgidHookDropsGroup(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Fatal("must run as root: it installs a setgid binary and a system group")
 	}
-	if *slendmailBinary == "" {
-		t.Fatal("-slendmail-binary is required")
+	if *slendmailBinary == "" && !*isInstalled {
+		t.Fatal("-slendmail-binary or -installed is required")
 	}
 	dir, err := os.MkdirTemp("", "setgid-hook-")
 	if err != nil {
@@ -285,7 +353,7 @@ func TestSetgidHookDropsGroup(t *testing.T) {
 	script := "#!/bin/sh\n{ echo \"groups $(id -G)\"; echo \"egid $(id -g)\"; cat /etc/slendmail.conf >/dev/null 2>&1 && echo \"config readable\"; } >> " + report + "\nexit 0\n"
 	writeFile(t, hook, []byte(script), 0, 0, 0o755)
 	installSetgid(t)
-	writeFile(t, "/etc/slendmail.conf", []byte("[target.run]\ntype = \"exec\"\nargv = [\""+hook+"\"]\n"), 0, serviceID, 0o640)
+	writeFile(t, "/etc/slendmail.conf", []byte("[target.run]\ntype = \"exec\"\nargv = [\""+hook+"\"]\n"), 0, serviceGID, 0o640)
 
 	out, err := runAs(t, &syscall.Credential{Uid: nobodyID, Gid: nobodyID}, "Subject: hook\n\nbody\n", "/usr/sbin/slendmail", "-ti")
 	if err != nil {
@@ -300,7 +368,7 @@ func TestSetgidHookDropsGroup(t *testing.T) {
 		key, value, _ := strings.Cut(strings.TrimSpace(line), " ")
 		switch key {
 		case "groups":
-			if slices.Contains(strings.Fields(value), fmt.Sprint(serviceID)) {
+			if slices.Contains(strings.Fields(value), fmt.Sprint(serviceGID)) {
 				t.Errorf("the hook runs with the service group: groups %s", value)
 			}
 		case "egid":
@@ -327,8 +395,8 @@ func checkEntryFiles(t *testing.T, dir string) {
 			t.Fatal(err)
 		}
 		stat := info.Sys().(*syscall.Stat_t)
-		if stat.Uid != nobodyID || stat.Gid != serviceID || info.Mode().Perm() != 0o660 {
-			t.Errorf("%s: owner %d:%d mode %v, want %d:%d 0660", entry.Name(), stat.Uid, stat.Gid, info.Mode().Perm(), nobodyID, serviceID)
+		if stat.Uid != nobodyID || int(stat.Gid) != serviceGID || info.Mode().Perm() != 0o660 {
+			t.Errorf("%s: owner %d:%d mode %v, want %d:%d 0660", entry.Name(), stat.Uid, stat.Gid, info.Mode().Perm(), nobodyID, serviceGID)
 		}
 	}
 }
