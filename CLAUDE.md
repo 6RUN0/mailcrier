@@ -289,6 +289,10 @@ with "no non-test Go files".
   entry, `TestPackageScripts` runs each script with stub commands under
   `/bin/sh`, and also `dash` and `busybox sh` where installed,
   `TestPackageConfigExample` loads the configuration file.
+  `TestConfigExamplesLoad` runs `--check-config` on each file of
+  `packaging/examples` (the reference with `## ` lines dropped and `# `
+  removed) and wants no finding; a new example goes into `configExamples`
+  and into `contents` of `.goreleaser.yaml`.
 
 ## Gotchas
 

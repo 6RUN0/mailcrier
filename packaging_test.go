@@ -2,8 +2,12 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
 	"os"
 	"os/exec"
 	"path"
@@ -13,9 +17,11 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"go.yaml.in/yaml/v3"
 
+	"github.com/6RUN0/slendmail/internal/app"
 	"github.com/6RUN0/slendmail/internal/config"
 )
 
@@ -201,6 +207,9 @@ func expectedContents() map[[2]string]packageEntry {
 		contents[[2]string{"/usr/lib/systemd/system/slendmail-queue.service", packager}] = packageEntry{"", "root", "root", 0o644}
 		contents[[2]string{"/usr/lib/systemd/system/slendmail-queue.timer", packager}] = packageEntry{"", "root", "root", 0o644}
 		contents[[2]string{"/etc/cron.d/slendmail", packager}] = packageEntry{"config|noreplace", "root", "root", 0o644}
+	}
+	for _, name := range configExamples {
+		contents[[2]string{"/usr/share/doc/slendmail/examples/" + name, ""}] = packageEntry{"", "root", "root", 0o644}
 	}
 	return contents
 }
@@ -603,9 +612,86 @@ func TestPackageScripts(t *testing.T) {
 	}
 }
 
+// configExamples are the files of packaging/examples, installed in
+// /usr/share/doc/slendmail/examples.
+var configExamples = []string{"slendmail.conf", "telegram.conf", "team-chat.conf", "ntfy.conf", "webhook.conf", "hook.conf", "routes.conf", "templates.conf", "container.conf"}
+
+// exampleFiles are the secret files, the template file and the hook the
+// examples name, as --check-config reads them.
+var exampleFiles = fstest.MapFS{
+	"etc/slendmail.d/telegram.token": {Data: []byte("123456:REPLACE-ME\n")},
+	"etc/slendmail.d/slack.token":    {Data: []byte("xoxb-REPLACE-ME\n")},
+	"etc/slendmail.d/discord.url":    {Data: []byte("https://discord.com/api/webhooks/123/REPLACE-ME\n")},
+	"etc/slendmail.d/mattermost.url": {Data: []byte("https://mattermost.example.org/hooks/REPLACE-ME\n")},
+	"etc/slendmail.d/ntfy.url":       {Data: []byte("https://ntfy.sh/REPLACE-ME\n")},
+	"etc/slendmail.d/gotify.url":     {Data: []byte("gotify://gotify.example.org/REPLACE-ME\n")},
+	"etc/slendmail.d/api.tmpl":       {Data: []byte(`{"title": {{ toJson .Subject }}, "host": {{ toJson .Hostname }},` + "\n" + ` "from": {{ toJson .From.Addr }}, "text": {{ toJson (.Body | head 50) }}}` + "\n")},
+	"run/secrets/telegram_token":     {Data: []byte("123456:REPLACE-ME\n")},
+	"usr/local/bin/slendmail-hook":   {Data: []byte("#!/bin/sh\n"), Mode: 0o755},
+}
+
+// unfoldExample turns a configuration file written as comments into the
+// configuration it shows: lines with "## " explain and are dropped, lines
+// with "# " lose that prefix.
+func unfoldExample(data []byte) []byte {
+	var lines []string
+	for _, line := range strings.Split(string(data), "\n") {
+		switch {
+		case line == "##" || strings.HasPrefix(line, "## "):
+		case line == "#":
+			lines = append(lines, "")
+		case strings.HasPrefix(line, "# "):
+			lines = append(lines, line[2:])
+		default:
+			lines = append(lines, line)
+		}
+	}
+	return []byte(strings.Join(lines, "\n"))
+}
+
+// checkExample runs --check-config on doc as /etc/slendmail.conf, by a
+// caller without the setgid bit, with exampleFiles beside it, and returns
+// the exit status and stderr.
+func checkExample(t *testing.T, doc []byte) (int, string) {
+	t.Helper()
+	fsys := fstest.MapFS{"etc/slendmail.conf": {Data: doc}}
+	for name, file := range exampleFiles {
+		fsys[name] = file
+	}
+	var stdout, stderr bytes.Buffer
+	deps := app.Deps{
+		NewLogger:      func(string) *slog.Logger { return slog.New(slog.DiscardHandler) },
+		ConfigFS:       fsys,
+		ConfigPath:     "etc/slendmail.conf",
+		HTTP:           &http.Client{Transport: refusingTransport{}},
+		Hostname:       "host1.example.org",
+		Now:            func() time.Time { return time.Date(2026, 10, 3, 12, 0, 0, 0, time.UTC) },
+		Program:        "/usr/sbin/sendmail",
+		Stdout:         &stdout,
+		Stderr:         &stderr,
+		SetLogOutput:   func(io.Writer) {},
+		Credentials:    app.Credentials{UID: 1000, GID: 1000, EGID: 1000, ServiceUID: 990},
+		LookupUserName: func(int) (string, bool) { return "", false },
+	}
+	code := app.Run(context.Background(), deps, []string{"--check-config"}, strings.NewReader(""))
+	if stdout.Len() > 0 {
+		t.Errorf("stdout %q, want none", stdout.String())
+	}
+	return code, stderr.String()
+}
+
+// refusingTransport fails every request: checking a configuration sends
+// nothing.
+type refusingTransport struct{}
+
+func (refusingTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("request during --check-config")
+}
+
 // TestPackageConfigExample loads the configuration file of the packages,
 // which is all comments: the program must reject it for lack of targets,
-// and for nothing else, until the administrator sets one.
+// and for nothing else, until the administrator sets one; with the comment
+// signs of its example lines removed it is a valid configuration.
 func TestPackageConfigExample(t *testing.T) {
 	t.Run("T-ADJ-54/config", func(t *testing.T) {
 		data, err := os.ReadFile("packaging/slendmail.conf")
@@ -616,5 +702,60 @@ func TestPackageConfigExample(t *testing.T) {
 		if err == nil || err.Error() != "/etc/slendmail.conf: no targets configured" {
 			t.Errorf("Load = %v, want /etc/slendmail.conf: no targets configured", err)
 		}
+		if code, stderr := checkExample(t, unfoldExample(data)); code != 0 || stderr != checkClean {
+			t.Errorf("--check-config of the unfolded file = %d, stderr\n%s", code, stderr)
+		}
 	})
+}
+
+// checkClean is the stderr of --check-config without findings.
+const checkClean = "/etc/slendmail.conf: 0 errors, 0 warnings\n"
+
+// TestConfigExamplesLoad runs --check-config on every example of
+// packaging/examples, the reference with its example lines unfolded: each
+// must load, build its targets and render the sample message with every
+// template without an error or a warning. A build without shoutrrr must
+// reject a file with a shoutrrr target for that alone. Each example is
+// installed by the packages.
+func TestConfigExamplesLoad(t *testing.T) {
+	paths, err := filepath.Glob("packaging/examples/*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, path := range paths {
+		names = append(names, filepath.Base(path))
+	}
+	if !slices.Equal(slices.Sorted(slices.Values(names)), slices.Sorted(slices.Values(configExamples))) {
+		t.Fatalf("packaging/examples holds %v, configExamples lists %v", names, configExamples)
+	}
+	installed := map[string]string{}
+	for _, content := range readNFPM(t).Contents {
+		installed[content.Src] = content.Dst
+	}
+	for _, name := range configExamples {
+		t.Run(name, func(t *testing.T) {
+			src := "packaging/examples/" + name
+			if dst := installed[src]; dst != "/usr/share/doc/slendmail/examples/"+name {
+				t.Errorf("%s is installed as %q, want /usr/share/doc/slendmail/examples/%s", src, dst, name)
+			}
+			data, err := os.ReadFile(src)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if name == "slendmail.conf" {
+				data = unfoldExample(data)
+			}
+			code, stderr := checkExample(t, data)
+			if !hasShoutrrr && bytes.Contains(data, []byte(`type = "shoutrrr"`)) {
+				if code != 78 || !strings.Contains(stderr, "built without shoutrrr") || strings.Count(stderr, "\n") != 2 {
+					t.Errorf("--check-config = %d, stderr\n%s\nwant 78 and only built without shoutrrr", code, stderr)
+				}
+				return
+			}
+			if code != 0 || stderr != checkClean {
+				t.Errorf("--check-config = %d, stderr\n%s", code, stderr)
+			}
+		})
+	}
 }

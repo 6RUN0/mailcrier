@@ -261,6 +261,42 @@ nfpms:
         src: docs/slendmail.8
         file_info:
           mode: 0o644
+      - dst: /usr/share/doc/slendmail/examples/slendmail.conf
+        src: packaging/examples/slendmail.conf
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/slendmail/examples/telegram.conf
+        src: packaging/examples/telegram.conf
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/slendmail/examples/team-chat.conf
+        src: packaging/examples/team-chat.conf
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/slendmail/examples/ntfy.conf
+        src: packaging/examples/ntfy.conf
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/slendmail/examples/webhook.conf
+        src: packaging/examples/webhook.conf
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/slendmail/examples/hook.conf
+        src: packaging/examples/hook.conf
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/slendmail/examples/routes.conf
+        src: packaging/examples/routes.conf
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/slendmail/examples/templates.conf
+        src: packaging/examples/templates.conf
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/slendmail/examples/container.conf
+        src: packaging/examples/container.conf
+        file_info:
+          mode: 0o644
       - dst: /usr/share/doc/slendmail/copyright
         src: LICENSE
         packager: deb
