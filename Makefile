@@ -59,7 +59,15 @@ E2E_IMAGE := slendmail-setgid-e2e
 UNITS_IMAGE := slendmail-units-verify
 UNITS := slendmail-queue.service slendmail-queue.timer
 
-.PHONY: check lint lint-go lint-yaml lint-actions tidy test fuzz build licenses vuln check-refs check-commits snapshot setgid-e2e units-verify
+# smoke installs the amd64 packages of dist/ in a container per
+# distribution, the images in packaging/smoke/<distro>, and runs each test
+# function of packaging/smoke in a fresh one; dist/ must come from HEAD.
+SMOKE_DISTROS := debian rocky9 rocky10 alpine
+SMOKE_TESTS := TestSmokeSetgid TestSmokeRuntime TestSmokeLifecycle
+SMOKE_VOLUMES := -v $(CURDIR)/dist:/pkgs:ro -v $(E2E_DIR):/e2e:ro -v $(CURDIR)/testdata/callers:/callers:ro
+
+.PHONY: check lint lint-go lint-yaml lint-actions tidy test fuzz build licenses vuln check-refs check-commits snapshot setgid-e2e units-verify \
+	smoke smoke-dist $(addprefix smoke-,$(SMOKE_DISTROS)) FORCE
 
 check: lint tidy test fuzz build licenses check-refs check-commits
 	-$(MAKE) vuln
@@ -68,7 +76,7 @@ lint: lint-go lint-yaml lint-actions
 
 lint-go:
 	$(TOOL) golangci-lint run ./...
-	$(TOOL) golangci-lint run --build-tags setgid_e2e,noshoutrrr ./...
+	$(TOOL) golangci-lint run --build-tags setgid_e2e,noshoutrrr,smoke ./...
 
 lint-yaml:
 	$(YAMLLINT) --strict .
@@ -129,3 +137,35 @@ units-verify:
 		-v $(CURDIR)/docs/slendmail.8:/usr/share/man/man8/slendmail.8:ro \
 		$(foreach unit,$(UNITS),-v $(CURDIR)/packaging/systemd/$(unit):/etc/systemd/system/$(unit):ro) \
 		$(UNITS_IMAGE) systemd-analyze verify $(addprefix /etc/systemd/system/,$(UNITS))
+
+smoke: $(addprefix smoke-,$(SMOKE_DISTROS))
+
+# Each test function runs even when an earlier one failed: they share no
+# state, and every failure is worth seeing.
+$(addprefix smoke-,$(SMOKE_DISTROS)): smoke-%: smoke-dist $(E2E_DIR)/smoke.test $(E2E_DIR)/app.test
+	docker build --target plain -t slendmail-smoke-$* packaging/smoke/$*
+	status=0; for test in $(SMOKE_TESTS); do \
+		docker run --rm --network none --cap-add SYS_PTRACE $(SMOKE_VOLUMES) slendmail-smoke-$* \
+			/e2e/smoke.test -test.run "^$$test\$$" -test.v -test.timeout 20m || status=1; \
+	done; exit $$status
+
+smoke-dist:
+	@for format in deb rpm apk; do \
+		set -- dist/slendmail_*_linux_amd64.$$format; \
+		[ -f "$$1" ] || { echo "dist/ has no amd64 $$format package, run make snapshot" >&2; exit 1; }; \
+	done
+	@commit=$$(sed -n 's/.*"commit":"\([0-9a-f]*\)".*/\1/p' dist/metadata.json 2>/dev/null); \
+	[ "$$commit" = "$$(git rev-parse HEAD)" ] || { echo "dist/ is from $${commit:-an unknown commit}, run make snapshot" >&2; exit 1; }
+	@[ -z "$$(git status --porcelain)" ] || echo "warning: uncommitted changes are not in dist/" >&2
+
+# FORCE rebuilds the test binaries on every run: go's cache keeps that
+# cheap, and a stale binary would test old code.
+$(E2E_DIR)/smoke.test: FORCE
+	mkdir -p $(E2E_DIR)
+	CGO_ENABLED=0 $(GO) test -c -tags smoke -o $@ ./packaging/smoke
+
+$(E2E_DIR)/app.test: FORCE
+	mkdir -p $(E2E_DIR)
+	CGO_ENABLED=0 $(GO) test -c -tags setgid_e2e -o $@ ./internal/app
+
+FORCE:

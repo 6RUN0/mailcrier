@@ -1,0 +1,5 @@
+From: alice@example.org
+To: hook@example.org
+Subject: smoke hook
+
+This message goes to the exec target.

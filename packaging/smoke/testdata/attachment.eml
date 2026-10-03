@@ -1,0 +1,19 @@
+From: alice@example.org
+To: smoke@example.org
+Subject: smoke-attachment-7d41 cron job with a file
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="smoke-boundary"
+
+--smoke-boundary
+Content-Type: text/plain; charset=UTF-8
+
+The report of the nightly job is attached.
+
+--smoke-boundary
+Content-Type: text/plain; charset=UTF-8; name="report.txt"
+Content-Disposition: attachment; filename="report.txt"
+
+disk usage: 42 %
+backups: 7
+
+--smoke-boundary--

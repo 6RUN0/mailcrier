@@ -17,7 +17,7 @@ import (
 const testCasesPath = "testdata/test-cases.tsv"
 
 var (
-	testCaseID       = regexp.MustCompile(`^T-(ADJ|MTA|CALL|ESC|LIM|TPL)-\d{2}$`)
+	testCaseID       = regexp.MustCompile(`^T-(ADJ|MTA|CALL|ESC|LIM|TPL|PKG)-\d{2}$`)
 	testCaseColumns  = []string{"id", "priority", "status", "behaviour", "source"}
 	testCasePriority = map[string]bool{"critical": true, "high": true, "low": true}
 	testCaseStatus   = map[string]bool{"todo": true, "done": true}

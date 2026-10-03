@@ -4,6 +4,7 @@ version: "2"
 run:
   build-tags:
     - setgid_e2e
+    - smoke
 
 linters:
   default: standard

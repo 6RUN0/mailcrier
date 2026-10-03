@@ -13,6 +13,9 @@ make fuzz FUZZTIME=10m   # longer fuzzing; check runs each target 10s
 make fuzz FUZZPARALLEL=8  # fuzzing processes per target, default 4
 make setgid-e2e   # needs docker: TestSetgid* in a root container
 make units-verify # needs docker: systemd-analyze verify of packaging/systemd
+make smoke        # needs docker and dist/ of HEAD (make snapshot): packages
+make smoke-alpine # one of debian rocky9 rocky10 alpine
+make -j4 -O smoke # all distributions in parallel, 5-7 min with built images
 go build -o slendmail ./cmd/slendmail   # the binary; the name is gitignored
 SLENDMAIL_TELEGRAM_ENV=/path/to/telegram.env \
   go test -run TestLiveTelegram ./internal/backend/telegram   # real Bot API
@@ -41,6 +44,14 @@ mandoc -T lint -W warning docs/slendmail.8   # man page; not in make check
   and `check-refs` checks only their subject: the subjects embed module
   paths, the bodies quote upstream release notes. Dependabot is recognized
   by its noreply author email, not by the author name.
+- `make smoke` refuses a `dist/` whose `metadata.json` names another commit
+  than HEAD. The Rocky 10 image needs an x86-64-v3 host. Each test function
+  of `packaging/smoke` (tag `smoke`, built static) runs as root in its own
+  container without network; it starts cron and atd itself, waits on
+  receiver requests and FIFOs, never on time, and `TestSmokeRuntime` lasts
+  up to 7 minutes because only the `*/5` cron job of the package delivers
+  its queued message. Distributions are keyed by `ID` and the major
+  `VERSION_ID` of `/etc/os-release`.
 - A manual run of the new binary reads `/etc/slendmail.conf`, or the file
   in `SLENDMAIL_CONFIG` or `--config` (honoured when not setgid-elevated).
 
@@ -48,8 +59,10 @@ CI: `.github/workflows/ci.yml` runs `make check`, `make snapshot`,
 `make setgid-e2e` and `make units-verify` on push and PR to `develop` (the
 main branch) and a blocking `make vuln` daily; CodeQL runs on `develop`.
 Actions are pinned by commit SHA with the version in a comment, the e2e
-images (`testdata/setgid-e2e/Dockerfile`, `testdata/units-verify/Dockerfile`)
-by digest. Dependabot waits 7 days before proposing a new version.
+images (`testdata/*/Dockerfile`, `packaging/smoke/*/Dockerfile`) by digest,
+each directory named in the docker entry of `.github/dependabot.yml`
+(`TestDependabotCoversDockerfiles`). Dependabot waits 7 days before
+proposing a new version.
 
 ## Architecture
 

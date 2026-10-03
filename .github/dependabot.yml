@@ -76,6 +76,10 @@ updates:
     directories:
       - "/testdata/setgid-e2e"
       - "/testdata/units-verify"
+      - "/packaging/smoke/debian"
+      - "/packaging/smoke/rocky9"
+      - "/packaging/smoke/rocky10"
+      - "/packaging/smoke/alpine"
     schedule:
       interval: daily
     cooldown:
