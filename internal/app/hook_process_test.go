@@ -125,10 +125,28 @@ func TestSpoolSignalWhileTyping(t *testing.T) {
 	if err := h.cmd.Process.Signal(syscall.SIGINT); err != nil {
 		t.Fatal(err)
 	}
-	// Closed only now, so that a helper that survived the signal ends its
-	// input and exits instead of waiting.
-	_ = h.stdin.Close()
-	_ = h.cmd.Wait()
+	// kill returns before a thread of the helper takes the signal; an EOF
+	// in that window lets Run read the message and catch the late signal.
+	// So stdin stays open until the helper dies, or reports that it
+	// catches signals while the message is typed, the defect pinned here.
+	exited := make(chan struct{})
+	go func() {
+		_ = h.cmd.Wait()
+		close(exited)
+	}()
+	reported := make(chan string, 1)
+	go func() {
+		if line, err := h.report.ReadString('\n'); err == nil {
+			reported <- strings.TrimSuffix(line, "\n")
+		}
+	}()
+	select {
+	case <-exited:
+	case line := <-reported:
+		t.Errorf("helper reported %q before the end of the message", line)
+		_ = h.stdin.Close()
+		<-exited
+	}
 	status, ok := h.cmd.ProcessState.Sys().(syscall.WaitStatus)
 	if !ok || !status.Signaled() || status.Signal() != syscall.SIGINT {
 		t.Errorf("helper ended with %v, want death by SIGINT; output:\n%s", h.cmd.ProcessState, h.output.String())

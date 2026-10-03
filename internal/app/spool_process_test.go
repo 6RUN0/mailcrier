@@ -59,7 +59,8 @@ type helperArgs struct {
 	Stdin    string
 	// ReadStdin reads the message from the stdin of the process instead
 	// of Stdin and reports "ready" on fd 3 at the first read, from inside
-	// message.Read; IgnoreHangup starts Run with SIGHUP ignored, as nohup
+	// message.Read, then "catching" when Run starts to catch signals;
+	// IgnoreHangup starts Run with SIGHUP ignored, as nohup
 	// does.
 	ReadStdin    bool
 	IgnoreHangup bool
@@ -137,6 +138,10 @@ func TestSpoolHelper(t *testing.T) {
 		}
 		if args.ReadStdin {
 			stdin = &readyReader{r: os.Stdin, report: report}
+			deps.CatchSignals = func(parent context.Context) (context.Context, context.CancelFunc) {
+				_, _ = fmt.Fprintln(report, "catching")
+				return CancelOnSignal(parent)
+			}
 		}
 	}
 	os.Exit(Run(context.Background(), deps, args.Args, stdin))
