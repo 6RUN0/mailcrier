@@ -62,8 +62,10 @@ mandoc -T lint -W warning docs/slendmail.8   # man page; not in make check
   in `SLENDMAIL_CONFIG` or `--config` (honoured when not setgid-elevated).
 
 CI: `.github/workflows/ci.yml` runs `make check`, `make snapshot`,
-`make setgid-e2e` and `make units-verify` on push and PR to `develop` (the
-main branch) and a blocking `make vuln` daily; CodeQL runs on `develop`.
+`make setgid-e2e`, `make units-verify` and, on the amd64 packages of the
+snapshot job, `make smoke-<distro>` per distribution on push and PR to
+`develop` (the main branch) and a blocking `make vuln` daily; CodeQL runs
+on `develop`.
 Actions are pinned by commit SHA with the version in a comment, the e2e
 images (`testdata/*/Dockerfile`, `packaging/smoke/*/Dockerfile`) by digest,
 each directory named in the docker entry of `.github/dependabot.yml`
