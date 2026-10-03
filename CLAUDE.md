@@ -63,9 +63,15 @@ mandoc -T lint -W warning docs/slendmail.8   # man page; not in make check
 
 CI: `.github/workflows/ci.yml` runs `make check`, `make snapshot`,
 `make setgid-e2e`, `make units-verify` and, on the amd64 packages of the
-snapshot job, `make smoke-<distro>` per distribution on push and PR to
-`develop` (the main branch) and a blocking `make vuln` daily; CodeQL runs
-on `develop`.
+snapshot job, `make smoke-<distro>` per distribution on push to `develop`
+and `main`, on PR to `develop`, and a blocking `make vuln` daily; CodeQL
+runs on the same push and PR events (`TestCIBranches`) and weekly.
+`develop` is the development branch, `main` the default branch that only
+fast-forwards to a commit of `develop`: before the first release also to
+one that changes the CI infrastructure, after it only to a released one.
+Every entry of `.github/dependabot.yml` sets `target-branch:
+develop` (`TestDependabotTargetsDevelop`): without it version updates
+open against `main`.
 Actions are pinned by commit SHA with the version in a comment, the e2e
 images (`testdata/*/Dockerfile`, `packaging/smoke/*/Dockerfile`) by digest,
 each directory named in the docker entry of `.github/dependabot.yml`
@@ -348,3 +354,12 @@ with "no non-test Go files".
 - Every target's `New` copies the client with `backend.WithoutRedirects`:
   net/http would turn a redirected POST into a bodiless GET and report
   success. A 3xx is a permanent failure.
+- Pull requests go to `develop` only: `main` takes code by fast-forward,
+  so CI does not run on a PR into it; retarget such a PR to `develop`.
+- GitHub runs `schedule` workflows only from the default branch `main`, at
+  its last commit and with its version of the workflow, so a scheduled job
+  changed on `develop` runs only after `main` fast-forwards to it.
+- Dependabot security updates are off in the repository settings. Turned
+  on, they open against the default branch `main` whatever `target-branch`
+  says and without the `commit-message` prefix, which `check-commits`
+  rejects.

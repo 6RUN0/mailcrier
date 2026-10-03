@@ -2,6 +2,7 @@
 version: 2
 updates:
   - package-ecosystem: gomod
+    target-branch: develop
     directory: "/"
     schedule:
       interval: daily
@@ -16,6 +17,7 @@ updates:
           - minor
           - patch
   - package-ecosystem: gomod
+    target-branch: develop
     directories:
       - "/tools"
       - "/tools/actionlint"
@@ -45,6 +47,7 @@ updates:
           - minor
           - patch
   - package-ecosystem: pip
+    target-branch: develop
     directory: "/tools"
     schedule:
       interval: daily
@@ -59,6 +62,7 @@ updates:
           - minor
           - patch
   - package-ecosystem: github-actions
+    target-branch: develop
     directory: "/"
     schedule:
       interval: daily
@@ -73,6 +77,7 @@ updates:
           - minor
           - patch
   - package-ecosystem: docker
+    target-branch: develop
     directories:
       - "/testdata/setgid-e2e"
       - "/testdata/units-verify"
