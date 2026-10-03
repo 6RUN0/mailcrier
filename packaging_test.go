@@ -1,9 +1,22 @@
 package main
 
 import (
+	"bytes"
+	"errors"
+	"fmt"
 	"os"
+	"os/exec"
+	"path"
+	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
+	"testing/fstest"
+
+	"go.yaml.in/yaml/v3"
+
+	"github.com/6RUN0/slendmail/internal/config"
 )
 
 // TestQueueRunnerFiles pins the periodic queue run of the packages: every
@@ -46,4 +59,562 @@ func TestQueueRunnerFiles(t *testing.T) {
 			}
 		})
 	}
+}
+
+// nfpmScripts are the script paths of one format or of all formats.
+type nfpmScripts struct {
+	PreInstall  string `yaml:"preinstall"`
+	PostInstall string `yaml:"postinstall"`
+	PreRemove   string `yaml:"preremove"`
+	PostRemove  string `yaml:"postremove"`
+}
+
+// nfpmContent is one entry of contents in .goreleaser.yaml.
+type nfpmContent struct {
+	Src      string `yaml:"src"`
+	Dst      string `yaml:"dst"`
+	Type     string `yaml:"type"`
+	Packager string `yaml:"packager"`
+	FileInfo struct {
+		Owner string `yaml:"owner"`
+		Group string `yaml:"group"`
+		Mode  uint32 `yaml:"mode"`
+	} `yaml:"file_info"`
+}
+
+// nfpmOverride holds the fields .goreleaser.yaml sets per format.
+type nfpmOverride struct {
+	Provides     []string    `yaml:"provides"`
+	Conflicts    []string    `yaml:"conflicts"`
+	Replaces     []string    `yaml:"replaces"`
+	Dependencies []string    `yaml:"dependencies"`
+	Scripts      nfpmScripts `yaml:"scripts"`
+}
+
+// nfpmSection is the part of a goreleaser nfpms entry the package tests
+// check; goreleaser itself validates the rest.
+type nfpmSection struct {
+	IDs        []string    `yaml:"ids"`
+	Formats    []string    `yaml:"formats"`
+	Maintainer string      `yaml:"maintainer"`
+	License    string      `yaml:"license"`
+	Section    string      `yaml:"section"`
+	Homepage   string      `yaml:"homepage"`
+	Bindir     string      `yaml:"bindir"`
+	MTime      string      `yaml:"mtime"`
+	Umask      uint32      `yaml:"umask"`
+	Scripts    nfpmScripts `yaml:"scripts"`
+	Deb        struct {
+		Predepends []string `yaml:"predepends"`
+	} `yaml:"deb"`
+	APK struct {
+		Scripts struct {
+			PreUpgrade  string `yaml:"preupgrade"`
+			PostUpgrade string `yaml:"postupgrade"`
+		} `yaml:"scripts"`
+	} `yaml:"apk"`
+	Overrides map[string]nfpmOverride `yaml:"overrides"`
+	Contents  []nfpmContent           `yaml:"contents"`
+}
+
+// readNFPM returns the only nfpms entry of .goreleaser.yaml.
+func readNFPM(t *testing.T) nfpmSection {
+	t.Helper()
+	data, err := os.ReadFile(".goreleaser.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var file struct {
+		NFPMs []nfpmSection `yaml:"nfpms"`
+	}
+	if err := yaml.Unmarshal(data, &file); err != nil {
+		t.Fatal(err)
+	}
+	if len(file.NFPMs) != 1 {
+		t.Fatalf(".goreleaser.yaml has %d nfpms entries, want 1", len(file.NFPMs))
+	}
+	return file.NFPMs[0]
+}
+
+// packageScripts maps "<format>-<event>" to the script the package runs,
+// with the overrides of the format applied over the common scripts.
+func packageScripts(section nfpmSection) map[string]string {
+	scripts := map[string]string{}
+	for _, format := range section.Formats {
+		override := section.Overrides[format].Scripts
+		pick := func(own, common string) string {
+			if own != "" {
+				return own
+			}
+			return common
+		}
+		for event, path := range map[string]string{
+			"preinstall":  pick(override.PreInstall, section.Scripts.PreInstall),
+			"postinstall": pick(override.PostInstall, section.Scripts.PostInstall),
+			"preremove":   pick(override.PreRemove, section.Scripts.PreRemove),
+			"postremove":  pick(override.PostRemove, section.Scripts.PostRemove),
+		} {
+			if path != "" {
+				scripts[format+"-"+event] = path
+			}
+		}
+	}
+	if section.APK.Scripts.PreUpgrade != "" {
+		scripts["apk-preupgrade"] = section.APK.Scripts.PreUpgrade
+	}
+	if section.APK.Scripts.PostUpgrade != "" {
+		scripts["apk-postupgrade"] = section.APK.Scripts.PostUpgrade
+	}
+	return scripts
+}
+
+// packageEntry is the expected type, owner, group and mode of a package path.
+type packageEntry struct {
+	typ, owner, group string
+	mode              uint32
+}
+
+// expectedContents lists every contents entry of the packages by
+// destination and packager (empty for all formats). The binary and its
+// mode are not here: goreleaser adds it as root:root 0755, and the scripts
+// set the group and the setgid bit.
+func expectedContents() map[[2]string]packageEntry {
+	contents := map[[2]string]packageEntry{
+		{"/etc/slendmail.conf", ""}:                      {"config|noreplace", "root", "slendmail", 0o640},
+		{"/etc/slendmail.d", ""}:                         {"dir", "root", "slendmail", 0o750},
+		{"/var/spool/slendmail", ""}:                     {"dir", "root", "slendmail", 0o750},
+		{"/usr/share/man/man8/slendmail.8", ""}:          {"", "root", "root", 0o644},
+		{"/etc/crontabs/slendmail", "apk"}:               {"", "root", "root", 0o600},
+		{"/usr/share/doc/slendmail/copyright", "deb"}:    {"", "root", "root", 0o644},
+		{"/usr/share/licenses/slendmail/LICENSE", "rpm"}: {"license", "root", "root", 0o644},
+		{"/usr/share/licenses/slendmail/LICENSE", "apk"}: {"", "root", "root", 0o644},
+	}
+	for _, area := range []string{"tmp", "queue", "hold", "failed", "locks"} {
+		contents[[2]string{"/var/spool/slendmail/" + area, ""}] = packageEntry{"dir", "root", "slendmail", 0o2770}
+	}
+	for _, link := range []string{"/usr/sbin/sendmail", "/usr/lib/sendmail", "/usr/bin/mailq", "/usr/bin/newaliases"} {
+		contents[[2]string{link, "deb"}] = packageEntry{"symlink", "root", "root", 0o777}
+		contents[[2]string{link, "apk"}] = packageEntry{"symlink", "root", "root", 0o777}
+		contents[[2]string{link, "rpm"}] = packageEntry{"ghost", "root", "root", 0}
+	}
+	for _, packager := range []string{"deb", "rpm"} {
+		contents[[2]string{"/usr/lib/systemd/system/slendmail-queue.service", packager}] = packageEntry{"", "root", "root", 0o644}
+		contents[[2]string{"/usr/lib/systemd/system/slendmail-queue.timer", packager}] = packageEntry{"", "root", "root", 0o644}
+		contents[[2]string{"/etc/cron.d/slendmail", packager}] = packageEntry{"config|noreplace", "root", "root", 0o644}
+	}
+	return contents
+}
+
+// TestPackageContents pins the package section of .goreleaser.yaml: one
+// entry for the slendmail build in deb, rpm and apk, the metadata the
+// scripts depend on, and every contents entry with type, owner, group and
+// mode. An explicit mode keeps the packages of every checkout equal: nFPM
+// takes the mode of the source file minus its umask otherwise, and stats
+// the target of a symlink relative to the working directory.
+func TestPackageContents(t *testing.T) {
+	t.Run("T-ADJ-54/contents", func(t *testing.T) {
+		section := readNFPM(t)
+		for _, check := range []struct {
+			name      string
+			got, want any
+		}{
+			{"ids", section.IDs, []string{"slendmail"}},
+			{"formats", section.Formats, []string{"deb", "rpm", "apk"}},
+			{"maintainer", section.Maintainer, "Boris Talovikov <boris.t.66@gmail.com>"},
+			{"license", section.License, "BSD-3-Clause"},
+			{"section", section.Section, "mail"},
+			{"homepage", section.Homepage, "https://github.com/6RUN0/slendmail"},
+			{"bindir", section.Bindir, "/usr/sbin"},
+			{"mtime", section.MTime, "{{ .CommitDate }}"},
+			{"umask", section.Umask, uint32(0o022)},
+			{"deb.predepends", section.Deb.Predepends, []string{"init-system-helpers (>= 1.54~)", "passwd"}},
+			{"deb provides", section.Overrides["deb"].Provides, []string{"mail-transport-agent"}},
+			{"deb conflicts", section.Overrides["deb"].Conflicts, []string{"mail-transport-agent"}},
+			{"deb replaces", section.Overrides["deb"].Replaces, []string{"mail-transport-agent"}},
+			{"rpm provides", section.Overrides["rpm"].Provides, []string{"MTA"}},
+			{"rpm dependencies", section.Overrides["rpm"].Dependencies, []string{"/usr/sbin/useradd", "/usr/sbin/alternatives"}},
+			{"apk replaces", section.Overrides["apk"].Replaces, []string(nil)},
+			{"scripts", packageScripts(section), map[string]string{
+				"deb-preinstall":  "packaging/scripts/preinstall.sh",
+				"deb-postinstall": "packaging/scripts/deb/postinst.sh",
+				"deb-preremove":   "packaging/scripts/deb/prerm.sh",
+				"deb-postremove":  "packaging/scripts/deb/postrm.sh",
+				"rpm-preinstall":  "packaging/scripts/preinstall.sh",
+				"rpm-postinstall": "packaging/scripts/rpm/post.sh",
+				"rpm-preremove":   "packaging/scripts/rpm/preun.sh",
+				"rpm-postremove":  "packaging/scripts/rpm/postun.sh",
+				"apk-preinstall":  "packaging/scripts/preinstall.sh",
+				"apk-postinstall": "packaging/scripts/apk/post-install.sh",
+				"apk-preupgrade":  "packaging/scripts/preinstall.sh",
+				"apk-postupgrade": "packaging/scripts/apk/post-upgrade.sh",
+				"apk-postremove":  "packaging/scripts/apk/post-deinstall.sh",
+			}},
+		} {
+			if fmt.Sprint(check.got) != fmt.Sprint(check.want) {
+				t.Errorf("%s = %v, want %v", check.name, check.got, check.want)
+			}
+		}
+
+		want := expectedContents()
+		seen := map[[2]string]bool{}
+		for _, content := range section.Contents {
+			key := [2]string{content.Dst, content.Packager}
+			if seen[key] {
+				t.Errorf("contents: %s (packager %q) is listed twice", content.Dst, content.Packager)
+				continue
+			}
+			seen[key] = true
+			entry, ok := want[key]
+			if !ok {
+				t.Errorf("contents: unexpected entry %s (packager %q)", content.Dst, content.Packager)
+				continue
+			}
+			got := packageEntry{content.Type, content.FileInfo.Owner, content.FileInfo.Group, content.FileInfo.Mode}
+			if got.owner == "" {
+				got.owner = "root"
+			}
+			if got.group == "" {
+				got.group = "root"
+			}
+			if got != entry {
+				t.Errorf("contents: %s (packager %q) = %+v, want %+v", content.Dst, content.Packager, got, entry)
+			}
+			if content.Src != "" && content.FileInfo.Mode == 0 {
+				t.Errorf("contents: %s (packager %q) has src and no mode", content.Dst, content.Packager)
+			}
+			if content.Type == "symlink" {
+				if target := path.Join(path.Dir(content.Dst), content.Src); target != "/usr/sbin/slendmail" {
+					t.Errorf("contents: %s (packager %q) points to %s, want /usr/sbin/slendmail", content.Dst, content.Packager, target)
+				}
+			}
+			if content.Src != "" && content.Type != "symlink" {
+				if _, err := os.Stat(content.Src); err != nil {
+					t.Errorf("contents: %s: %v", content.Dst, err)
+				}
+			}
+		}
+		for key := range want {
+			if !seen[key] {
+				t.Errorf("contents: %s (packager %q) is missing", key[0], key[1])
+			}
+		}
+	})
+}
+
+// scriptRedirects are the paths of the host a package script tests or
+// writes, mapped to names under the temporary directory of a test case.
+var scriptRedirects = []struct{ path, name string }{
+	{"/run/systemd/system", "run-systemd"},
+	{"/etc/crontabs", "crontabs"},
+	{"/var/spool/slendmail", "spool"},
+	{"/usr/sbin/nologin", "nologin"},
+	{"/usr/bin/deb-systemd-helper", "bin/deb-systemd-helper"},
+}
+
+// scriptArguments are the absolute paths a package script may pass on to
+// a command or use as its interpreter; any other one would reach the host.
+var scriptArguments = []string{"/bin/sh", "/dev/null", "/usr/sbin/slendmail", "/usr/sbin/sendmail", "/usr/bin/mailq", "/usr/bin/newaliases", "/usr/lib/sendmail", "/sbin/nologin"}
+
+var absolutePath = regexp.MustCompile(`/[A-Za-z0-9._/-]+`)
+
+// commandPath finds an absolute path where sh takes the name of a command:
+// at the start of a line, after an operator or a keyword that starts one,
+// or as the operand of exec or command. Such a path bypasses the stubs.
+var commandPath = regexp.MustCompile("(?m)(?:^|[;&|(!{`]|\\b(?:if|elif|then|else|do|while|until|exec|command)\\s)\\s*[\"']?/")
+
+// shellComment is a comment of sh, which may name any path.
+var shellComment = regexp.MustCompile(`(?m)(?:^|\s)#.*$`)
+
+// scriptStubs are the commands a package script may run; each one is a
+// stub that logs its arguments.
+var scriptStubs = []string{"dpkg-statoverride", "deb-systemd-helper", "deb-systemd-invoke", "systemctl", "alternatives", "chgrp", "chmod", "touch", "getent", "groupadd", "useradd", "addgroup", "adduser", "slendmail"}
+
+// scriptCase runs one package script with arguments in a temporary
+// directory: present lists what exists there ("run-systemd", "spool",
+// "nologin"), without drops stubs, and exits gives the exit status of a
+// stub per prefix of its arguments ("" for any). fails expects the script
+// to exit non-zero.
+type scriptCase struct {
+	name    string
+	event   string
+	args    []string
+	present []string
+	without []string
+	exits   map[string]map[string]int
+	want    []string
+	spool   bool
+	fails   bool
+}
+
+// prepareScript rewrites the host paths of script into dir. It stops the
+// test before the script runs on an absolute path in the place of a command
+// and on any other absolute path that is not a known argument, so a script
+// never reaches a program of the host.
+func prepareScript(t *testing.T, script, dir string) string {
+	t.Helper()
+	code := shellComment.ReplaceAllString(strings.ReplaceAll(script, "\\\n", " "), "")
+	for _, match := range commandPath.FindAllStringIndex(code, -1) {
+		t.Errorf("script runs the host command %s", absolutePath.FindString(code[match[1]-1:]))
+	}
+	for _, path := range absolutePath.FindAllString(script, -1) {
+		redirected := slices.ContainsFunc(scriptRedirects, func(redirect struct{ path, name string }) bool {
+			return path == redirect.path || strings.HasPrefix(path, redirect.path+"/")
+		})
+		if !redirected && !slices.Contains(scriptArguments, path) {
+			t.Errorf("script names the host path %s", path)
+		}
+	}
+	if t.Failed() {
+		t.FailNow()
+	}
+	for _, redirect := range scriptRedirects {
+		script = strings.ReplaceAll(script, redirect.path, filepath.Join(dir, redirect.name))
+	}
+	return script
+}
+
+// writeStubs creates the stub commands of tc in dir/bin, each appending
+// "<name> <args>" to dir/log.
+func writeStubs(t *testing.T, tc scriptCase, dir string) {
+	t.Helper()
+	bin := filepath.Join(dir, "bin")
+	if err := os.Mkdir(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range scriptStubs {
+		if slices.Contains(tc.without, name) {
+			continue
+		}
+		var cases strings.Builder
+		for prefix, code := range tc.exits[name] {
+			fmt.Fprintf(&cases, "%q*) exit %d ;;\n", prefix, code)
+		}
+		stub := fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' %q\" $*\" >>%q\ncase \"$*\" in\n%sesac\nexit 0\n", name, filepath.Join(dir, "log"), cases.String())
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(stub), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// scriptShells returns the interpreters the scripts are run with: /bin/sh,
+// and dash and BusyBox sh where installed, which find what bash accepts and
+// they do not. A BusyBox that runs its own applets ahead of PATH would
+// bypass the stubs and is left out.
+func scriptShells(t *testing.T) map[string][]string {
+	t.Helper()
+	shells := map[string][]string{"sh": {"/bin/sh"}}
+	if path, err := exec.LookPath("dash"); err == nil {
+		shells["dash"] = []string{path}
+	} else {
+		t.Log("dash not installed, scripts not run with it")
+	}
+	path, err := exec.LookPath("busybox")
+	if err != nil {
+		t.Log("busybox not installed, scripts not run with it")
+		return shells
+	}
+	probe := exec.Command(path, "sh", "-c", "command -v chgrp")
+	probe.Env = []string{"PATH=" + t.TempDir()}
+	if probe.Run() == nil {
+		t.Log("busybox sh prefers its applets to PATH, scripts not run with it")
+		return shells
+	}
+	shells["busybox"] = []string{path, "sh"}
+	return shells
+}
+
+// TestPackageScripts runs every maintainer script with stub commands and
+// compares the commands it runs, in order. A script must do nothing on an
+// upgrade where it acts on removal, never run slendmail or touch its
+// configuration, set the group of the binary before its mode (chgrp clears
+// the setgid bit), keep a timer the administrator masked only through the
+// unmask of debhelper, and exit 0 when a command that is not essential
+// fails, because a failed script leaves dpkg half done and stops an rpm
+// erase. It must fail when the group, the user, the setgid bit or the
+// alternative cannot be set up: the package would install a binary that
+// cannot read its configuration.
+func TestPackageScripts(t *testing.T) {
+	section := readNFPM(t)
+	scripts := packageScripts(section)
+	shells := scriptShells(t)
+	const timer = "slendmail-queue.timer"
+	failing := func(names ...string) map[string]map[string]int {
+		exits := map[string]map[string]int{}
+		for _, name := range names {
+			exits[name] = map[string]int{"": 1}
+		}
+		return exits
+	}
+	statoverride := []string{"dpkg-statoverride --list /usr/sbin/slendmail", "dpkg-statoverride --update --add root slendmail 2755 /usr/sbin/slendmail"}
+	setgid := []string{"chgrp slendmail /usr/sbin/slendmail", "chmod 2755 /usr/sbin/slendmail"}
+	alternatives := "alternatives --install /usr/sbin/sendmail mta /usr/sbin/slendmail 100" +
+		" --slave /usr/bin/mailq mta-mailq /usr/sbin/slendmail" +
+		" --slave /usr/bin/newaliases mta-newaliases /usr/sbin/slendmail" +
+		" --slave /usr/lib/sendmail mta-sendmail /usr/sbin/slendmail"
+	cases := []scriptCase{
+		{name: "preinstall-existing", event: "deb-preinstall", args: []string{"install"},
+			want: []string{"getent group slendmail", "getent passwd slendmail"}},
+		{name: "preinstall-shadow", event: "rpm-preinstall", args: []string{"1"}, present: []string{"nologin"},
+			exits: map[string]map[string]int{"getent": {"": 2}},
+			want:  []string{"getent group slendmail", "groupadd -r slendmail", "getent passwd slendmail", "useradd -r -g slendmail -d {spool} -M -s {nologin} slendmail"}},
+		{name: "preinstall-busybox", event: "apk-preupgrade", args: []string{"0.2.0", "0.1.0"}, without: []string{"groupadd", "useradd"},
+			exits: map[string]map[string]int{"getent": {"": 2}},
+			want:  []string{"getent group slendmail", "addgroup -S slendmail", "getent passwd slendmail", "adduser -S -D -H -h {spool} -s /sbin/nologin -G slendmail slendmail"}},
+		{name: "deb-postinstall-install", event: "deb-postinstall", args: []string{"configure"}, present: []string{"run-systemd"},
+			exits: map[string]map[string]int{"dpkg-statoverride": {"--list": 1}},
+			want: append(slices.Clone(statoverride), "deb-systemd-helper unmask "+timer, "deb-systemd-helper --quiet was-enabled "+timer,
+				"deb-systemd-helper enable "+timer, "systemctl --system daemon-reload", "deb-systemd-invoke start "+timer)},
+		{name: "deb-postinstall-upgrade", event: "deb-postinstall", args: []string{"configure", "0.1.0"}, present: []string{"run-systemd"},
+			exits: map[string]map[string]int{"deb-systemd-helper": {"--quiet was-enabled": 1}},
+			want: []string{statoverride[0], "deb-systemd-helper unmask " + timer, "deb-systemd-helper --quiet was-enabled " + timer,
+				"deb-systemd-helper update-state " + timer, "systemctl --system daemon-reload", "deb-systemd-invoke restart " + timer}},
+		{name: "deb-postinstall-abort-remove", event: "deb-postinstall", args: []string{"abort-remove"},
+			exits: map[string]map[string]int{"dpkg-statoverride": {"--list": 1}},
+			want:  append(slices.Clone(statoverride), "deb-systemd-helper unmask "+timer, "deb-systemd-helper --quiet was-enabled "+timer, "deb-systemd-helper enable "+timer)},
+		{name: "deb-postinstall-failing", event: "deb-postinstall", args: []string{"configure", "0.1.0"}, present: []string{"run-systemd"},
+			exits: failing("deb-systemd-helper", "deb-systemd-invoke", "systemctl"),
+			want: []string{statoverride[0], "deb-systemd-helper unmask " + timer, "deb-systemd-helper --quiet was-enabled " + timer,
+				"deb-systemd-helper update-state " + timer, "systemctl --system daemon-reload", "deb-systemd-invoke restart " + timer}},
+		{name: "deb-preremove-upgrade", event: "deb-preremove", args: []string{"upgrade", "0.2.0"}, present: []string{"run-systemd"}},
+		{name: "deb-preremove-remove", event: "deb-preremove", args: []string{"remove"}, present: []string{"run-systemd"},
+			exits: failing("deb-systemd-invoke"), want: []string{"deb-systemd-invoke stop " + timer}},
+		{name: "deb-postremove-upgrade", event: "deb-postremove", args: []string{"upgrade", "0.2.0"}, present: []string{"run-systemd", "spool"}},
+		{name: "deb-postremove-remove", event: "deb-postremove", args: []string{"remove"}, present: []string{"run-systemd"},
+			want: []string{"systemctl --system daemon-reload"}},
+		{name: "deb-postremove-purge", event: "deb-postremove", args: []string{"purge"}, present: []string{"spool"}, spool: true,
+			exits: failing("deb-systemd-helper", "dpkg-statoverride"),
+			want:  []string{"deb-systemd-helper purge " + timer, "dpkg-statoverride --quiet --remove /usr/sbin/slendmail"}},
+		{name: "rpm-postinstall-install", event: "rpm-postinstall", args: []string{"1"}, present: []string{"run-systemd"},
+			want: append(slices.Clone(setgid), alternatives, "systemctl enable "+timer, "systemctl start "+timer)},
+		{name: "rpm-postinstall-install-failing", event: "rpm-postinstall", args: []string{"1"},
+			exits: failing("systemctl"), want: append(slices.Clone(setgid), alternatives, "systemctl enable "+timer)},
+		{name: "rpm-postinstall-upgrade", event: "rpm-postinstall", args: []string{"2"}, present: []string{"run-systemd"},
+			want: append(slices.Clone(setgid), alternatives, "systemctl daemon-reload")},
+		{name: "rpm-preremove-upgrade", event: "rpm-preremove", args: []string{"1"}, present: []string{"run-systemd"}},
+		{name: "rpm-preremove-erase", event: "rpm-preremove", args: []string{"0"}, present: []string{"run-systemd"},
+			exits: failing("systemctl", "alternatives"),
+			want:  []string{"systemctl disable " + timer, "systemctl stop " + timer, "alternatives --remove mta /usr/sbin/slendmail"}},
+		{name: "rpm-postremove-upgrade", event: "rpm-postremove", args: []string{"1"}, present: []string{"run-systemd", "spool"}},
+		{name: "rpm-postremove-erase", event: "rpm-postremove", args: []string{"0"}, present: []string{"run-systemd", "spool"}, spool: true,
+			exits: failing("systemctl"), want: []string{"systemctl daemon-reload"}},
+		{name: "apk-postinstall", event: "apk-postinstall", args: []string{"0.1.0"},
+			want: append(slices.Clone(setgid), "touch {crontabs}/cron.update")},
+		{name: "apk-postupgrade", event: "apk-postupgrade", args: []string{"0.2.0", "0.1.0"},
+			exits: failing("touch"), want: append(slices.Clone(setgid), "touch {crontabs}/cron.update")},
+		{name: "apk-postremove", event: "apk-postremove", args: []string{"0.1.0"}, present: []string{"spool"}, spool: true,
+			exits: failing("touch"), want: []string{"touch {crontabs}/cron.update"}},
+		{name: "preinstall-groupadd-failing", event: "rpm-preinstall", args: []string{"1"}, fails: true,
+			exits: map[string]map[string]int{"getent": {"": 2}, "groupadd": {"": 1}},
+			want:  []string{"getent group slendmail", "groupadd -r slendmail"}},
+		{name: "preinstall-useradd-failing", event: "rpm-preinstall", args: []string{"1"}, fails: true,
+			exits: map[string]map[string]int{"getent": {"": 2}, "useradd": {"": 1}},
+			want:  []string{"getent group slendmail", "groupadd -r slendmail", "getent passwd slendmail", "useradd -r -g slendmail -d {spool} -M -s /sbin/nologin slendmail"}},
+		{name: "preinstall-addgroup-failing", event: "apk-preinstall", args: []string{"0.1.0"}, without: []string{"groupadd", "useradd"}, fails: true,
+			exits: map[string]map[string]int{"getent": {"": 2}, "addgroup": {"": 1}},
+			want:  []string{"getent group slendmail", "addgroup -S slendmail"}},
+		{name: "preinstall-adduser-failing", event: "apk-preinstall", args: []string{"0.1.0"}, without: []string{"groupadd", "useradd"}, fails: true,
+			exits: map[string]map[string]int{"getent": {"": 2}, "adduser": {"": 1}},
+			want:  []string{"getent group slendmail", "addgroup -S slendmail", "getent passwd slendmail", "adduser -S -D -H -h {spool} -s /sbin/nologin -G slendmail slendmail"}},
+		{name: "deb-postinstall-statoverride-failing", event: "deb-postinstall", args: []string{"configure"}, fails: true,
+			exits: map[string]map[string]int{"dpkg-statoverride": {"--list": 1, "--update --add": 1}},
+			want:  slices.Clone(statoverride)},
+		{name: "rpm-postinstall-alternatives-failing", event: "rpm-postinstall", args: []string{"1"}, fails: true,
+			exits: map[string]map[string]int{"alternatives": {"--install": 1}},
+			want:  append(slices.Clone(setgid), alternatives)},
+	}
+	for _, setup := range []struct {
+		event string
+		args  []string
+	}{{"rpm-postinstall", []string{"2"}}, {"apk-postinstall", []string{"0.1.0"}}, {"apk-postupgrade", []string{"0.2.0", "0.1.0"}}} {
+		for i, command := range setgid {
+			name := strings.Fields(command)[0]
+			cases = append(cases, scriptCase{name: setup.event + "-" + name + "-failing", event: setup.event, args: setup.args, fails: true,
+				exits: failing(name), want: slices.Clone(setgid[:i+1])})
+		}
+	}
+	tested := map[string]bool{}
+	for _, tc := range cases {
+		path, ok := scripts[tc.event]
+		if !ok {
+			t.Fatalf("%s: no script for %s", tc.name, tc.event)
+		}
+		tested[path] = true
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(data, []byte("/etc/slendmail.")) {
+			t.Errorf("%s names the configuration", path)
+		}
+		for shell, argv := range shells {
+			t.Run("T-ADJ-54/"+tc.name+"-"+shell, func(t *testing.T) {
+				dir := t.TempDir()
+				if absolutePath.FindString(dir) != dir {
+					t.Fatalf("the temporary directory %q has characters sh splits or expands, and the scripts get it unquoted; set TMPDIR to a path of letters, digits and ._/-", dir)
+				}
+				for _, name := range tc.present {
+					if err := os.Mkdir(filepath.Join(dir, name), 0o755); err != nil {
+						t.Fatal(err)
+					}
+				}
+				writeStubs(t, tc, dir)
+				cmd := exec.Command(argv[0], append(append(argv[1:], "-s"), tc.args...)...)
+				cmd.Env = []string{"PATH=" + filepath.Join(dir, "bin")}
+				cmd.Stdin = strings.NewReader(prepareScript(t, string(data), dir))
+				var stdout, stderr bytes.Buffer
+				cmd.Stdout, cmd.Stderr = &stdout, &stderr
+				err := cmd.Run()
+				var exit *exec.ExitError
+				switch {
+				case tc.fails && !errors.As(err, &exit):
+					t.Errorf("%s %s: %v, want a non-zero exit status", path, strings.Join(tc.args, " "), err)
+				case !tc.fails && err != nil:
+					t.Errorf("%s %s: %v, stderr %q", path, strings.Join(tc.args, " "), err, stderr.String())
+				}
+				if stderr.Len() > 0 {
+					t.Errorf("stderr %q, want none", stderr.String())
+				}
+				log, err := os.ReadFile(filepath.Join(dir, "log"))
+				if err != nil && !errors.Is(err, os.ErrNotExist) {
+					t.Fatal(err)
+				}
+				got := strings.Split(strings.TrimSuffix(string(log), "\n"), "\n")
+				if len(log) == 0 {
+					got = nil
+				}
+				want := make([]string, len(tc.want))
+				for i, line := range tc.want {
+					want[i] = strings.NewReplacer("{spool}", filepath.Join(dir, "spool"), "{nologin}", filepath.Join(dir, "nologin"),
+						"{crontabs}", filepath.Join(dir, "crontabs")).Replace(line)
+				}
+				if !slices.Equal(got, want) {
+					t.Errorf("%s %s ran\n%s\nwant\n%s", path, strings.Join(tc.args, " "), strings.Join(got, "\n"), strings.Join(want, "\n"))
+				}
+				if named := strings.Contains(stdout.String(), filepath.Join(dir, "spool")); named != tc.spool {
+					t.Errorf("stdout %q names the spool: %v, want %v", stdout.String(), named, tc.spool)
+				}
+			})
+		}
+	}
+	for event, path := range scripts {
+		if !tested[path] {
+			t.Errorf("no case runs %s, the %s script", path, event)
+		}
+	}
+}
+
+// TestPackageConfigExample loads the configuration file of the packages,
+// which is all comments: the program must reject it for lack of targets,
+// and for nothing else, until the administrator sets one.
+func TestPackageConfigExample(t *testing.T) {
+	t.Run("T-ADJ-54/config", func(t *testing.T) {
+		data, err := os.ReadFile("packaging/slendmail.conf")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = config.Load(fstest.MapFS{"etc/slendmail.conf": {Data: data}}, "etc/slendmail.conf")
+		if err == nil || err.Error() != "/etc/slendmail.conf: no targets configured" {
+			t.Errorf("Load = %v, want /etc/slendmail.conf: no targets configured", err)
+		}
+	})
 }

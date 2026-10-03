@@ -54,6 +54,230 @@ archives:
     formats:
       - binary
 
+nfpms:
+  - id: slendmail
+    ids:
+      - slendmail
+    formats:
+      - deb
+      - rpm
+      - apk
+    maintainer: Boris Talovikov <boris.t.66@gmail.com>
+    homepage: https://github.com/6RUN0/slendmail
+    license: BSD-3-Clause
+    section: mail
+    description: |-
+      sendmail replacement that sends mail to chat services
+      Local tools such as cron, sudo, mdadm or smartd pipe a message into
+      /usr/sbin/sendmail; slendmail delivers it to Telegram, Discord, Slack,
+      ntfy, an HTTP webhook, a shoutrrr service or a program of your own.
+    bindir: /usr/sbin
+    mtime: "{{ .CommitDate }}"
+    umask: 0o022
+    scripts:
+      preinstall: packaging/scripts/preinstall.sh
+    deb:
+      predepends:
+        - init-system-helpers (>= 1.54~)
+        - passwd
+    apk:
+      scripts:
+        preupgrade: packaging/scripts/preinstall.sh
+        postupgrade: packaging/scripts/apk/post-upgrade.sh
+    overrides:
+      deb:
+        provides:
+          - mail-transport-agent
+        conflicts:
+          - mail-transport-agent
+        replaces:
+          - mail-transport-agent
+        scripts:
+          postinstall: packaging/scripts/deb/postinst.sh
+          preremove: packaging/scripts/deb/prerm.sh
+          postremove: packaging/scripts/deb/postrm.sh
+      rpm:
+        provides:
+          - MTA
+        dependencies:
+          - /usr/sbin/useradd
+          - /usr/sbin/alternatives
+        scripts:
+          postinstall: packaging/scripts/rpm/post.sh
+          preremove: packaging/scripts/rpm/preun.sh
+          postremove: packaging/scripts/rpm/postun.sh
+      apk:
+        scripts:
+          postinstall: packaging/scripts/apk/post-install.sh
+          postremove: packaging/scripts/apk/post-deinstall.sh
+    contents:
+      - dst: /usr/sbin/sendmail
+        src: slendmail
+        type: symlink
+        packager: deb
+        file_info:
+          mode: 0o777
+      - dst: /usr/lib/sendmail
+        src: ../sbin/slendmail
+        type: symlink
+        packager: deb
+        file_info:
+          mode: 0o777
+      - dst: /usr/bin/mailq
+        src: ../sbin/slendmail
+        type: symlink
+        packager: deb
+        file_info:
+          mode: 0o777
+      - dst: /usr/bin/newaliases
+        src: ../sbin/slendmail
+        type: symlink
+        packager: deb
+        file_info:
+          mode: 0o777
+      - dst: /usr/sbin/sendmail
+        src: slendmail
+        type: symlink
+        packager: apk
+        file_info:
+          mode: 0o777
+      - dst: /usr/lib/sendmail
+        src: ../sbin/slendmail
+        type: symlink
+        packager: apk
+        file_info:
+          mode: 0o777
+      - dst: /usr/bin/mailq
+        src: ../sbin/slendmail
+        type: symlink
+        packager: apk
+        file_info:
+          mode: 0o777
+      - dst: /usr/bin/newaliases
+        src: ../sbin/slendmail
+        type: symlink
+        packager: apk
+        file_info:
+          mode: 0o777
+      - dst: /usr/sbin/sendmail
+        type: ghost
+        packager: rpm
+      - dst: /usr/lib/sendmail
+        type: ghost
+        packager: rpm
+      - dst: /usr/bin/mailq
+        type: ghost
+        packager: rpm
+      - dst: /usr/bin/newaliases
+        type: ghost
+        packager: rpm
+      - dst: /etc/slendmail.conf
+        src: packaging/slendmail.conf
+        type: config|noreplace
+        file_info:
+          owner: root
+          group: slendmail
+          mode: 0o640
+      - dst: /etc/slendmail.d
+        type: dir
+        file_info:
+          owner: root
+          group: slendmail
+          mode: 0o750
+      - dst: /var/spool/slendmail
+        type: dir
+        file_info:
+          owner: root
+          group: slendmail
+          mode: 0o750
+      - dst: /var/spool/slendmail/tmp
+        type: dir
+        file_info:
+          owner: root
+          group: slendmail
+          mode: 0o2770
+      - dst: /var/spool/slendmail/queue
+        type: dir
+        file_info:
+          owner: root
+          group: slendmail
+          mode: 0o2770
+      - dst: /var/spool/slendmail/hold
+        type: dir
+        file_info:
+          owner: root
+          group: slendmail
+          mode: 0o2770
+      - dst: /var/spool/slendmail/failed
+        type: dir
+        file_info:
+          owner: root
+          group: slendmail
+          mode: 0o2770
+      - dst: /var/spool/slendmail/locks
+        type: dir
+        file_info:
+          owner: root
+          group: slendmail
+          mode: 0o2770
+      - dst: /usr/lib/systemd/system/slendmail-queue.service
+        src: packaging/systemd/slendmail-queue.service
+        packager: deb
+        file_info:
+          mode: 0o644
+      - dst: /usr/lib/systemd/system/slendmail-queue.timer
+        src: packaging/systemd/slendmail-queue.timer
+        packager: deb
+        file_info:
+          mode: 0o644
+      - dst: /usr/lib/systemd/system/slendmail-queue.service
+        src: packaging/systemd/slendmail-queue.service
+        packager: rpm
+        file_info:
+          mode: 0o644
+      - dst: /usr/lib/systemd/system/slendmail-queue.timer
+        src: packaging/systemd/slendmail-queue.timer
+        packager: rpm
+        file_info:
+          mode: 0o644
+      - dst: /etc/cron.d/slendmail
+        src: packaging/cron/slendmail
+        type: config|noreplace
+        packager: deb
+        file_info:
+          mode: 0o644
+      - dst: /etc/cron.d/slendmail
+        src: packaging/cron/slendmail
+        type: config|noreplace
+        packager: rpm
+        file_info:
+          mode: 0o644
+      - dst: /etc/crontabs/slendmail
+        src: packaging/cron/crontabs-slendmail
+        packager: apk
+        file_info:
+          mode: 0o600
+      - dst: /usr/share/man/man8/slendmail.8
+        src: docs/slendmail.8
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/slendmail/copyright
+        src: LICENSE
+        packager: deb
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/licenses/slendmail/LICENSE
+        src: LICENSE
+        type: license
+        packager: rpm
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/licenses/slendmail/LICENSE
+        src: LICENSE
+        packager: apk
+        file_info:
+          mode: 0o644
+
 checksum:
   name_template: checksums.txt
 

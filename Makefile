@@ -106,7 +106,10 @@ check-refs:
 check-commits:
 	$(GO) run ./scripts/check-commits -base $(BASE)
 
+# nFPM writes the mtime of a script file into the apk, untouched by mtime and
+# SOURCE_DATE_EPOCH; the commit time keeps packages of any checkout equal.
 snapshot:
+	find packaging/scripts -type f -exec touch -d @$$(git log -1 --format=%ct) {} +
 	$(GORELEASER) release --snapshot --clean
 
 setgid-e2e:

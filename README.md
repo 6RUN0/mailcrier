@@ -30,7 +30,7 @@ configuration with exit status 78 and `built without shoutrrr` in the log.
 Releases carry both builds, the smaller one as `slendmail-minimal`.
 
 The binary goes to `/usr/sbin/slendmail`, with `/usr/sbin/sendmail`,
-`/usr/lib/sendmail`, `/usr/sbin/newaliases` and `/usr/bin/mailq` as links
+`/usr/lib/sendmail`, `/usr/bin/newaliases` and `/usr/bin/mailq` as links
 to it; see "Options, privileges and containers" for ownership and modes.
 The manual page is `docs/slendmail.8`.
 

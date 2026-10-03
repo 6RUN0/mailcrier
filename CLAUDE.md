@@ -282,8 +282,13 @@ with "no non-test Go files".
   real uids and the setgid bit are in `setgid_e2e_test.go`
   (`make setgid-e2e`).
 - `packaging/` holds the systemd unit and timer and the cron files of the
-  queue run; there is no nFPM configuration yet. `TestQueueRunnerFiles`
-  pins their key lines.
+  queue run (`TestQueueRunnerFiles` pins their key lines), the
+  configuration file of the packages and their maintainer scripts in
+  `packaging/scripts/`; the packages are the `nfpms` section of
+  `.goreleaser.yaml`. `TestPackageContents` pins that section entry by
+  entry, `TestPackageScripts` runs each script with stub commands under
+  `/bin/sh`, and also `dash` and `busybox sh` where installed,
+  `TestPackageConfigExample` loads the configuration file.
 
 ## Gotchas
 
@@ -306,6 +311,13 @@ with "no non-test Go files".
   port and user: `backend` never imports `render`, so the parts arrive as
   strings. `app.registerSecrets` registers the text of header, query and
   path templates outside `{{ }}`, never what the actions render.
+- nFPM writes the mtime of a script file into the apk, which neither
+  `mtime` nor `SOURCE_DATE_EPOCH` changes; `make snapshot` sets it to the
+  commit time first, so a workflow that publishes packages runs make, not
+  goreleaser directly.
+- `packaging/slendmail.conf` is the conffile of the packages: any change to
+  it in a release makes dpkg ask every administrator who edited the file,
+  and rpm and apk write `.rpmnew` and `.apk-new` beside an edited one.
 - Every target's `New` copies the client with `backend.WithoutRedirects`:
   net/http would turn a redirected POST into a bodiless GET and report
   success. A 3xx is a permanent failure.
