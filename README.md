@@ -760,7 +760,8 @@ preset = "generic-json"
   way; a larger `run_budget` needs a larger `TimeoutStartSec` in a
   drop-in), or where systemd is not running
   `/etc/cron.d/slendmail`, or `/etc/crontabs/slendmail` on Alpine, all
-  with `MAILTO=""` since `-q` logs to syslog only. Without a running cron
+  without mail from cron since `-q` logs to syslog only (`MAILTO=` for
+  BusyBox crond, which takes `MAILTO=""` for an address). Without a running cron
   daemon or timer, as in most containers, only the calls themselves run the
   queue; a container that sends rarely runs `slendmail -q` from a
   scheduler such as supercronic, a sidecar or a health check.

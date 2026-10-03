@@ -1,2 +1,2 @@
-MAILTO=""
+MAILTO=
 */5 * * * * /usr/sbin/slendmail -q
