@@ -9,7 +9,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/6RUN0/slendmail/internal/sendmail"
+	"github.com/6RUN0/mailcrier/internal/sendmail"
 )
 
 // selfExe is the running binary. Executing it starts the same inode even
@@ -19,7 +19,7 @@ const selfExe = "/proc/self/exe"
 
 // installedPath is where packages put the binary; the re-exec falls back to
 // it when /proc is not mounted. Builds for another layout set it with
-// -ldflags "-X github.com/6RUN0/slendmail/internal/app.installedPath=...".
+// -ldflags "-X github.com/6RUN0/mailcrier/internal/app.installedPath=...".
 var installedPath = "/usr/sbin/slendmail"
 
 // Credentials are the ids of the process that decide whether it runs with

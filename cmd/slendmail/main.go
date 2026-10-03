@@ -7,7 +7,7 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/6RUN0/slendmail/internal/app"
+	"github.com/6RUN0/mailcrier/internal/app"
 )
 
 // umask keeps every file the process creates, with the group of a setgid

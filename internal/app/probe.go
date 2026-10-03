@@ -9,11 +9,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/6RUN0/slendmail/internal/backend"
-	"github.com/6RUN0/slendmail/internal/config"
-	"github.com/6RUN0/slendmail/internal/delivery"
-	"github.com/6RUN0/slendmail/internal/redact"
-	"github.com/6RUN0/slendmail/internal/sendmail"
+	"github.com/6RUN0/mailcrier/internal/backend"
+	"github.com/6RUN0/mailcrier/internal/config"
+	"github.com/6RUN0/mailcrier/internal/delivery"
+	"github.com/6RUN0/mailcrier/internal/redact"
+	"github.com/6RUN0/mailcrier/internal/sendmail"
 )
 
 // runProbe answers --probe: it sends the sample message to the targets of

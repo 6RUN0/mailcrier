@@ -1,4 +1,4 @@
-module github.com/6RUN0/slendmail/tools/goreleaser
+module github.com/6RUN0/mailcrier/tools/goreleaser
 
 go 1.27.1
 

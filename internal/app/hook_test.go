@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/6RUN0/slendmail/internal/spool"
+	"github.com/6RUN0/mailcrier/internal/spool"
 )
 
 // writeHookScript writes an executable shell script into a new directory

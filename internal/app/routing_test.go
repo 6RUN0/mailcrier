@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/6RUN0/slendmail/internal/config"
-	"github.com/6RUN0/slendmail/internal/delivery"
-	"github.com/6RUN0/slendmail/internal/route"
-	"github.com/6RUN0/slendmail/internal/spool"
+	"github.com/6RUN0/mailcrier/internal/config"
+	"github.com/6RUN0/mailcrier/internal/delivery"
+	"github.com/6RUN0/mailcrier/internal/route"
+	"github.com/6RUN0/mailcrier/internal/spool"
 )
 
 // routeRootToA routes the mail of root to target a and nothing else.

@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/6RUN0/slendmail/internal/backend"
+	"github.com/6RUN0/mailcrier/internal/backend"
 )
 
 // writeHook writes an executable shell script with body into a new

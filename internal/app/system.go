@@ -16,7 +16,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/6RUN0/slendmail/internal/config"
+	"github.com/6RUN0/mailcrier/internal/config"
 )
 
 // SystemConfigPath is the configuration file, relative to the root of

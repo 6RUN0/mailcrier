@@ -11,8 +11,8 @@ import (
 	"testing/fstest"
 	"testing/iotest"
 
-	"github.com/6RUN0/slendmail/internal/config"
-	"github.com/6RUN0/slendmail/internal/redact"
+	"github.com/6RUN0/mailcrier/internal/config"
+	"github.com/6RUN0/mailcrier/internal/redact"
 )
 
 // checkSummaryClean is the stderr of --check-config for a file without

@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/6RUN0/slendmail/internal/backend"
+	"github.com/6RUN0/mailcrier/internal/backend"
 )
 
 // genericURL returns the URL of the generic webhook service of shoutrrr

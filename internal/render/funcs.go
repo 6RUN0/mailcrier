@@ -13,7 +13,7 @@ import (
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 
-	"github.com/6RUN0/slendmail/internal/text"
+	"github.com/6RUN0/mailcrier/internal/text"
 )
 
 // title capitalizes the first letter of every word by the rules common to

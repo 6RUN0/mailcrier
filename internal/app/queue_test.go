@@ -13,11 +13,11 @@ import (
 	"testing/iotest"
 	"time"
 
-	"github.com/6RUN0/slendmail/internal/backend"
-	"github.com/6RUN0/slendmail/internal/delivery"
-	"github.com/6RUN0/slendmail/internal/message"
-	"github.com/6RUN0/slendmail/internal/render"
-	"github.com/6RUN0/slendmail/internal/spool"
+	"github.com/6RUN0/mailcrier/internal/backend"
+	"github.com/6RUN0/mailcrier/internal/delivery"
+	"github.com/6RUN0/mailcrier/internal/message"
+	"github.com/6RUN0/mailcrier/internal/render"
+	"github.com/6RUN0/mailcrier/internal/spool"
 )
 
 // service stands in for the targets: each target answers with the

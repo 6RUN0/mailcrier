@@ -18,4 +18,4 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/6RUN0/slendmail
+        - github.com/6RUN0/mailcrier

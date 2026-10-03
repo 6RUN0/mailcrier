@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/6RUN0/slendmail/internal/message"
+	"github.com/6RUN0/mailcrier/internal/message"
 )
 
 // Rule is one route: the message goes to Targets when every condition

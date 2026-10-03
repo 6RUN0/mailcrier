@@ -1,4 +1,4 @@
-module github.com/6RUN0/slendmail/tools/licenses
+module github.com/6RUN0/mailcrier/tools/licenses
 
 go 1.27.0
 

@@ -12,8 +12,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/6RUN0/slendmail/internal/backend"
-	"github.com/6RUN0/slendmail/internal/text"
+	"github.com/6RUN0/mailcrier/internal/backend"
+	"github.com/6RUN0/mailcrier/internal/text"
 )
 
 // Limits of an ntfy server with the default configuration (server/config.go

@@ -9,10 +9,10 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/6RUN0/slendmail/internal/backend"
-	"github.com/6RUN0/slendmail/internal/delivery"
-	"github.com/6RUN0/slendmail/internal/render"
-	"github.com/6RUN0/slendmail/internal/text"
+	"github.com/6RUN0/mailcrier/internal/backend"
+	"github.com/6RUN0/mailcrier/internal/delivery"
+	"github.com/6RUN0/mailcrier/internal/render"
+	"github.com/6RUN0/mailcrier/internal/text"
 )
 
 // recordingSender takes every payload and records the texts.

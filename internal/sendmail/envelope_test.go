@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/6RUN0/slendmail/internal/message"
+	"github.com/6RUN0/mailcrier/internal/message"
 )
 
 // envelopeOf parses args, reads input as the message and returns the

@@ -63,7 +63,7 @@ nfpms:
       - rpm
       - apk
     maintainer: Boris Talovikov <boris.t.66@gmail.com>
-    homepage: https://github.com/6RUN0/slendmail
+    homepage: https://github.com/6RUN0/mailcrier
     license: BSD-3-Clause
     section: mail
     description: |-

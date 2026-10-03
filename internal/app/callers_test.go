@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/6RUN0/slendmail/internal/golden"
+	"github.com/6RUN0/mailcrier/internal/golden"
 )
 
 // callersDir holds one message and one command line per caller of

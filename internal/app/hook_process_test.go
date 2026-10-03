@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/6RUN0/slendmail/internal/spool"
+	"github.com/6RUN0/mailcrier/internal/spool"
 )
 
 // openStartedFIFO creates a FIFO in a new directory and returns its path

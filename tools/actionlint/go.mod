@@ -1,4 +1,4 @@
-module github.com/6RUN0/slendmail/tools/actionlint
+module github.com/6RUN0/mailcrier/tools/actionlint
 
 go 1.27.0
 

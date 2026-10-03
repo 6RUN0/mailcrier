@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/6RUN0/slendmail/internal/golden"
-	"github.com/6RUN0/slendmail/internal/message"
-	"github.com/6RUN0/slendmail/internal/sendmail"
-	"github.com/6RUN0/slendmail/internal/text"
+	"github.com/6RUN0/mailcrier/internal/golden"
+	"github.com/6RUN0/mailcrier/internal/message"
+	"github.com/6RUN0/mailcrier/internal/sendmail"
+	"github.com/6RUN0/mailcrier/internal/text"
 )
 
 // callersDir holds the caller fixtures: <name>.eml and <name>.argv.

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/6RUN0/slendmail/internal/text"
+	"github.com/6RUN0/mailcrier/internal/text"
 )
 
 // measureFunc is a length function of a target.

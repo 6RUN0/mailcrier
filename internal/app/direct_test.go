@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/6RUN0/slendmail/internal/spool"
+	"github.com/6RUN0/mailcrier/internal/spool"
 )
 
 // botRequest is one sendMessage request the fake Bot API received.

@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/6RUN0/slendmail/internal/message"
+	"github.com/6RUN0/mailcrier/internal/message"
 )
 
 // Version is the sidecar format this package writes and reads.

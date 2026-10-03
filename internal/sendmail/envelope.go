@@ -1,6 +1,6 @@
 package sendmail
 
-import "github.com/6RUN0/slendmail/internal/message"
+import "github.com/6RUN0/mailcrier/internal/message"
 
 // Envelope returns the sender and recipients of msg. The sender is the
 // value of -f or -r, else the Resent-From address, else the From address,

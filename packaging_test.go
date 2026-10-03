@@ -21,8 +21,8 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/6RUN0/slendmail/internal/app"
-	"github.com/6RUN0/slendmail/internal/config"
+	"github.com/6RUN0/mailcrier/internal/app"
+	"github.com/6RUN0/mailcrier/internal/config"
 )
 
 // TestQueueRunnerFiles pins the periodic queue run of the packages: every
@@ -234,7 +234,7 @@ func TestPackageContents(t *testing.T) {
 			{"maintainer", section.Maintainer, "Boris Talovikov <boris.t.66@gmail.com>"},
 			{"license", section.License, "BSD-3-Clause"},
 			{"section", section.Section, "mail"},
-			{"homepage", section.Homepage, "https://github.com/6RUN0/slendmail"},
+			{"homepage", section.Homepage, "https://github.com/6RUN0/mailcrier"},
 			{"bindir", section.Bindir, "/usr/sbin"},
 			{"mtime", section.MTime, "{{ .CommitDate }}"},
 			{"umask", section.Umask, uint32(0o022)},

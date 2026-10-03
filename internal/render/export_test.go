@@ -4,7 +4,7 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/6RUN0/slendmail/internal/text"
+	"github.com/6RUN0/mailcrier/internal/text"
 )
 
 // ParseWithClock is Parse with extra functions, a budget and the clock

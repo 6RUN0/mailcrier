@@ -14,11 +14,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/6RUN0/slendmail/internal/backend"
-	"github.com/6RUN0/slendmail/internal/delivery"
-	"github.com/6RUN0/slendmail/internal/message"
-	"github.com/6RUN0/slendmail/internal/render"
-	"github.com/6RUN0/slendmail/internal/text"
+	"github.com/6RUN0/mailcrier/internal/backend"
+	"github.com/6RUN0/mailcrier/internal/delivery"
+	"github.com/6RUN0/mailcrier/internal/message"
+	"github.com/6RUN0/mailcrier/internal/render"
+	"github.com/6RUN0/mailcrier/internal/text"
 )
 
 // webhookURL has the shape of a Discord webhook URL; its last segment is

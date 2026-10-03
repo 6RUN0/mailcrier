@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-const modulePath = "github.com/6RUN0/slendmail"
+const modulePath = "github.com/6RUN0/mailcrier"
 
 // allowedImports lists, per package directory, the module packages its
 // non-test files may import. A trailing "/*" matches every direct

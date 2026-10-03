@@ -10,8 +10,8 @@ import (
 	"testing/fstest"
 	"testing/iotest"
 
-	"github.com/6RUN0/slendmail/internal/backend/hook"
-	"github.com/6RUN0/slendmail/internal/config"
+	"github.com/6RUN0/mailcrier/internal/backend/hook"
+	"github.com/6RUN0/mailcrier/internal/config"
 )
 
 // TestReadmeTemplatesParse builds the targets of the README examples that

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/6RUN0/slendmail/internal/message"
+	"github.com/6RUN0/mailcrier/internal/message"
 )
 
 var testNow = time.Date(2026, 9, 27, 10, 0, 0, 0, time.UTC)

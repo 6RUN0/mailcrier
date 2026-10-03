@@ -61,7 +61,7 @@ Configuration:
   Check it with --check-config, then send a test with
   --probe -- ops-telegram.
   Examples: /usr/share/doc/slendmail/examples/ and
-  https://github.com/6RUN0/slendmail/tree/main/packaging/examples
+  https://github.com/6RUN0/mailcrier/tree/main/packaging/examples
 
 Files:
   /var/spool/slendmail/

@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/6RUN0/slendmail/internal/backend"
-	"github.com/6RUN0/slendmail/internal/text"
+	"github.com/6RUN0/mailcrier/internal/backend"
+	"github.com/6RUN0/mailcrier/internal/text"
 )
 
 // DefaultAPIURL is the Bot API server.

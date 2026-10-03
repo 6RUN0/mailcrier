@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/6RUN0/slendmail/internal/message"
+	"github.com/6RUN0/mailcrier/internal/message"
 )
 
 // openSpool returns a spool in a fresh directory.

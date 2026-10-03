@@ -19,8 +19,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/6RUN0/slendmail/internal/message"
-	"github.com/6RUN0/slendmail/internal/text"
+	"github.com/6RUN0/mailcrier/internal/message"
+	"github.com/6RUN0/mailcrier/internal/text"
 )
 
 // Strings are the notices a template writes in place of missing content.

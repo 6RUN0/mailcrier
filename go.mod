@@ -1,4 +1,4 @@
-module github.com/6RUN0/slendmail
+module github.com/6RUN0/mailcrier
 
 go 1.27.0
 

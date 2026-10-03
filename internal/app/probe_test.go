@@ -16,7 +16,7 @@ import (
 	"testing/iotest"
 	"time"
 
-	"github.com/6RUN0/slendmail/internal/delivery"
+	"github.com/6RUN0/mailcrier/internal/delivery"
 )
 
 // statusReceiver answers every request with one status after a delay and

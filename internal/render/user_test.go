@@ -8,8 +8,8 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/6RUN0/slendmail/internal/message"
-	"github.com/6RUN0/slendmail/internal/text"
+	"github.com/6RUN0/mailcrier/internal/message"
+	"github.com/6RUN0/mailcrier/internal/text"
 )
 
 // mustParse parses a template from the configuration for format.

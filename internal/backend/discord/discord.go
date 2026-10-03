@@ -12,8 +12,8 @@ import (
 	"net/textproto"
 	"net/url"
 
-	"github.com/6RUN0/slendmail/internal/backend"
-	"github.com/6RUN0/slendmail/internal/text"
+	"github.com/6RUN0/mailcrier/internal/backend"
+	"github.com/6RUN0/mailcrier/internal/text"
 )
 
 // Limits of Discord (developers/resources/webhook.mdx, message.mdx and

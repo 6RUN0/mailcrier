@@ -18,8 +18,8 @@ import (
 
 	"golang.org/x/net/http/httpguts"
 
-	"github.com/6RUN0/slendmail/internal/backend"
-	"github.com/6RUN0/slendmail/internal/text"
+	"github.com/6RUN0/mailcrier/internal/backend"
+	"github.com/6RUN0/mailcrier/internal/text"
 )
 
 // Options configure one http target.

@@ -14,7 +14,7 @@ import (
 	"github.com/nicholas-fedor/shoutrrr/pkg/router"
 	"github.com/nicholas-fedor/shoutrrr/pkg/types"
 
-	"github.com/6RUN0/slendmail/internal/backend"
+	"github.com/6RUN0/mailcrier/internal/backend"
 )
 
 // Options configure one shoutrrr target.

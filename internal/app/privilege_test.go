@@ -21,7 +21,7 @@ import (
 	"testing/iotest"
 	"time"
 
-	"github.com/6RUN0/slendmail/internal/sendmail"
+	"github.com/6RUN0/mailcrier/internal/sendmail"
 )
 
 // Credentials of the cases below. The slendmail user and group are 990; a

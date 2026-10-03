@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/6RUN0/slendmail/internal/message"
-	"github.com/6RUN0/slendmail/internal/render"
+	"github.com/6RUN0/mailcrier/internal/message"
+	"github.com/6RUN0/mailcrier/internal/render"
 )
 
 // sampleMessage returns the message --probe sends and --check-config

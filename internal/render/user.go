@@ -11,7 +11,7 @@ import (
 	tparse "text/template/parse"
 	"time"
 
-	"github.com/6RUN0/slendmail/internal/text"
+	"github.com/6RUN0/mailcrier/internal/text"
 )
 
 // Bounds of a template from the configuration: one execution, and all
