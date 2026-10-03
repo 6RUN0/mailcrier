@@ -6,22 +6,22 @@
 set -e
 
 if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ] ; then
-	dpkg-statoverride --list /usr/sbin/slendmail >/dev/null ||
-		dpkg-statoverride --update --add root slendmail 2755 /usr/sbin/slendmail
+	dpkg-statoverride --list /usr/sbin/mailcrier >/dev/null ||
+		dpkg-statoverride --update --add root mailcrier 2755 /usr/sbin/mailcrier
 fi
 
 if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ] ; then
-	deb-systemd-helper unmask slendmail-queue.timer >/dev/null || true
+	deb-systemd-helper unmask mailcrier-queue.timer >/dev/null || true
 
 	# was-enabled defaults to true, so new installations run enable.
-	if deb-systemd-helper --quiet was-enabled slendmail-queue.timer; then
+	if deb-systemd-helper --quiet was-enabled mailcrier-queue.timer; then
 		# Enables the unit on first installation, creates new
 		# symlinks on upgrades if the unit file has changed.
-		deb-systemd-helper enable slendmail-queue.timer >/dev/null || true
+		deb-systemd-helper enable mailcrier-queue.timer >/dev/null || true
 	else
 		# Update the statefile to add new symlinks (if any), which need to be
 		# cleaned up on purge. Also remove old symlinks.
-		deb-systemd-helper update-state slendmail-queue.timer >/dev/null || true
+		deb-systemd-helper update-state mailcrier-queue.timer >/dev/null || true
 	fi
 fi
 
@@ -33,6 +33,6 @@ if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-decon
 		else
 			_dh_action=start
 		fi
-		deb-systemd-invoke $_dh_action slendmail-queue.timer >/dev/null || true
+		deb-systemd-invoke $_dh_action mailcrier-queue.timer >/dev/null || true
 	fi
 fi

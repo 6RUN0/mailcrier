@@ -1,8 +1,8 @@
 .Dd October 3, 2026
-.Dt SLENDMAIL 8
+.Dt MAILCRIER 8
 .Os
 .Sh NAME
-.Nm slendmail ,
+.Nm mailcrier ,
 .Nm sendmail ,
 .Nm newaliases ,
 .Nm mailq
@@ -28,7 +28,7 @@
 .Sh DESCRIPTION
 .Nm
 reads one message on standard input and delivers it to the targets of
-.Pa /etc/slendmail.conf .
+.Pa /etc/mailcrier.conf .
 It is installed as
 .Pa /usr/sbin/sendmail
 and accepts the command lines of cron, at, sudo, mdadm, mailx and similar
@@ -252,15 +252,15 @@ environment holds only
 .Ev LANG Ns = Ns Li C.UTF-8 ,
 .Ev TZ
 when set, and
-.Ev SLENDMAIL_SUBJECT ,
-.Ev SLENDMAIL_FROM ,
-.Ev SLENDMAIL_TO
+.Ev MAILCRIER_SUBJECT ,
+.Ev MAILCRIER_FROM ,
+.Ev MAILCRIER_TO
 (the recipients without blind copies),
-.Ev SLENDMAIL_HOSTNAME ,
-.Ev SLENDMAIL_TARGET ,
-.Ev SLENDMAIL_MSGID
+.Ev MAILCRIER_HOSTNAME ,
+.Ev MAILCRIER_TARGET ,
+.Ev MAILCRIER_MSGID
 and
-.Ev SLENDMAIL_SIZE ,
+.Ev MAILCRIER_SIZE ,
 each with line breaks and NUL turned into spaces and cut to 4096 bytes.
 Exit status 0 is a delivery, 75 a temporary failure, anything else a
 permanent one.
@@ -273,7 +273,7 @@ to
 once the message is read, while before that such a signal discards the
 message.
 A setgid call runs the program with the real user and group ids of the
-caller; a queue run as the slendmail user runs it with the slendmail group.
+caller; a queue run as the mailcrier user runs it with the mailcrier group.
 .Ic argv
 is visible to all local users and holds no secret; a secret the program reads
 itself is readable by every caller of a setgid call.
@@ -386,7 +386,7 @@ A negative id goes after
 on the command line.
 .Sh QUEUE
 Before the delivery the message is written to the spool,
-.Pa /var/spool/slendmail
+.Pa /var/spool/mailcrier
 unless
 .Ic dir
 of the
@@ -420,25 +420,25 @@ only, at most 20 of them within 10 seconds, skipped when another call of the
 same user runs it.
 .Fl q
 runs it for up to 60 seconds: all entries for root, the
-.Li slendmail
+.Li mailcrier
 user and a caller without the setgid bit, the caller's own entries for
 everyone else.
 An entry another process is working on is skipped.
 The packages run
 .Fl q
 as
-.Li slendmail
+.Li mailcrier
 every 5 minutes, by a systemd timer or by cron.
 .Pp
 The spool holds at most 1000 messages and 256 MiB, and 200 messages and
 64 MiB per user; users other than root and
-.Li slendmail
+.Li mailcrier
 fill at most 80% of the totals.
 A message over a limit is delivered without an entry.
 The spool must be on a local file system: the locks do not work over NFS.
 Missing areas are created in an existing directory; with the setgid bit the
 packages create them, owned by root and the
-.Li slendmail
+.Li mailcrier
 group, mode 2770.
 .Sh CONFIGURATION
 The configuration is a TOML file, parsed strictly on every call: an unknown
@@ -457,7 +457,7 @@ table:
 .Bl -tag -width Ds
 .It Ic syslog_tag
 The tag of every syslog record;
-.Li slendmail
+.Li mailcrier
 by default.
 .It Ic http_timeout
 Bound of one HTTP request, from dialing to the end of the response body;
@@ -478,7 +478,7 @@ table:
 .Bl -tag -width Ds
 .It Ic dir
 The spool directory, an absolute path;
-.Pa /var/spool/slendmail
+.Pa /var/spool/mailcrier
 by default, and the empty string turns the spool off.
 .It Ic drain_budget , Ic drain_max_messages
 Bound of the queue run after the own message of a call: 10 s and 20
@@ -619,18 +619,18 @@ table the subject and sender conditions; see
 reports the errors and warnings of a file without sending anything.
 .Sh SECURITY
 The intended install is setgid: the binary
-.Li root:slendmail
+.Li root:mailcrier
 mode 2755, the configuration and its
 .Ic token_file ,
 .Ic url_file
 and
 .Ic template_file
 files
-.Li root:slendmail
+.Li root:mailcrier
 mode 0640, so that the jobs of any user can send while only root and the
 binary read the secrets.
 The spool directory and its areas are
-.Li root:slendmail
+.Li root:mailcrier
 mode 2770; entries are created with mode 0660 under the umask 007.
 .Pp
 When the setgid bit gives a user other than root the group, the process
@@ -647,12 +647,12 @@ only and logs
 .Dq reexec failed .
 .Fl -config
 and
-.Ev SLENDMAIL_CONFIG
+.Ev MAILCRIER_CONFIG
 are ignored with a warning, and
 .Fl -check-config
 and
 .Fl -probe
-exit 64 when given them, and 77 for everyone but the slendmail user.
+exit 64 when given them, and 77 for everyone but the mailcrier user.
 An
 .Cm exec
 program runs with the real user and group ids of the caller.
@@ -743,7 +743,7 @@ not read.
 Takes no arguments.
 .It Fl -probe Op Fl - Ar target ...
 Send a sample message, subject
-.Dq slendmail probe from Ar host ,
+.Dq mailcrier probe from Ar host ,
 to every target, or to the targets named after
 .Fl - ;
 an unknown name exits 64 before anything is sent.
@@ -768,12 +768,12 @@ the program does nothing; called as
 or with
 .Fl bp ,
 it lists the queue: every entry with the state of each target for root, the
-.Li slendmail
+.Li mailcrier
 user and a caller without the setgid bit, the numbers alone for everyone
 else; a spool directory that does not exist lists as empty.
 .Sh ENVIRONMENT
 .Bl -tag -width Ds
-.It Ev SLENDMAIL_CONFIG
+.It Ev MAILCRIER_CONFIG
 Another configuration file, like
 .Fl -config .
 .It Ev EMAIL , Ev USER , Ev LOGNAME
@@ -784,7 +784,7 @@ applies.
 .El
 .Sh FILES
 .Bl -tag -width Ds
-.It Pa /usr/sbin/slendmail
+.It Pa /usr/sbin/mailcrier
 The binary;
 .Pa /usr/sbin/sendmail ,
 .Pa /usr/lib/sendmail ,
@@ -792,33 +792,33 @@ The binary;
 and
 .Pa /usr/bin/mailq
 are links to it.
-.It Pa /etc/slendmail.conf
+.It Pa /etc/mailcrier.conf
 The configuration.
-.It Pa /etc/slendmail.d/
+.It Pa /etc/mailcrier.d/
 Files of
 .Ic token_file ,
 .Ic url_file
 and
 .Ic template_file ,
 by convention; any absolute path works.
-.It Pa /usr/share/doc/slendmail/examples/
+.It Pa /usr/share/doc/mailcrier/examples/
 Example configurations: a reference of every table with one target of each
 type, and files for single scenarios such as routes, templates or a
 container.
-.It Pa slendmail-queue.service , Pa slendmail-queue.timer
+.It Pa mailcrier-queue.service , Pa mailcrier-queue.timer
 The systemd units that run
 .Fl q
 as
-.Li slendmail
+.Li mailcrier
 every 5 minutes.
-.It Pa /etc/cron.d/slendmail , Pa /etc/crontabs/slendmail
+.It Pa /etc/cron.d/mailcrier , Pa /etc/crontabs/mailcrier
 The same queue run by cron where systemd is not running and the binary is
 installed, the second on Alpine.
-.It Pa /var/spool/slendmail/queue/ , Pa hold/ , Pa failed/
+.It Pa /var/spool/mailcrier/queue/ , Pa hold/ , Pa failed/
 Entries: the message and its state beside it.
-.It Pa /var/spool/slendmail/tmp/
+.It Pa /var/spool/mailcrier/tmp/
 Files being written; a queue run removes those older than one hour.
-.It Pa /var/spool/slendmail/locks/
+.It Pa /var/spool/mailcrier/locks/
 Queue run locks, one per user; removal of the package deletes them when
 the spool holds no message.
 .El
@@ -842,7 +842,7 @@ with an argument,
 naming a target that is not configured, or either with
 .Fl -config
 or
-.Ev SLENDMAIL_CONFIG
+.Ev MAILCRIER_CONFIG
 from a caller the setgid bit applies to; or no route selects a target, and
 the message is held.
 .It 66
@@ -883,15 +883,15 @@ a file:
 .Bd -literal -offset indent
 [target.ops-telegram]
 type = "telegram"
-token_file = "/etc/slendmail.d/tg.token"
+token_file = "/etc/mailcrier.d/tg.token"
 chat_id = -1001234567890
 .Ed
 .Pp
 Check it, then send a test message to that target alone:
 .Bd -literal -offset indent
-# slendmail --check-config
-/etc/slendmail.conf: 0 errors, 0 warnings
-# slendmail --probe -- ops-telegram
+# mailcrier --check-config
+/etc/mailcrier.conf: 0 errors, 0 warnings
+# mailcrier --probe -- ops-telegram
 target=ops-telegram class=ok
 .Ed
 .Sh SEE ALSO

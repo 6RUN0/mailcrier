@@ -65,7 +65,7 @@ type Process struct {
 
 // Options configure one exec target.
 type Options struct {
-	// Name is the target name, passed on as SLENDMAIL_TARGET.
+	// Name is the target name, passed on as MAILCRIER_TARGET.
 	Name string
 	// Argv is the command line; Argv[0] is an absolute path. No shell
 	// reads it.
@@ -113,7 +113,7 @@ func (s *Sender) Send(ctx context.Context, p backend.Payload) error {
 	cmd.Stdin = bytes.NewReader(p.Message.Raw)
 	output := &cappedBuffer{max: maxOutput}
 	cmd.Stdout, cmd.Stderr = output, output
-	// Pdeathsig kills the hook itself when slendmail dies by SIGKILL,
+	// Pdeathsig kills the hook itself when mailcrier dies by SIGKILL,
 	// which no handler sees; children of the hook survive that.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Credential: s.opts.Process.Credential, Pdeathsig: syscall.SIGKILL}
 	cmd.Cancel = func() error {
@@ -178,7 +178,7 @@ func (s *Sender) logOutput(output *cappedBuffer, err error) {
 }
 
 // buildEnv returns the environment of a hook: fixedEnv, TZ when the
-// process has one, and the SLENDMAIL_* variables of msg. Each value has
+// process has one, and the MAILCRIER_* variables of msg. Each value has
 // line breaks and NUL replaced by spaces and is cut at a character to
 // maxEnvValue bytes, and to what is left of maxEnvTotal for the whole
 // environment.
@@ -192,13 +192,13 @@ func buildEnv(opts Options, msg *backend.Message) []string {
 		left -= len(entry) + 1
 	}
 	for _, variable := range []struct{ key, value string }{
-		{"SLENDMAIL_SUBJECT", msg.Subject},
-		{"SLENDMAIL_FROM", msg.From},
-		{"SLENDMAIL_TO", strings.Join(msg.To, ", ")},
-		{"SLENDMAIL_HOSTNAME", msg.Hostname},
-		{"SLENDMAIL_TARGET", opts.Name},
-		{"SLENDMAIL_MSGID", msg.MessageID},
-		{"SLENDMAIL_SIZE", strconv.Itoa(len(msg.Raw))},
+		{"MAILCRIER_SUBJECT", msg.Subject},
+		{"MAILCRIER_FROM", msg.From},
+		{"MAILCRIER_TO", strings.Join(msg.To, ", ")},
+		{"MAILCRIER_HOSTNAME", msg.Hostname},
+		{"MAILCRIER_TARGET", opts.Name},
+		{"MAILCRIER_MSGID", msg.MessageID},
+		{"MAILCRIER_SIZE", strconv.Itoa(len(msg.Raw))},
 	} {
 		limit := min(maxEnvValue, left-len(variable.key)-2)
 		if limit < 0 {

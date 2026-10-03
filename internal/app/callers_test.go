@@ -61,7 +61,7 @@ func TestCallers(t *testing.T) {
 func callerArchive(code int, rec *recorder, inv *invocation) golden.Archive {
 	envelope := fmt.Sprintf("sender: %q\nsender-name: %q\nrecipients: %q\n", rec.env.Sender, rec.env.SenderName, rec.env.Recipients)
 	var warnings strings.Builder
-	for _, line := range strings.Split(inv.log("slendmail"), "\n") {
+	for _, line := range strings.Split(inv.log("mailcrier"), "\n") {
 		if strings.Contains(line, "level=WARN") {
 			warnings.WriteString(logTime.ReplaceAllString(line, "") + "\n")
 		}

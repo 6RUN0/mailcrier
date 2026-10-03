@@ -17,7 +17,7 @@ import (
 
 // checkSummaryClean is the stderr of --check-config for a file without
 // findings.
-const checkSummaryClean = "/etc/slendmail.conf: 0 errors, 0 warnings\n"
+const checkSummaryClean = "/etc/mailcrier.conf: 0 errors, 0 warnings\n"
 
 // checkConfig runs --check-config as an unelevated caller on doc with
 // files beside it.
@@ -68,7 +68,7 @@ func TestCheckConfig(t *testing.T) {
 		if _, err := os.Stat(spoolDir); !errors.Is(err, os.ErrNotExist) {
 			t.Errorf("spool directory: %v, want it not created", err)
 		}
-		if log := inv.log("slendmail"); !strings.Contains(log, `level=INFO msg="configuration checked" errors=0 warnings=0`) {
+		if log := inv.log("mailcrier"); !strings.Contains(log, `level=INFO msg="configuration checked" errors=0 warnings=0`) {
 			t.Errorf("log lacks the record:\n%s", log)
 		}
 	})
@@ -79,11 +79,11 @@ func TestCheckConfig(t *testing.T) {
 			t.Fatalf("Run() = %d, want 78; output:\n%s", code, inv.output())
 		}
 		lines := strings.Split(strings.TrimSuffix(inv.stderr.String(), "\n"), "\n")
-		if len(lines) != 3 || !strings.HasPrefix(lines[0], `error: /etc/slendmail.conf: target "dc": `) ||
-			!strings.HasPrefix(lines[1], "warning: /etc/slendmail.conf:5:3: routes have no rule without conditions") || lines[2] != "/etc/slendmail.conf: 1 error, 1 warning" {
+		if len(lines) != 3 || !strings.HasPrefix(lines[0], `error: /etc/mailcrier.conf: target "dc": `) ||
+			!strings.HasPrefix(lines[1], "warning: /etc/mailcrier.conf:5:3: routes have no rule without conditions") || lines[2] != "/etc/mailcrier.conf: 1 error, 1 warning" {
 			t.Errorf("stderr:\n%s", inv.stderr.String())
 		}
-		if log := inv.log("slendmail"); !strings.Contains(log, `level=INFO msg="configuration checked" errors=1 warnings=1`) {
+		if log := inv.log("mailcrier"); !strings.Contains(log, `level=INFO msg="configuration checked" errors=1 warnings=1`) {
 			t.Errorf("log lacks the record:\n%s", log)
 		}
 	})
@@ -110,7 +110,7 @@ func TestCheckConfig(t *testing.T) {
 			t.Fatalf("Run() = %d, want 0; output:\n%s", code, inv.output())
 		}
 		warnings := linesWith(inv.stderr.String(), "warning: ")
-		want := `warning: /etc/slendmail.conf: target "a": template fails on the sample message, the built-in one is used: `
+		want := `warning: /etc/mailcrier.conf: target "a": template fails on the sample message, the built-in one is used: `
 		if len(warnings) != 1 || !strings.HasPrefix(warnings[0], want) {
 			t.Errorf("warnings = %q, want one starting with %q", warnings, want)
 		}
@@ -163,9 +163,9 @@ func TestCheckConfig(t *testing.T) {
 		}
 	})
 	t.Run("unreadable-by-group", func(t *testing.T) {
-		doc := "[target.tg]\ntype = \"telegram\"\ntoken_file = \"/etc/slendmail.d/tg.token\"\nchat_id = 1\n"
-		files := fstest.MapFS{"etc/slendmail.d/tg.token": {Data: []byte("1:a\n"), Mode: 0o640, Sys: &syscall.Stat_t{Gid: 0}}}
-		want := `warning: /etc/slendmail.conf:3:1: target "tg": file of key "token_file" is not readable by the group of the binary, every call of another user exits 78`
+		doc := "[target.tg]\ntype = \"telegram\"\ntoken_file = \"/etc/mailcrier.d/tg.token\"\nchat_id = 1\n"
+		files := fstest.MapFS{"etc/mailcrier.d/tg.token": {Data: []byte("1:a\n"), Mode: 0o640, Sys: &syscall.Stat_t{Gid: 0}}}
+		want := `warning: /etc/mailcrier.conf:3:1: target "tg": file of key "token_file" is not readable by the group of the binary, every call of another user exits 78`
 		for _, tc := range []struct {
 			name  string
 			creds Credentials
@@ -185,7 +185,7 @@ func TestCheckConfig(t *testing.T) {
 		if code := inv.run(t); code != 77 {
 			t.Fatalf("Run() = %d, want 77", code)
 		}
-		if inv.stdout.Len() != 0 || inv.stderr.String() != "slendmail: --check-config: permission denied\n" {
+		if inv.stdout.Len() != 0 || inv.stderr.String() != "mailcrier: --check-config: permission denied\n" {
 			t.Errorf("stdout = %q, stderr = %q", inv.stdout.String(), inv.stderr.String())
 		}
 	})
@@ -194,7 +194,7 @@ func TestCheckConfig(t *testing.T) {
 		if code := inv.run(t); code != 64 {
 			t.Fatalf("Run() = %d, want 64", code)
 		}
-		if got := inv.stderr.String(); got != "slendmail: --check-config takes no arguments\n" {
+		if got := inv.stderr.String(); got != "mailcrier: --check-config takes no arguments\n" {
 			t.Errorf("stderr = %q", got)
 		}
 	})
@@ -245,28 +245,28 @@ func TestCheckConfigRoadmapItems(t *testing.T) {
 	}{
 		{"file-missing", checkConfigCase{doc: tg, args: []string{"--check-config", "--config", "/etc/missing.conf"}, want: 78,
 			line: "error: /etc/missing.conf: file does not exist"}},
-		{"unknown-key", checkConfigCase{doc: tg + "bogus = 1\n", want: 78, line: `/etc/slendmail.conf:5:1: unknown key "target.tg.bogus"`}},
-		{"key-of-other-type", checkConfigCase{doc: tg + "channel = \"#x\"\n", want: 78, line: `/etc/slendmail.conf:5:1: target "tg": key "channel" is not valid for type "telegram"`}},
-		{"no-targets", checkConfigCase{doc: "[general]\nsyslog_tag = \"x\"\n", want: 78, line: "/etc/slendmail.conf: no targets configured"}},
+		{"unknown-key", checkConfigCase{doc: tg + "bogus = 1\n", want: 78, line: `/etc/mailcrier.conf:5:1: unknown key "target.tg.bogus"`}},
+		{"key-of-other-type", checkConfigCase{doc: tg + "channel = \"#x\"\n", want: 78, line: `/etc/mailcrier.conf:5:1: target "tg": key "channel" is not valid for type "telegram"`}},
+		{"no-targets", checkConfigCase{doc: "[general]\nsyslog_tag = \"x\"\n", want: 78, line: "/etc/mailcrier.conf: no targets configured"}},
 		{"route-to-unknown-target", checkConfigCase{doc: tg + "[[route]]\ntargets = [\"nope\"]\n", want: 78,
-			line: `/etc/slendmail.conf:6:1: route 1: element 1 of key "targets" is not a configured target`}},
-		{"glob-ends-in-backslash", checkConfigCase{doc: tg + "[[route]]\nsubject = \"x\\\\\"\ntargets = [\"tg\"]\n", want: 78, line: `/etc/slendmail.conf:6:1: route 1: value of key "subject"`}},
+			line: `/etc/mailcrier.conf:6:1: route 1: element 1 of key "targets" is not a configured target`}},
+		{"glob-ends-in-backslash", checkConfigCase{doc: tg + "[[route]]\nsubject = \"x\\\\\"\ntargets = [\"tg\"]\n", want: 78, line: `/etc/mailcrier.conf:6:1: route 1: value of key "subject"`}},
 		{"invalid-regex", checkConfigCase{doc: tg + "[[route]]\nsubject_regex = \"(\"\ntargets = [\"tg\"]\n", want: 78,
-			line: `/etc/slendmail.conf:6:1: route 1: value of key "subject_regex" is not a valid expression: missing closing )`}},
-		{"token-file-missing", checkConfigCase{doc: "[target.tg]\ntype = \"telegram\"\ntoken_file = \"/etc/slendmail.d/tg.token\"\nchat_id = 1\n", want: 78,
-			line: `/etc/slendmail.conf:3:1: target "tg": token_file: /etc/slendmail.d/tg.token: file does not exist`}},
+			line: `/etc/mailcrier.conf:6:1: route 1: value of key "subject_regex" is not a valid expression: missing closing )`}},
+		{"token-file-missing", checkConfigCase{doc: "[target.tg]\ntype = \"telegram\"\ntoken_file = \"/etc/mailcrier.d/tg.token\"\nchat_id = 1\n", want: 78,
+			line: `/etc/mailcrier.conf:3:1: target "tg": token_file: /etc/mailcrier.d/tg.token: file does not exist`}},
 		{"url-not-http", checkConfigCase{doc: "[target.dc]\ntype = \"discord\"\nurl = \"ftp://example.org/x\"\n", want: 78,
-			line: `/etc/slendmail.conf:3:1: target "dc": value of key "url" is not an absolute http or https URL`}},
+			line: `/etc/mailcrier.conf:3:1: target "dc": value of key "url" is not an absolute http or https URL`}},
 		{"template-parse-error", checkConfigCase{doc: "[target.dc]\ntype = \"discord\"\nurl = \"https://example.org/x\"\ntemplate = \"{{ if }}\"\n", want: 78,
-			line: `error: /etc/slendmail.conf: target "dc": `}},
+			line: `error: /etc/mailcrier.conf: target "dc": `}},
 		{"slack-webhook-on-discord", checkConfigCase{doc: "[target.x]\ntype = \"http\"\nurl = \"https://discord.com/api/webhooks/1/a/slack\"\npreset = \"slack-webhook\"\n",
-			line: `/etc/slendmail.conf:4:1: target "x": preset "slack-webhook" on a Discord host does not disable mentions`}},
-		{"routes-all-with-conditions", checkConfigCase{doc: tg + "[[route]]\nsubject = \"*\"\ntargets = [\"tg\"]\n", line: `/etc/slendmail.conf:5:3: routes have no rule without conditions`}},
+			line: `/etc/mailcrier.conf:4:1: target "x": preset "slack-webhook" on a Discord host does not disable mentions`}},
+		{"routes-all-with-conditions", checkConfigCase{doc: tg + "[[route]]\nsubject = \"*\"\ntargets = [\"tg\"]\n", line: `/etc/mailcrier.conf:5:3: routes have no rule without conditions`}},
 		{"target-without-route", checkConfigCase{doc: tg + "[target.dc]\ntype = \"discord\"\nurl = \"https://example.org/x\"\n[[route]]\ntargets = [\"tg\"]\n",
-			line: `/etc/slendmail.conf:5:9: target "dc": no route names this target`}},
-		{"secret-file-readable-by-all", checkConfigCase{doc: "[target.tg]\ntype = \"telegram\"\ntoken_file = \"/etc/slendmail.d/tg.token\"\nchat_id = 1\n",
-			files: fstest.MapFS{"etc/slendmail.d/tg.token": {Data: []byte("1:a\n"), Mode: 0o644}}, creds: elevatedRoot,
-			line: `/etc/slendmail.conf:3:1: target "tg": file of key "token_file" is readable by all users`}},
+			line: `/etc/mailcrier.conf:5:9: target "dc": no route names this target`}},
+		{"secret-file-readable-by-all", checkConfigCase{doc: "[target.tg]\ntype = \"telegram\"\ntoken_file = \"/etc/mailcrier.d/tg.token\"\nchat_id = 1\n",
+			files: fstest.MapFS{"etc/mailcrier.d/tg.token": {Data: []byte("1:a\n"), Mode: 0o644}}, creds: elevatedRoot,
+			line: `/etc/mailcrier.conf:3:1: target "tg": file of key "token_file" is readable by all users`}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, tc.check)

@@ -30,7 +30,7 @@ const DefaultAPIURL = "https://slack.com/api"
 // (docs.slack.dev, "Truncating content"); counted in UTF-16 units, at
 // least the number of characters. maxFiles bounds the three requests each
 // file costs. Slack publishes no file size limit below the size of a
-// message slendmail reads.
+// message mailcrier reads.
 const (
 	maxText  = 40000
 	maxFiles = 10

@@ -59,7 +59,7 @@ func successfulExecs(trace string) []tracedExec {
 // setgid e2e test and of a Go program that executes from a goroutine
 // locked to a thread other than the leader.
 func TestSuccessfulExecs(t *testing.T) {
-	const start = `18    execve("/usr/sbin/slendmail", ["/usr/sbin/slendmail", "-ti"], 0x7ffffa334488 /* 9 vars */) = 0` + "\n" +
+	const start = `18    execve("/usr/sbin/mailcrier", ["/usr/sbin/mailcrier", "-ti"], 0x7ffffa334488 /* 9 vars */) = 0` + "\n" +
 		`18    umask(007)                        = 022` + "\n"
 	cases := []struct {
 		name  string
@@ -67,13 +67,13 @@ func TestSuccessfulExecs(t *testing.T) {
 		want  []string
 	}{
 		{"one line", start +
-			`18    execve("/proc/self/exe", ["/usr/sbin/slendmail", "-ti"], 0x20e14a720180 /* 2 vars */) = 0` + "\n",
-			[]string{"/usr/sbin/slendmail", "/proc/self/exe"}},
+			`18    execve("/proc/self/exe", ["/usr/sbin/mailcrier", "-ti"], 0x20e14a720180 /* 2 vars */) = 0` + "\n",
+			[]string{"/usr/sbin/mailcrier", "/proc/self/exe"}},
 		{"leader split by another thread", start +
-			`18    execve("/proc/self/exe", ["/usr/sbin/slendmail", "--ignored-env-config", "--config", "/tmp/setgid-e2e-567597308/evil.c"..., "-ti"], 0x20e14a720180 /* 2 vars */ <unfinished ...>` + "\n" +
+			`18    execve("/proc/self/exe", ["/usr/sbin/mailcrier", "--ignored-env-config", "--config", "/tmp/setgid-e2e-567597308/evil.c"..., "-ti"], 0x20e14a720180 /* 2 vars */ <unfinished ...>` + "\n" +
 			`23    ???( <detached ...>` + "\n" +
 			`18    <... execve resumed>)             = 0` + "\n",
-			[]string{"/usr/sbin/slendmail", "/proc/self/exe"}},
+			[]string{"/usr/sbin/mailcrier", "/proc/self/exe"}},
 		{"other thread, pid changed", `11    execve("/t/threadexec", ["/t/threadexec"], 0x7ffc7f13a2a0 /* 4 vars */) = 0` + "\n" +
 			`14    execve("/proc/self/exe", ["/t/threadexec", "again"], 0x3a5bdc092048 /* 0 vars */ <pid changed to 11 ...>` + "\n" +
 			`11    +++ superseded by execve in pid 14 +++` + "\n" +
@@ -89,13 +89,13 @@ func TestSuccessfulExecs(t *testing.T) {
 			`18    execve("/nonexistent", ["/nonexistent"], 0x20e14a720180 /* 2 vars */ <unfinished ...>` + "\n" +
 			`23    ???( <detached ...>` + "\n" +
 			`18    <... execve resumed>)             = -1 ENOENT (No such file or directory)` + "\n",
-			[]string{"/usr/sbin/slendmail"}},
+			[]string{"/usr/sbin/mailcrier"}},
 		{"failed one line call", start +
 			`18    execve("/nonexistent", ["/nonexistent"], 0x20e14a720180 /* 2 vars */) = -1 ENOENT (No such file or directory)` + "\n",
-			[]string{"/usr/sbin/slendmail"}},
+			[]string{"/usr/sbin/mailcrier"}},
 		{"never resumed", start +
-			`18    execve("/proc/self/exe", ["/usr/sbin/slendmail", "-ti"], 0x20e14a720180 /* 2 vars */ <unfinished ...>` + "\n",
-			[]string{"/usr/sbin/slendmail"}},
+			`18    execve("/proc/self/exe", ["/usr/sbin/mailcrier", "-ti"], 0x20e14a720180 /* 2 vars */ <unfinished ...>` + "\n",
+			[]string{"/usr/sbin/mailcrier"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

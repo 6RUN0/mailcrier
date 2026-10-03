@@ -1,4 +1,4 @@
-// Command slendmail is a sendmail replacement that delivers the mail of
+// Command mailcrier is a sendmail replacement that delivers the mail of
 // cron, at and other system tools to chat and webhook services.
 package main
 

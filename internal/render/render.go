@@ -93,7 +93,7 @@ type Data struct {
 	Recipients []string
 	// Date is the Date header, or the receive time.
 	Date time.Time
-	// ReceivedAt is the time slendmail read the message.
+	// ReceivedAt is the time mailcrier read the message.
 	ReceivedAt time.Time
 	// MessageID is the Message-ID header.
 	MessageID string

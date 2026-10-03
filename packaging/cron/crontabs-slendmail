@@ -1,2 +1,0 @@
-MAILTO=
-*/5 * * * * if [ -x /usr/sbin/slendmail ]; then /usr/sbin/slendmail -q; fi

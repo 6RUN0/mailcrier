@@ -1,6 +1,6 @@
 # SELinux check
 
-The rpm package installs `/usr/sbin/slendmail` setgid and is called from
+The rpm package installs `/usr/sbin/mailcrier` setgid and is called from
 confined domains: user and system cron jobs, atd, smartd, the queue
 service. A container cannot show whether the policy of the distribution
 denies any of that, because the policy belongs to the kernel of the host.
@@ -30,12 +30,12 @@ semodule -DB
 start=$(date '+%x %H:%M:%S')
 
 # 1. Install, labels, domains of the services
-dnf install -y ./slendmail_*_linux_amd64.rpm at cronie smartmontools s-nail python3
+dnf install -y ./mailcrier_*_linux_amd64.rpm at cronie smartmontools s-nail python3
 systemctl enable --now crond atd
-ls -lZ /usr/sbin/slendmail /usr/sbin/sendmail /etc/alternatives/mta \
-  /etc/slendmail.conf /var/spool/slendmail /var/spool/slendmail/*
-matchpathcon /usr/sbin/slendmail /var/spool/slendmail
-systemctl is-enabled slendmail-queue.timer; systemctl is-active slendmail-queue.timer
+ls -lZ /usr/sbin/mailcrier /usr/sbin/sendmail /etc/alternatives/mta \
+  /etc/mailcrier.conf /var/spool/mailcrier /var/spool/mailcrier/*
+matchpathcon /usr/sbin/mailcrier /var/spool/mailcrier
+systemctl is-enabled mailcrier-queue.timer; systemctl is-active mailcrier-queue.timer
 ps -eZ | grep -E ' (crond|atd)$'
 
 # 2. Receiver on 127.0.0.1:80 (http_port_t) with a log of the requests
@@ -55,7 +55,7 @@ receiver=$!
 
 # 3. Configuration: ntfy to the receiver; a hook, chosen by recipient,
 #    writes its domain and groups
-cat > /etc/slendmail.conf <<'EOF'
+cat > /etc/mailcrier.conf <<'EOF'
 [target.local]
 type = "ntfy"
 url = "http://127.0.0.1/selinux"
@@ -73,7 +73,7 @@ targets = ["local"]
 EOF
 printf '#!/bin/sh\n{ id -Z; id -G; } >> /tmp/selinux-hook.log\n' > /usr/local/bin/selinux-hook
 chmod 0755 /usr/local/bin/selinux-hook
-slendmail --check-config
+mailcrier --check-config
 
 # 4. Call as root (unconfined_t)
 printf 'Subject: root call\n\nbody\n' | /usr/sbin/sendmail -i root
@@ -110,8 +110,8 @@ mailq
 python3 /root/receiver.py >> /root/receiver.log 2>&1 &
 receiver=$!
 # 60 seconds or more after the call:
-systemctl start slendmail-queue.service
-systemctl show -p Result slendmail-queue.service
+systemctl start mailcrier-queue.service
+systemctl show -p Result mailcrier-queue.service
 grep -c queued /root/receiver.log; mailq
 
 # 9. Confined domain: smartd as a service (fsdaemon_t) mails through mail
@@ -127,15 +127,15 @@ grep -c -i smart /root/receiver.log
 
 # 10. Denials
 ausearch -m avc,user_avc,selinux_err -ts $start
-ausearch -m avc -ts $start -c slendmail
+ausearch -m avc -ts $start -c mailcrier
 
 # 11. Clean up
 mv /etc/smartmontools/smartd.conf.orig /etc/smartmontools/smartd.conf
 systemctl restart smartd
 semodule -B
-kill "$receiver"; rpm -e slendmail; userdel -r smoketest
+kill "$receiver"; rpm -e mailcrier; userdel -r smoketest
 rm -f /usr/local/bin/selinux-hook /tmp/selinux-hook.log /root/receiver.py \
-  /etc/slendmail.conf.rpmsave
+  /etc/mailcrier.conf.rpmsave
 ```
 
 Expected: step 10 prints `<no matches>` for both searches. A denial holds

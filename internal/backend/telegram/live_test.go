@@ -20,16 +20,16 @@ import (
 // liveEnv names a file of KEY=VALUE lines with TELEGRAM_BOT_TOKEN and
 // TELEGRAM_CHAT_ID of a test bot. Without it the live test is skipped, so
 // that no run of the suite sends to Telegram by accident.
-const liveEnv = "SLENDMAIL_TELEGRAM_ENV"
+const liveEnv = "MAILCRIER_TELEGRAM_ENV"
 
 // TestLiveTelegram sends one message with markup characters, Cyrillic and
 // a URL, and one document, to the real Bot API, which checks
 // the HTML parse mode and link_preview_options for real.
 func TestLiveTelegram(t *testing.T) {
 	sender := liveSender(t)
-	files := []message.Attachment{{Name: "report.log", ContentType: "text/plain", Data: []byte("slendmail live test\n")}}
+	files := []message.Attachment{{Name: "report.log", ContentType: "text/plain", Data: []byte("mailcrier live test\n")}}
 	d := render.Data{
-		Subject:  "slendmail live test <b> & ёжик",
+		Subject:  "mailcrier live test <b> & ёжик",
 		Hostname: "test.example.org",
 		From:     message.Address{Name: "Cron <Daemon>", Addr: "root"},
 		Body:     "x < y && z > 0\nhttps://example.org/\n" + strings.Repeat("кириллица & <tag> ", 20),
@@ -54,7 +54,7 @@ func TestLiveTelegramLongText(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := render.Data{
-		Subject: "slendmail live test: long text", Hostname: "test.example.org", From: message.Address{Addr: "root"},
+		Subject: "mailcrier live test: long text", Hostname: "test.example.org", From: message.Address{Addr: "root"},
 		Body: strings.Repeat("line of a long report with <markup> & ёжик 😀\n", 200), Strings: render.DefaultStrings(),
 	}
 	target := delivery.Target{ID: "tg", Sender: sender, Template: tmpl, OnLong: delivery.OnLongBlockquote}

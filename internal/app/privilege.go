@@ -20,7 +20,7 @@ const selfExe = "/proc/self/exe"
 // installedPath is where packages put the binary; the re-exec falls back to
 // it when /proc is not mounted. Builds for another layout set it with
 // -ldflags "-X github.com/6RUN0/mailcrier/internal/app.installedPath=...".
-var installedPath = "/usr/sbin/slendmail"
+var installedPath = "/usr/sbin/mailcrier"
 
 // Credentials are the ids of the process that decide whether it runs with
 // the group privilege of a setgid binary.
@@ -30,7 +30,7 @@ type Credentials struct {
 	// EGID is the effective group; it differs from GID when the kernel
 	// applied the setgid bit of the binary.
 	EGID int
-	// ServiceUID is the uid of the slendmail system user, -1 when the
+	// ServiceUID is the uid of the mailcrier system user, -1 when the
 	// system has none.
 	ServiceUID int
 }
@@ -115,7 +115,7 @@ type Process struct {
 // returns the error; Run then works in a restricted mode.
 //
 // The returned arguments, argv[0] excluded, go to Run. They start with
-// sendmail.MarkerEnvConfig when SLENDMAIL_CONFIG was set, so that the
+// sendmail.MarkerEnvConfig when MAILCRIER_CONFIG was set, so that the
 // process after the exec can warn about the variable it no longer sees. A
 // forged marker yields one extra warning, nothing else.
 func Harden(p Process) (args []string, reexecErr error) {

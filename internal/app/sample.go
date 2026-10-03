@@ -14,8 +14,8 @@ import (
 // carry line breaks into the header block, so the sender goes in the
 // envelope only.
 func sampleMessage(d Deps) []byte {
-	return fmt.Appendf(nil, "To: root\nSubject: slendmail probe from %s\nDate: %s\nContent-Type: text/plain; charset=utf-8\n\n"+
-		"Test message from slendmail %s on %s.\nIt was sent by slendmail --probe to the targets of the configuration.\n",
+	return fmt.Appendf(nil, "To: root\nSubject: mailcrier probe from %s\nDate: %s\nContent-Type: text/plain; charset=utf-8\n\n"+
+		"Test message from mailcrier %s on %s.\nIt was sent by mailcrier --probe to the targets of the configuration.\n",
 		d.Hostname, d.Now().Format(time.RFC1123Z), buildVersion(), d.Hostname)
 }
 

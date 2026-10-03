@@ -63,7 +63,7 @@ func hookHelperArgs(t *testing.T, dir, script string) helperArgs {
 	}
 }
 
-// TestSpoolHookSignal pins that SIGTERM to slendmail during a hook kills
+// TestSpoolHookSignal pins that SIGTERM to mailcrier during a hook kills
 // the process group of the hook, a child of the hook included, and keeps
 // the message queued with a temporary failure; the call exits 0, as for
 // any queued message. The FIFO held by the child reaches EOF only once it
@@ -82,7 +82,7 @@ func TestSpoolHookSignal(t *testing.T) {
 		t.Errorf("FIFO read = %v, want EOF: the child of the hook survived", err)
 	}
 	if err := h.cmd.Wait(); err != nil {
-		t.Fatalf("slendmail after SIGTERM = %v, want exit 0; output:\n%s", err, h.output.String())
+		t.Fatalf("mailcrier after SIGTERM = %v, want exit 0; output:\n%s", err, h.output.String())
 	}
 	run := readTargetState(t, dir, "run")
 	if run.LastClass != "temp" || !strings.Contains(run.LastError, "hook killed") {
@@ -90,7 +90,7 @@ func TestSpoolHookSignal(t *testing.T) {
 	}
 }
 
-// TestSpoolHookParentKilled pins that SIGKILL of slendmail, which no
+// TestSpoolHookParentKilled pins that SIGKILL of mailcrier, which no
 // handler sees, still kills the hook itself through Pdeathsig.
 func TestSpoolHookParentKilled(t *testing.T) {
 	fifo, events := openStartedFIFO(t)
@@ -102,13 +102,13 @@ func TestSpoolHookParentKilled(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := <-events; !errors.Is(err, io.EOF) {
-		t.Errorf("FIFO read = %v, want EOF: the hook survived slendmail", err)
+		t.Errorf("FIFO read = %v, want EOF: the hook survived mailcrier", err)
 	}
 	_ = h.cmd.Wait()
 }
 
 // TestSpoolSignalWhileTyping pins that SIGINT before the end of the
-// message, a Ctrl-C while it is typed, ends slendmail with the default
+// message, a Ctrl-C while it is typed, ends mailcrier with the default
 // action and leaves nothing in the spool: signals are caught only once the
 // message is read.
 func TestSpoolSignalWhileTyping(t *testing.T) {
@@ -158,7 +158,7 @@ func TestSpoolSignalWhileTyping(t *testing.T) {
 	}
 }
 
-// TestSpoolHookIgnoredHangup pins that SIGHUP, ignored when slendmail
+// TestSpoolHookIgnoredHangup pins that SIGHUP, ignored when mailcrier
 // started as under nohup, stays ignored. SIGHUP goes first and SIGTERM
 // after it; the runtime hands pending signals over in ascending order, so
 // a caught SIGHUP would cancel the call first and name itself as the
@@ -181,7 +181,7 @@ func TestSpoolHookIgnoredHangup(t *testing.T) {
 		t.Errorf("FIFO read = %v, want EOF after SIGTERM", err)
 	}
 	if err := h.cmd.Wait(); err != nil {
-		t.Fatalf("slendmail = %v, want exit 0; output:\n%s", err, h.output.String())
+		t.Fatalf("mailcrier = %v, want exit 0; output:\n%s", err, h.output.String())
 	}
 	run := readTargetState(t, dir, "run")
 	if !strings.Contains(run.LastError, "terminated") || strings.Contains(run.LastError, "hangup") {

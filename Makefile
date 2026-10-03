@@ -51,13 +51,13 @@ FUZZ_TARGETS := ./internal/app:FuzzSanitize ./internal/sendmail:FuzzParse ./inte
 # setgid-e2e installs the binary setgid inside a throwaway container and
 # needs docker; the image is testdata/setgid-e2e/Dockerfile.
 E2E_DIR := $(CURDIR)/.e2e
-E2E_IMAGE := slendmail-setgid-e2e
+E2E_IMAGE := mailcrier-setgid-e2e
 
 # units-verify runs systemd-analyze verify on the queue units with the
 # binary and the manual page in place, so that ExecStart and
 # Documentation are checked too; the image is testdata/units-verify.
-UNITS_IMAGE := slendmail-units-verify
-UNITS := slendmail-queue.service slendmail-queue.timer
+UNITS_IMAGE := mailcrier-units-verify
+UNITS := mailcrier-queue.service mailcrier-queue.timer
 
 # smoke installs the amd64 packages of dist/ in a container per
 # distribution, the images in packaging/smoke/<distro>, and runs each test
@@ -108,8 +108,8 @@ fuzz:
 	done
 
 build:
-	$(GO) build -o slendmail ./cmd/slendmail
-	$(GO) build -tags noshoutrrr -o /dev/null ./cmd/slendmail
+	$(GO) build -o mailcrier ./cmd/mailcrier
+	$(GO) build -tags noshoutrrr -o /dev/null ./cmd/mailcrier
 
 licenses:
 	$(GO_LICENSES) check ./cmd/... --allowed_licenses=$(ALLOWED_LICENSES) $(addprefix --ignore=,$(LICENSE_EXCEPTIONS))
@@ -131,19 +131,19 @@ snapshot:
 
 setgid-e2e:
 	mkdir -p $(E2E_DIR)
-	CGO_ENABLED=0 $(GO) build -o $(E2E_DIR)/slendmail ./cmd/slendmail
+	CGO_ENABLED=0 $(GO) build -o $(E2E_DIR)/mailcrier ./cmd/mailcrier
 	CGO_ENABLED=0 $(GO) test -c -tags setgid_e2e -o $(E2E_DIR)/app.test ./internal/app
 	docker build -t $(E2E_IMAGE) testdata/setgid-e2e
 	docker run --rm --network none --cap-add SYS_PTRACE -v $(E2E_DIR):/e2e:ro $(E2E_IMAGE) \
-		/e2e/app.test -test.run '^TestSetgid' -test.v -slendmail-binary /e2e/slendmail
+		/e2e/app.test -test.run '^TestSetgid' -test.v -mailcrier-binary /e2e/mailcrier
 
 units-verify:
 	mkdir -p $(E2E_DIR)
-	CGO_ENABLED=0 $(GO) build -o $(E2E_DIR)/slendmail ./cmd/slendmail
+	CGO_ENABLED=0 $(GO) build -o $(E2E_DIR)/mailcrier ./cmd/mailcrier
 	docker build -t $(UNITS_IMAGE) testdata/units-verify
 	docker run --rm --network none \
-		-v $(E2E_DIR)/slendmail:/usr/sbin/slendmail:ro \
-		-v $(CURDIR)/docs/slendmail.8:/usr/share/man/man8/slendmail.8:ro \
+		-v $(E2E_DIR)/mailcrier:/usr/sbin/mailcrier:ro \
+		-v $(CURDIR)/docs/mailcrier.8:/usr/share/man/man8/mailcrier.8:ro \
 		$(foreach unit,$(UNITS),-v $(CURDIR)/packaging/systemd/$(unit):/etc/systemd/system/$(unit):ro) \
 		$(UNITS_IMAGE) systemd-analyze verify $(addprefix /etc/systemd/system/,$(UNITS))
 
@@ -152,10 +152,10 @@ smoke: $(addprefix smoke-,$(SMOKE_DISTROS))
 # Each test function runs even when an earlier one failed: they share no
 # state, and every failure is worth seeing.
 $(addprefix smoke-,$(SMOKE_DISTROS)): smoke-%: smoke-dist $(E2E_DIR)/smoke.test $(E2E_DIR)/app.test
-	docker build --target plain -t slendmail-smoke-$* packaging/smoke/$*
-	$(if $(filter $*,$(SMOKE_SYSTEMD_DISTROS)),docker build --target systemd -t slendmail-smoke-$*-systemd packaging/smoke/$*)
+	docker build --target plain -t mailcrier-smoke-$* packaging/smoke/$*
+	$(if $(filter $*,$(SMOKE_SYSTEMD_DISTROS)),docker build --target systemd -t mailcrier-smoke-$*-systemd packaging/smoke/$*)
 	status=0; for test in $(SMOKE_TESTS); do \
-		docker run --rm --network none --cap-add SYS_PTRACE $(SMOKE_VOLUMES) slendmail-smoke-$* \
+		docker run --rm --network none --cap-add SYS_PTRACE $(SMOKE_VOLUMES) mailcrier-smoke-$* \
 			/e2e/smoke.test -test.run "^$$test\$$" -test.v -test.timeout 20m || status=1; \
 	done; \
 	$(if $(filter $*,$(SMOKE_SYSTEMD_DISTROS)),$(call smoke-systemd,$*) || status=1;) \
@@ -169,7 +169,7 @@ cid=$(E2E_DIR)/smoke-$(1).cid; \
 	if [ -f $$cid ]; then docker rm -f $$(cat $$cid) >/dev/null 2>&1; rm -f $$cid; fi; \
 	docker run -d --cidfile $$cid --network none --cgroupns=private --tmpfs /run --tmpfs /run/lock \
 		--cap-add SYS_ADMIN --security-opt apparmor=unconfined $(SMOKE_SYSTEMD_FLAGS) $(SMOKE_VOLUMES) \
-		slendmail-smoke-$(1)-systemd >/dev/null && \
+		mailcrier-smoke-$(1)-systemd >/dev/null && \
 	docker exec $$(cat $$cid) /e2e/smoke.test -test.run '^TestSmokeSystemd$$' -test.v -test.timeout 20m; \
 	s=$$?; \
 	if [ -f $$cid ]; then \
@@ -184,7 +184,7 @@ endef
 
 smoke-dist:
 	@for format in deb rpm apk; do \
-		set -- dist/slendmail_*_linux_amd64.$$format; \
+		set -- dist/mailcrier_*_linux_amd64.$$format; \
 		[ -f "$$1" ] || { echo "dist/ has no amd64 $$format package, run make snapshot" >&2; exit 1; }; \
 	done
 	@commit=$$(sed -n 's/.*"commit":"\([0-9a-f]*\)".*/\1/p' dist/metadata.json 2>/dev/null); \

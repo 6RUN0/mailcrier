@@ -26,14 +26,14 @@ import (
 )
 
 // TestQueueRunnerFiles pins the periodic queue run of the packages: every
-// 5 minutes as the slendmail user, whose run takes the entries of all
+// 5 minutes as the mailcrier user, whose run takes the entries of all
 // users; cron with MAILTO empty, because -q reports to syslog and a mail
 // from cron would come back through this very program, and without quotes
 // in the BusyBox crontab, whose crond takes MAILTO="" for an address and
 // mails the output through sendmail; the cron.d line only where systemd is
 // not running, so that the timer and cron do not both run the queue; both
 // cron lines only while the binary is installed, since a removed deb keeps
-// /etc/cron.d/slendmail as a conffile and Debian Policy wants a cron job
+// /etc/cron.d/mailcrier as a conffile and Debian Policy wants a cron job
 // to check for its program; the service with a time limit, so that a run
 // that hangs does not keep the timer from starting the next one.
 func TestQueueRunnerFiles(t *testing.T) {
@@ -41,10 +41,10 @@ func TestQueueRunnerFiles(t *testing.T) {
 		path  string
 		lines []string
 	}{
-		{"packaging/systemd/slendmail-queue.service", []string{"Type=oneshot", "User=slendmail", "Group=slendmail", "ExecStart=/usr/sbin/slendmail -q", "TimeoutStartSec=3min"}},
-		{"packaging/systemd/slendmail-queue.timer", []string{"OnBootSec=2min", "OnUnitActiveSec=5min", "WantedBy=timers.target"}},
-		{"packaging/cron/slendmail", []string{`MAILTO=""`, "*/5 * * * * slendmail if [ -x /usr/sbin/slendmail ] && [ ! -d /run/systemd/system ]; then /usr/sbin/slendmail -q; fi"}},
-		{"packaging/cron/crontabs-slendmail", []string{"MAILTO=", "*/5 * * * * if [ -x /usr/sbin/slendmail ]; then /usr/sbin/slendmail -q; fi"}},
+		{"packaging/systemd/mailcrier-queue.service", []string{"Type=oneshot", "User=mailcrier", "Group=mailcrier", "ExecStart=/usr/sbin/mailcrier -q", "TimeoutStartSec=3min"}},
+		{"packaging/systemd/mailcrier-queue.timer", []string{"OnBootSec=2min", "OnUnitActiveSec=5min", "WantedBy=timers.target"}},
+		{"packaging/cron/mailcrier", []string{`MAILTO=""`, "*/5 * * * * mailcrier if [ -x /usr/sbin/mailcrier ] && [ ! -d /run/systemd/system ]; then /usr/sbin/mailcrier -q; fi"}},
+		{"packaging/cron/crontabs-mailcrier", []string{"MAILTO=", "*/5 * * * * if [ -x /usr/sbin/mailcrier ]; then /usr/sbin/mailcrier -q; fi"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.path, func(t *testing.T) {
@@ -188,17 +188,17 @@ type packageEntry struct {
 // set the group and the setgid bit.
 func expectedContents() map[[2]string]packageEntry {
 	contents := map[[2]string]packageEntry{
-		{"/etc/slendmail.conf", ""}:                      {"config|noreplace", "root", "slendmail", 0o640},
-		{"/etc/slendmail.d", ""}:                         {"dir", "root", "slendmail", 0o750},
-		{"/var/spool/slendmail", ""}:                     {"dir", "root", "slendmail", 0o750},
-		{"/usr/share/man/man8/slendmail.8", ""}:          {"", "root", "root", 0o644},
-		{"/etc/crontabs/slendmail", "apk"}:               {"", "root", "root", 0o600},
-		{"/usr/share/doc/slendmail/copyright", "deb"}:    {"", "root", "root", 0o644},
-		{"/usr/share/licenses/slendmail/LICENSE", "rpm"}: {"license", "root", "root", 0o644},
-		{"/usr/share/licenses/slendmail/LICENSE", "apk"}: {"", "root", "root", 0o644},
+		{"/etc/mailcrier.conf", ""}:                      {"config|noreplace", "root", "mailcrier", 0o640},
+		{"/etc/mailcrier.d", ""}:                         {"dir", "root", "mailcrier", 0o750},
+		{"/var/spool/mailcrier", ""}:                     {"dir", "root", "mailcrier", 0o750},
+		{"/usr/share/man/man8/mailcrier.8", ""}:          {"", "root", "root", 0o644},
+		{"/etc/crontabs/mailcrier", "apk"}:               {"", "root", "root", 0o600},
+		{"/usr/share/doc/mailcrier/copyright", "deb"}:    {"", "root", "root", 0o644},
+		{"/usr/share/licenses/mailcrier/LICENSE", "rpm"}: {"license", "root", "root", 0o644},
+		{"/usr/share/licenses/mailcrier/LICENSE", "apk"}: {"", "root", "root", 0o644},
 	}
 	for _, area := range []string{"tmp", "queue", "hold", "failed", "locks"} {
-		contents[[2]string{"/var/spool/slendmail/" + area, ""}] = packageEntry{"dir", "root", "slendmail", 0o2770}
+		contents[[2]string{"/var/spool/mailcrier/" + area, ""}] = packageEntry{"dir", "root", "mailcrier", 0o2770}
 	}
 	for _, link := range []string{"/usr/sbin/sendmail", "/usr/lib/sendmail", "/usr/bin/mailq", "/usr/bin/newaliases"} {
 		contents[[2]string{link, "deb"}] = packageEntry{"symlink", "root", "root", 0o777}
@@ -206,18 +206,18 @@ func expectedContents() map[[2]string]packageEntry {
 		contents[[2]string{link, "rpm"}] = packageEntry{"ghost", "root", "root", 0}
 	}
 	for _, packager := range []string{"deb", "rpm"} {
-		contents[[2]string{"/usr/lib/systemd/system/slendmail-queue.service", packager}] = packageEntry{"", "root", "root", 0o644}
-		contents[[2]string{"/usr/lib/systemd/system/slendmail-queue.timer", packager}] = packageEntry{"", "root", "root", 0o644}
-		contents[[2]string{"/etc/cron.d/slendmail", packager}] = packageEntry{"config|noreplace", "root", "root", 0o644}
+		contents[[2]string{"/usr/lib/systemd/system/mailcrier-queue.service", packager}] = packageEntry{"", "root", "root", 0o644}
+		contents[[2]string{"/usr/lib/systemd/system/mailcrier-queue.timer", packager}] = packageEntry{"", "root", "root", 0o644}
+		contents[[2]string{"/etc/cron.d/mailcrier", packager}] = packageEntry{"config|noreplace", "root", "root", 0o644}
 	}
 	for _, name := range configExamples {
-		contents[[2]string{"/usr/share/doc/slendmail/examples/" + name, ""}] = packageEntry{"", "root", "root", 0o644}
+		contents[[2]string{"/usr/share/doc/mailcrier/examples/" + name, ""}] = packageEntry{"", "root", "root", 0o644}
 	}
 	return contents
 }
 
 // TestPackageContents pins the package section of .goreleaser.yaml: one
-// entry for the slendmail build in deb, rpm and apk, the metadata the
+// entry for the mailcrier build in deb, rpm and apk, the metadata the
 // scripts depend on, and every contents entry with type, owner, group and
 // mode. An explicit mode keeps the packages of every checkout equal: nFPM
 // takes the mode of the source file minus its umask otherwise, and stats
@@ -229,7 +229,7 @@ func TestPackageContents(t *testing.T) {
 			name      string
 			got, want any
 		}{
-			{"ids", section.IDs, []string{"slendmail"}},
+			{"ids", section.IDs, []string{"mailcrier"}},
 			{"formats", section.Formats, []string{"deb", "rpm", "apk"}},
 			{"maintainer", section.Maintainer, "Boris Talovikov <boris.t.66@gmail.com>"},
 			{"license", section.License, "BSD-3-Clause"},
@@ -295,8 +295,8 @@ func TestPackageContents(t *testing.T) {
 				t.Errorf("contents: %s (packager %q) has src and no mode", content.Dst, content.Packager)
 			}
 			if content.Type == "symlink" {
-				if target := path.Join(path.Dir(content.Dst), content.Src); target != "/usr/sbin/slendmail" {
-					t.Errorf("contents: %s (packager %q) points to %s, want /usr/sbin/slendmail", content.Dst, content.Packager, target)
+				if target := path.Join(path.Dir(content.Dst), content.Src); target != "/usr/sbin/mailcrier" {
+					t.Errorf("contents: %s (packager %q) points to %s, want /usr/sbin/mailcrier", content.Dst, content.Packager, target)
 				}
 			}
 			if content.Src != "" && content.Type != "symlink" {
@@ -318,14 +318,14 @@ func TestPackageContents(t *testing.T) {
 var scriptRedirects = []struct{ path, name string }{
 	{"/run/systemd/system", "run-systemd"},
 	{"/etc/crontabs", "crontabs"},
-	{"/var/spool/slendmail", "spool"},
+	{"/var/spool/mailcrier", "spool"},
 	{"/usr/sbin/nologin", "nologin"},
 	{"/usr/bin/deb-systemd-helper", "bin/deb-systemd-helper"},
 }
 
 // scriptArguments are the absolute paths a package script may pass on to
 // a command or use as its interpreter; any other one would reach the host.
-var scriptArguments = []string{"/bin/sh", "/dev/null", "/usr/sbin/slendmail", "/usr/sbin/sendmail", "/usr/bin/mailq", "/usr/bin/newaliases", "/usr/lib/sendmail", "/sbin/nologin"}
+var scriptArguments = []string{"/bin/sh", "/dev/null", "/usr/sbin/mailcrier", "/usr/sbin/sendmail", "/usr/bin/mailq", "/usr/bin/newaliases", "/usr/lib/sendmail", "/sbin/nologin"}
 
 var absolutePath = regexp.MustCompile(`/[A-Za-z0-9._/-]+`)
 
@@ -340,7 +340,7 @@ var shellComment = regexp.MustCompile(`(?m)(?:^|\s)#.*$`)
 // scriptStubs are the commands a package script may run; each one is a
 // stub that logs its arguments. rm is the real one: the scripts delete
 // files of the spool, which lies in the temporary directory.
-var scriptStubs = []string{"dpkg-statoverride", "deb-systemd-helper", "deb-systemd-invoke", "systemctl", "alternatives", "chgrp", "chmod", "touch", "getent", "groupadd", "useradd", "addgroup", "adduser", "slendmail"}
+var scriptStubs = []string{"dpkg-statoverride", "deb-systemd-helper", "deb-systemd-invoke", "systemctl", "alternatives", "chgrp", "chmod", "touch", "getent", "groupadd", "useradd", "addgroup", "adduser", "mailcrier"}
 
 // scriptCase runs one package script with arguments in a temporary
 // directory: present lists what exists there ("run-systemd", "spool",
@@ -451,7 +451,7 @@ func scriptShells(t *testing.T) map[string][]string {
 
 // TestPackageScripts runs every maintainer script with stub commands and
 // compares the commands it runs, in order. A script must do nothing on an
-// upgrade where it acts on removal, never run slendmail or touch its
+// upgrade where it acts on removal, never run mailcrier or touch its
 // configuration, set the group of the binary before its mode (chgrp clears
 // the setgid bit), keep a timer the administrator masked only through the
 // unmask of debhelper, delete the queue run locks before removal only when
@@ -465,7 +465,7 @@ func TestPackageScripts(t *testing.T) {
 	section := readNFPM(t)
 	scripts := packageScripts(section)
 	shells := scriptShells(t)
-	const timer = "slendmail-queue.timer"
+	const timer = "mailcrier-queue.timer"
 	failing := func(names ...string) map[string]map[string]int {
 		exits := map[string]map[string]int{}
 		for _, name := range names {
@@ -473,21 +473,21 @@ func TestPackageScripts(t *testing.T) {
 		}
 		return exits
 	}
-	statoverride := []string{"dpkg-statoverride --list /usr/sbin/slendmail", "dpkg-statoverride --update --add root slendmail 2755 /usr/sbin/slendmail"}
-	setgid := []string{"chgrp slendmail /usr/sbin/slendmail", "chmod 2755 /usr/sbin/slendmail"}
-	alternatives := "alternatives --install /usr/sbin/sendmail mta /usr/sbin/slendmail 100" +
-		" --slave /usr/bin/mailq mta-mailq /usr/sbin/slendmail" +
-		" --slave /usr/bin/newaliases mta-newaliases /usr/sbin/slendmail" +
-		" --slave /usr/lib/sendmail mta-sendmail /usr/sbin/slendmail"
+	statoverride := []string{"dpkg-statoverride --list /usr/sbin/mailcrier", "dpkg-statoverride --update --add root mailcrier 2755 /usr/sbin/mailcrier"}
+	setgid := []string{"chgrp mailcrier /usr/sbin/mailcrier", "chmod 2755 /usr/sbin/mailcrier"}
+	alternatives := "alternatives --install /usr/sbin/sendmail mta /usr/sbin/mailcrier 100" +
+		" --slave /usr/bin/mailq mta-mailq /usr/sbin/mailcrier" +
+		" --slave /usr/bin/newaliases mta-newaliases /usr/sbin/mailcrier" +
+		" --slave /usr/lib/sendmail mta-sendmail /usr/sbin/mailcrier"
 	cases := []scriptCase{
 		{name: "preinstall-existing", event: "deb-preinstall", args: []string{"install"},
-			want: []string{"getent group slendmail", "getent passwd slendmail"}},
+			want: []string{"getent group mailcrier", "getent passwd mailcrier"}},
 		{name: "preinstall-shadow", event: "rpm-preinstall", args: []string{"1"}, present: []string{"nologin"},
 			exits: map[string]map[string]int{"getent": {"": 2}},
-			want:  []string{"getent group slendmail", "groupadd -r slendmail", "getent passwd slendmail", "useradd -r -g slendmail -d {spool} -M -s {nologin} slendmail"}},
+			want:  []string{"getent group mailcrier", "groupadd -r mailcrier", "getent passwd mailcrier", "useradd -r -g mailcrier -d {spool} -M -s {nologin} mailcrier"}},
 		{name: "preinstall-busybox", event: "apk-preupgrade", args: []string{"0.2.0", "0.1.0"}, without: []string{"groupadd", "useradd"},
 			exits: map[string]map[string]int{"getent": {"": 2}},
-			want:  []string{"getent group slendmail", "addgroup -S slendmail", "getent passwd slendmail", "adduser -S -D -H -h {spool} -s /sbin/nologin -G slendmail slendmail"}},
+			want:  []string{"getent group mailcrier", "addgroup -S mailcrier", "getent passwd mailcrier", "adduser -S -D -H -h {spool} -s /sbin/nologin -G mailcrier mailcrier"}},
 		{name: "deb-postinstall-install", event: "deb-postinstall", args: []string{"configure"}, present: []string{"run-systemd"},
 			exits: map[string]map[string]int{"dpkg-statoverride": {"--list": 1}},
 			want: append(slices.Clone(statoverride), "deb-systemd-helper unmask "+timer, "deb-systemd-helper --quiet was-enabled "+timer,
@@ -512,7 +512,7 @@ func TestPackageScripts(t *testing.T) {
 			want: []string{"systemctl --system daemon-reload"}},
 		{name: "deb-postremove-purge", event: "deb-postremove", args: []string{"purge"}, present: []string{"spool"},
 			exits: failing("deb-systemd-helper", "dpkg-statoverride"),
-			want:  []string{"deb-systemd-helper purge " + timer, "dpkg-statoverride --quiet --remove /usr/sbin/slendmail"}},
+			want:  []string{"deb-systemd-helper purge " + timer, "dpkg-statoverride --quiet --remove /usr/sbin/mailcrier"}},
 		{name: "rpm-postinstall-install", event: "rpm-postinstall", args: []string{"1"}, present: []string{"run-systemd"},
 			want: append(slices.Clone(setgid), alternatives, "systemctl enable "+timer, "systemctl start "+timer)},
 		{name: "rpm-postinstall-install-failing", event: "rpm-postinstall", args: []string{"1"},
@@ -522,7 +522,7 @@ func TestPackageScripts(t *testing.T) {
 		{name: "rpm-preremove-upgrade", event: "rpm-preremove", args: []string{"1"}, present: []string{"run-systemd"}},
 		{name: "rpm-preremove-erase", event: "rpm-preremove", args: []string{"0"}, present: []string{"run-systemd"},
 			exits: failing("systemctl", "alternatives"),
-			want:  []string{"systemctl disable " + timer, "systemctl stop " + timer, "alternatives --remove mta /usr/sbin/slendmail"}},
+			want:  []string{"systemctl disable " + timer, "systemctl stop " + timer, "alternatives --remove mta /usr/sbin/mailcrier"}},
 		{name: "rpm-postremove-upgrade", event: "rpm-postremove", args: []string{"1"}, present: []string{"run-systemd"},
 			files: []string{"spool/hold/x.eml"}, remain: []string{"spool/hold/x.eml"}},
 		{name: "rpm-postremove-erase", event: "rpm-postremove", args: []string{"0"}, present: []string{"run-systemd", "spool"},
@@ -543,10 +543,10 @@ func TestPackageScripts(t *testing.T) {
 			files: []string{"spool/locks/drain-0.lock"}, remain: []string{"spool/locks/drain-0.lock"}},
 		{name: "rpm-preremove-erase-locks", event: "rpm-preremove", args: []string{"0"},
 			files: []string{"spool/locks/drain-0.lock", "spool/locks/drain-1000.lock"},
-			want:  []string{"systemctl disable " + timer, "alternatives --remove mta /usr/sbin/slendmail"}},
+			want:  []string{"systemctl disable " + timer, "alternatives --remove mta /usr/sbin/mailcrier"}},
 		{name: "rpm-preremove-erase-mail", event: "rpm-preremove", args: []string{"0"},
 			files: []string{"spool/locks/drain-0.lock", "spool/queue/x.eml"}, remain: []string{"spool/locks/drain-0.lock", "spool/queue/x.eml"},
-			want: []string{"systemctl disable " + timer, "alternatives --remove mta /usr/sbin/slendmail"}},
+			want: []string{"systemctl disable " + timer, "alternatives --remove mta /usr/sbin/mailcrier"}},
 		{name: "rpm-preremove-upgrade-locks", event: "rpm-preremove", args: []string{"1"},
 			files: []string{"spool/locks/drain-0.lock"}, remain: []string{"spool/locks/drain-0.lock"}},
 		{name: "apk-preremove-locks", event: "apk-preremove", args: []string{"0.1.0"},
@@ -557,7 +557,7 @@ func TestPackageScripts(t *testing.T) {
 			files: []string{"spool/hold/x.eml"}, remain: []string{"spool/hold/x.eml"}},
 		{name: "deb-postremove-purge-mail", event: "deb-postremove", args: []string{"purge"}, spool: true,
 			files: []string{"spool/queue/x.eml"}, remain: []string{"spool/queue/x.eml"},
-			want: []string{"deb-systemd-helper purge " + timer, "dpkg-statoverride --quiet --remove /usr/sbin/slendmail"}},
+			want: []string{"deb-systemd-helper purge " + timer, "dpkg-statoverride --quiet --remove /usr/sbin/mailcrier"}},
 		{name: "deb-postremove-remove-tmp", event: "deb-postremove", args: []string{"remove"},
 			files: []string{"spool/tmp/x"}, remain: []string{"spool/tmp/x"}},
 		{name: "rpm-postremove-erase-mail", event: "rpm-postremove", args: []string{"0"}, spool: true,
@@ -570,16 +570,16 @@ func TestPackageScripts(t *testing.T) {
 			files: []string{"spool/tmp/x"}, remain: []string{"spool/tmp/x"}, want: []string{"touch {crontabs}/cron.update"}},
 		{name: "preinstall-groupadd-failing", event: "rpm-preinstall", args: []string{"1"}, fails: true,
 			exits: map[string]map[string]int{"getent": {"": 2}, "groupadd": {"": 1}},
-			want:  []string{"getent group slendmail", "groupadd -r slendmail"}},
+			want:  []string{"getent group mailcrier", "groupadd -r mailcrier"}},
 		{name: "preinstall-useradd-failing", event: "rpm-preinstall", args: []string{"1"}, fails: true,
 			exits: map[string]map[string]int{"getent": {"": 2}, "useradd": {"": 1}},
-			want:  []string{"getent group slendmail", "groupadd -r slendmail", "getent passwd slendmail", "useradd -r -g slendmail -d {spool} -M -s /sbin/nologin slendmail"}},
+			want:  []string{"getent group mailcrier", "groupadd -r mailcrier", "getent passwd mailcrier", "useradd -r -g mailcrier -d {spool} -M -s /sbin/nologin mailcrier"}},
 		{name: "preinstall-addgroup-failing", event: "apk-preinstall", args: []string{"0.1.0"}, without: []string{"groupadd", "useradd"}, fails: true,
 			exits: map[string]map[string]int{"getent": {"": 2}, "addgroup": {"": 1}},
-			want:  []string{"getent group slendmail", "addgroup -S slendmail"}},
+			want:  []string{"getent group mailcrier", "addgroup -S mailcrier"}},
 		{name: "preinstall-adduser-failing", event: "apk-preinstall", args: []string{"0.1.0"}, without: []string{"groupadd", "useradd"}, fails: true,
 			exits: map[string]map[string]int{"getent": {"": 2}, "adduser": {"": 1}},
-			want:  []string{"getent group slendmail", "addgroup -S slendmail", "getent passwd slendmail", "adduser -S -D -H -h {spool} -s /sbin/nologin -G slendmail slendmail"}},
+			want:  []string{"getent group mailcrier", "addgroup -S mailcrier", "getent passwd mailcrier", "adduser -S -D -H -h {spool} -s /sbin/nologin -G mailcrier mailcrier"}},
 		{name: "deb-postinstall-statoverride-failing", event: "deb-postinstall", args: []string{"configure"}, fails: true,
 			exits: map[string]map[string]int{"dpkg-statoverride": {"--list": 1, "--update --add": 1}},
 			want:  slices.Clone(statoverride)},
@@ -608,7 +608,7 @@ func TestPackageScripts(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if bytes.Contains(data, []byte("/etc/slendmail.")) {
+		if bytes.Contains(data, []byte("/etc/mailcrier.")) {
 			t.Errorf("%s names the configuration", path)
 		}
 		for shell, argv := range shells {
@@ -684,21 +684,21 @@ func TestPackageScripts(t *testing.T) {
 }
 
 // configExamples are the files of packaging/examples, installed in
-// /usr/share/doc/slendmail/examples.
-var configExamples = []string{"slendmail.conf", "telegram.conf", "team-chat.conf", "ntfy.conf", "webhook.conf", "hook.conf", "routes.conf", "templates.conf", "container.conf"}
+// /usr/share/doc/mailcrier/examples.
+var configExamples = []string{"mailcrier.conf", "telegram.conf", "team-chat.conf", "ntfy.conf", "webhook.conf", "hook.conf", "routes.conf", "templates.conf", "container.conf"}
 
 // exampleFiles are the secret files, the template file and the hook the
 // examples name, as --check-config reads them.
 var exampleFiles = fstest.MapFS{
-	"etc/slendmail.d/telegram.token": {Data: []byte("123456:REPLACE-ME\n")},
-	"etc/slendmail.d/slack.token":    {Data: []byte("xoxb-REPLACE-ME\n")},
-	"etc/slendmail.d/discord.url":    {Data: []byte("https://discord.com/api/webhooks/123/REPLACE-ME\n")},
-	"etc/slendmail.d/mattermost.url": {Data: []byte("https://mattermost.example.org/hooks/REPLACE-ME\n")},
-	"etc/slendmail.d/ntfy.url":       {Data: []byte("https://ntfy.sh/REPLACE-ME\n")},
-	"etc/slendmail.d/gotify.url":     {Data: []byte("gotify://gotify.example.org/REPLACE-ME\n")},
-	"etc/slendmail.d/api.tmpl":       {Data: []byte(`{"title": {{ toJson .Subject }}, "host": {{ toJson .Hostname }},` + "\n" + ` "from": {{ toJson .From.Addr }}, "text": {{ toJson (.Body | head 50) }}}` + "\n")},
+	"etc/mailcrier.d/telegram.token": {Data: []byte("123456:REPLACE-ME\n")},
+	"etc/mailcrier.d/slack.token":    {Data: []byte("xoxb-REPLACE-ME\n")},
+	"etc/mailcrier.d/discord.url":    {Data: []byte("https://discord.com/api/webhooks/123/REPLACE-ME\n")},
+	"etc/mailcrier.d/mattermost.url": {Data: []byte("https://mattermost.example.org/hooks/REPLACE-ME\n")},
+	"etc/mailcrier.d/ntfy.url":       {Data: []byte("https://ntfy.sh/REPLACE-ME\n")},
+	"etc/mailcrier.d/gotify.url":     {Data: []byte("gotify://gotify.example.org/REPLACE-ME\n")},
+	"etc/mailcrier.d/api.tmpl":       {Data: []byte(`{"title": {{ toJson .Subject }}, "host": {{ toJson .Hostname }},` + "\n" + ` "from": {{ toJson .From.Addr }}, "text": {{ toJson (.Body | head 50) }}}` + "\n")},
 	"run/secrets/telegram_token":     {Data: []byte("123456:REPLACE-ME\n")},
-	"usr/local/bin/slendmail-hook":   {Data: []byte("#!/bin/sh\n"), Mode: 0o755},
+	"usr/local/bin/mailcrier-hook":   {Data: []byte("#!/bin/sh\n"), Mode: 0o755},
 }
 
 // unfoldExample turns a configuration file written as comments into the
@@ -720,12 +720,12 @@ func unfoldExample(data []byte) []byte {
 	return []byte(strings.Join(lines, "\n"))
 }
 
-// checkExample runs --check-config on doc as /etc/slendmail.conf, by a
+// checkExample runs --check-config on doc as /etc/mailcrier.conf, by a
 // caller without the setgid bit, with exampleFiles beside it, and returns
 // the exit status and stderr.
 func checkExample(t *testing.T, doc []byte) (int, string) {
 	t.Helper()
-	fsys := fstest.MapFS{"etc/slendmail.conf": {Data: doc}}
+	fsys := fstest.MapFS{"etc/mailcrier.conf": {Data: doc}}
 	for name, file := range exampleFiles {
 		fsys[name] = file
 	}
@@ -733,7 +733,7 @@ func checkExample(t *testing.T, doc []byte) (int, string) {
 	deps := app.Deps{
 		NewLogger:      func(string) *slog.Logger { return slog.New(slog.DiscardHandler) },
 		ConfigFS:       fsys,
-		ConfigPath:     "etc/slendmail.conf",
+		ConfigPath:     "etc/mailcrier.conf",
 		HTTP:           &http.Client{Transport: refusingTransport{}},
 		Hostname:       "host1.example.org",
 		Now:            func() time.Time { return time.Date(2026, 10, 3, 12, 0, 0, 0, time.UTC) },
@@ -765,13 +765,13 @@ func (refusingTransport) RoundTrip(*http.Request) (*http.Response, error) {
 // signs of its example lines removed it is a valid configuration.
 func TestPackageConfigExample(t *testing.T) {
 	t.Run("T-ADJ-54/config", func(t *testing.T) {
-		data, err := os.ReadFile("packaging/slendmail.conf")
+		data, err := os.ReadFile("packaging/mailcrier.conf")
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = config.Load(fstest.MapFS{"etc/slendmail.conf": {Data: data}}, "etc/slendmail.conf")
-		if err == nil || err.Error() != "/etc/slendmail.conf: no targets configured" {
-			t.Errorf("Load = %v, want /etc/slendmail.conf: no targets configured", err)
+		_, err = config.Load(fstest.MapFS{"etc/mailcrier.conf": {Data: data}}, "etc/mailcrier.conf")
+		if err == nil || err.Error() != "/etc/mailcrier.conf: no targets configured" {
+			t.Errorf("Load = %v, want /etc/mailcrier.conf: no targets configured", err)
 		}
 		if code, stderr := checkExample(t, unfoldExample(data)); code != 0 || stderr != checkClean {
 			t.Errorf("--check-config of the unfolded file = %d, stderr\n%s", code, stderr)
@@ -780,7 +780,7 @@ func TestPackageConfigExample(t *testing.T) {
 }
 
 // checkClean is the stderr of --check-config without findings.
-const checkClean = "/etc/slendmail.conf: 0 errors, 0 warnings\n"
+const checkClean = "/etc/mailcrier.conf: 0 errors, 0 warnings\n"
 
 // TestConfigExamplesLoad runs --check-config on every example of
 // packaging/examples, the reference with its example lines unfolded: each
@@ -807,14 +807,14 @@ func TestConfigExamplesLoad(t *testing.T) {
 	for _, name := range configExamples {
 		t.Run(name, func(t *testing.T) {
 			src := "packaging/examples/" + name
-			if dst := installed[src]; dst != "/usr/share/doc/slendmail/examples/"+name {
-				t.Errorf("%s is installed as %q, want /usr/share/doc/slendmail/examples/%s", src, dst, name)
+			if dst := installed[src]; dst != "/usr/share/doc/mailcrier/examples/"+name {
+				t.Errorf("%s is installed as %q, want /usr/share/doc/mailcrier/examples/%s", src, dst, name)
 			}
 			data, err := os.ReadFile(src)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if name == "slendmail.conf" {
+			if name == "mailcrier.conf" {
 				data = unfoldExample(data)
 			}
 			code, stderr := checkExample(t, data)

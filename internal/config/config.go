@@ -1,4 +1,4 @@
-// Package config loads and validates the slendmail TOML configuration.
+// Package config loads and validates the mailcrier TOML configuration.
 //
 // Parsing is strict on every run: an unknown key, a key that does not
 // belong to the target type, or a failed validation rejects the whole file.
@@ -26,7 +26,7 @@ import (
 )
 
 // DefaultSyslogTag is the syslog tag used when [general] does not set one.
-const DefaultSyslogTag = "slendmail"
+const DefaultSyslogTag = "mailcrier"
 
 // Defaults of the [general] time limits. A request timeout below the
 // deadline leaves room for a second target after the first one hangs. The
@@ -48,7 +48,7 @@ const DefaultTelegramDirectMax = 10
 // periodic queue run gets more. max_queue_messages_per_uid times four
 // fills the share of max_queue_messages left after the reserve of root.
 const (
-	DefaultSpoolDir         = "/var/spool/slendmail"
+	DefaultSpoolDir         = "/var/spool/mailcrier"
 	DefaultDrainBudget      = 10 * time.Second
 	DefaultDrainMaxMessages = 20
 	DefaultRunBudget        = 60 * time.Second

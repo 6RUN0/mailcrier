@@ -144,7 +144,7 @@ func (inv *invocation) run(t *testing.T) int {
 var testNow = time.Date(2026, 9, 27, 10, 0, 0, 0, time.UTC)
 
 // testUsers is the user database of the invocations.
-var testUsers = map[int]string{0: "root", 990: "slendmail", 1000: "alice"}
+var testUsers = map[int]string{0: "root", 990: "mailcrier", 1000: "alice"}
 
 // callField is the random call id on every record; log and output drop it
 // so that tests can match the fields after it.
@@ -191,7 +191,7 @@ func TestRunDeliversToHTTPTarget(t *testing.T) {
 
 	inv := &invocation{config: httpTargetConfig(server.URL + "/hook"), stdin: strings.NewReader("Subject: t\n\nb\n")}
 	if code := inv.run(t); code != 0 {
-		t.Fatalf("Run() = %d, want 0; log:\n%s", code, inv.log("slendmail"))
+		t.Fatalf("Run() = %d, want 0; log:\n%s", code, inv.log("mailcrier"))
 	}
 	// Run has returned, so a delivered request is already in the channel.
 	var got request
@@ -212,7 +212,7 @@ func TestRunDeliversToHTTPTarget(t *testing.T) {
 	if len(got.body) != len(want.body) {
 		t.Errorf("body = %v, want exactly %v", got.body, want.body)
 	}
-	if log := inv.log("slendmail"); !strings.Contains(log, "target delivered") || !strings.Contains(log, "target=hook") {
+	if log := inv.log("mailcrier"); !strings.Contains(log, "target delivered") || !strings.Contains(log, "target=hook") {
 		t.Errorf("log does not record the delivery:\n%s", log)
 	}
 }
@@ -252,7 +252,7 @@ func TestRunRejectsConfiguration(t *testing.T) {
 			if code := inv.run(t); code != 78 {
 				t.Fatalf("Run() = %d, want 78", code)
 			}
-			log := inv.log("slendmail")
+			log := inv.log("mailcrier")
 			if !strings.Contains(log, "level=ERROR") || !strings.Contains(log, "configuration rejected") || !strings.Contains(log, tc.wantLog) {
 				t.Errorf("log lacks the error record with %q:\n%s", tc.wantLog, log)
 			}
@@ -279,7 +279,7 @@ func TestRunReportsUndeliveredMessage(t *testing.T) {
 			if code := inv.run(t); code != 69 {
 				t.Fatalf("Run() = %d, want 69", code)
 			}
-			if log := inv.log("slendmail"); !strings.Contains(log, "target failed") {
+			if log := inv.log("mailcrier"); !strings.Contains(log, "target failed") {
 				t.Errorf("log lacks the failure:\n%s", log)
 			}
 		})
@@ -334,7 +334,7 @@ func TestRunTimeLimits(t *testing.T) {
 			if code != 69 {
 				t.Errorf("Run() = %d, want 69", code)
 			}
-			if log := inv.log("slendmail"); strings.Count(log, "target failed") != tc.targets {
+			if log := inv.log("mailcrier"); strings.Count(log, "target failed") != tc.targets {
 				t.Errorf("log does not record %d failed targets:\n%s", tc.targets, log)
 			}
 		})
@@ -392,7 +392,7 @@ func TestRunLogsResultFields(t *testing.T) {
 		t.Fatalf("Run() = %d, want 69", code)
 	}
 	want := `level=ERROR msg="target failed" msgid=<1@h> target=hook class=temp status=502 err=`
-	if log := inv.log("slendmail"); !strings.Contains(log, want) {
+	if log := inv.log("mailcrier"); !strings.Contains(log, want) {
 		t.Errorf("log lacks %q:\n%s", want, log)
 	}
 }
@@ -417,7 +417,7 @@ func TestRunTagsRecordsWithCall(t *testing.T) {
 			if code := inv.run(t); code != 69 {
 				t.Fatalf("Run() = %d, want 69", code)
 			}
-			raw := inv.logs["slendmail"].String()
+			raw := inv.logs["mailcrier"].String()
 			lines := strings.Split(strings.TrimSpace(raw), "\n")
 			ids := map[string]bool{}
 			for _, line := range lines {
@@ -426,7 +426,7 @@ func TestRunTagsRecordsWithCall(t *testing.T) {
 			if len(lines) < 2 || len(ids) != 1 || ids[""] {
 				t.Errorf("records do not share one call id:\n%s", raw)
 			}
-			if got := inv.log("slendmail"); tc.wantMsgID == "" && strings.Contains(got, "msgid=") ||
+			if got := inv.log("mailcrier"); tc.wantMsgID == "" && strings.Contains(got, "msgid=") ||
 				tc.wantMsgID != "" && !strings.Contains(got, `msg="target failed" `+tc.wantMsgID+"target=hook") {
 				t.Errorf("msgid field wrong, want %q:\n%s", tc.wantMsgID, got)
 			}

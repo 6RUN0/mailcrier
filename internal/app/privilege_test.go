@@ -24,7 +24,7 @@ import (
 	"github.com/6RUN0/mailcrier/internal/sendmail"
 )
 
-// Credentials of the cases below. The slendmail user and group are 990; a
+// Credentials of the cases below. The mailcrier user and group are 990; a
 // caller runs the setgid binary with its own uid and gid and egid 990.
 var (
 	elevatedUser    = Credentials{UID: 1000, GID: 1000, EGID: 990, ServiceUID: 990}
@@ -40,7 +40,7 @@ func TestSanitizeEnv(t *testing.T) {
 		want []string
 	}{
 		{"allowlist-kept-in-order", []string{"LANG=C.UTF-8", "USER=alice", "LOGNAME=alice", "HOME=/home/alice", "LC_ALL=C", "TZ=Europe/Berlin"}, []string{"LANG=C.UTF-8", "USER=alice", "LOGNAME=alice", "HOME=/home/alice", "LC_ALL=C", "TZ=Europe/Berlin"}},
-		{"everything-else-removed", []string{"GODEBUG=http2debug=2", "HTTPS_PROXY=http://evil:3128", "SSL_CERT_FILE=/tmp/ca.pem", "SLENDMAIL_CONFIG=/tmp/x", "PATH=/usr/bin", "USER=alice"}, []string{"USER=alice"}},
+		{"everything-else-removed", []string{"GODEBUG=http2debug=2", "HTTPS_PROXY=http://evil:3128", "SSL_CERT_FILE=/tmp/ca.pem", "MAILCRIER_CONFIG=/tmp/x", "PATH=/usr/bin", "USER=alice"}, []string{"USER=alice"}},
 		{"duplicate-keys-first-wins", []string{"USER=alice", "USER=root", "HOME=/a", "HOME=/b"}, []string{"USER=alice", "HOME=/a"}},
 		{"entries-without-equals", []string{"USER", "garbage", "=x", "LANG=C"}, []string{"LANG=C"}},
 		{"gotraceback-none-kept", []string{"GOTRACEBACK=none"}, []string{"GOTRACEBACK=none"}},
@@ -132,7 +132,7 @@ func (s *countingServer) received() []string {
 }
 
 // TestRunElevatedIgnoresConfigOverride pins that neither --config nor
-// SLENDMAIL_CONFIG lets a caller of the setgid binary pick the
+// MAILCRIER_CONFIG lets a caller of the setgid binary pick the
 // configuration: the default one is used and a warning names the source.
 func TestRunElevatedIgnoresConfigOverride(t *testing.T) {
 	cases := []struct {
@@ -143,7 +143,7 @@ func TestRunElevatedIgnoresConfigOverride(t *testing.T) {
 	}{
 		{"option", []string{"--config", "/tmp/evil.conf", "-ti"}, []string{"USER=alice"}, "--config"},
 		{"option-with-equals", []string{"--config=/tmp/evil.conf"}, []string{"USER=alice"}, "--config"},
-		{"environment", []string{"-ti"}, []string{"USER=alice", "SLENDMAIL_CONFIG=/tmp/evil.conf"}, "SLENDMAIL_CONFIG"},
+		{"environment", []string{"-ti"}, []string{"USER=alice", "MAILCRIER_CONFIG=/tmp/evil.conf"}, "MAILCRIER_CONFIG"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -163,7 +163,7 @@ func TestRunElevatedIgnoresConfigOverride(t *testing.T) {
 				t.Error("message did not go to the target of the default configuration only")
 			}
 			want := `level=WARN msg="configuration override ignored" source=` + tc.source
-			if log := inv.log("slendmail"); strings.Count(log, want) != 1 {
+			if log := inv.log("mailcrier"); strings.Count(log, want) != 1 {
 				t.Errorf("log does not warn once with %q:\n%s", want, log)
 			}
 		})
@@ -171,7 +171,7 @@ func TestRunElevatedIgnoresConfigOverride(t *testing.T) {
 }
 
 // TestRunHonoursConfigOverride covers the unelevated process, such as a
-// container without the setgid bit: --config wins over SLENDMAIL_CONFIG,
+// container without the setgid bit: --config wins over MAILCRIER_CONFIG,
 // which wins over the default.
 func TestRunHonoursConfigOverride(t *testing.T) {
 	cases := []struct {
@@ -181,8 +181,8 @@ func TestRunHonoursConfigOverride(t *testing.T) {
 		environ []string
 		want    string
 	}{
-		{"environment", plainUser, nil, []string{"SLENDMAIL_CONFIG=/srv/app/env.conf"}, "env"},
-		{"option-over-environment", plainUser, []string{"--config", "/srv/app/opt.conf"}, []string{"SLENDMAIL_CONFIG=/srv/app/env.conf"}, "opt"},
+		{"environment", plainUser, nil, []string{"MAILCRIER_CONFIG=/srv/app/env.conf"}, "env"},
+		{"option-over-environment", plainUser, []string{"--config", "/srv/app/opt.conf"}, []string{"MAILCRIER_CONFIG=/srv/app/env.conf"}, "opt"},
 		{"root-with-setgid-bit", elevatedRoot, []string{"--config=/srv/app/opt.conf"}, nil, "opt"},
 		{"default", plainUser, nil, nil, "default"},
 	}
@@ -220,7 +220,7 @@ func TestRunHonoursConfigOverride(t *testing.T) {
 
 // TestRunRefusesServiceModes pins who may use --probe and --check-config,
 // decided before stdin is read: an elevated caller other than root and the
-// slendmail user gets 77, and an elevated caller that names another
+// mailcrier user gets 77, and an elevated caller that names another
 // configuration gets 64 instead of a report on the default one.
 func TestRunRefusesServiceModes(t *testing.T) {
 	const overrideRefused = " is ignored for a setgid-elevated caller\n"
@@ -233,18 +233,18 @@ func TestRunRefusesServiceModes(t *testing.T) {
 		wantStderr string
 		wantStdout string
 	}{
-		{"user-probe", elevatedUser, []string{"--probe"}, 77, "slendmail: --probe: permission denied\n", ""},
-		{"user-check-config", elevatedUser, []string{"--check-config"}, 77, "slendmail: --check-config: permission denied\n", ""},
+		{"user-probe", elevatedUser, []string{"--probe"}, 77, "mailcrier: --probe: permission denied\n", ""},
+		{"user-check-config", elevatedUser, []string{"--check-config"}, 77, "mailcrier: --check-config: permission denied\n", ""},
 		{"root-probe", elevatedRoot, []string{"--probe"}, 0, "", probed},
 		{"root-check-config", elevatedRoot, []string{"--check-config"}, 0, checkSummaryClean, ""},
 		{"service-user-probe", elevatedService, []string{"--probe"}, 0, "", probed},
 		{"service-user-check-config", elevatedService, []string{"--check-config"}, 0, checkSummaryClean, ""},
 		{"unelevated-probe", plainUser, []string{"--probe"}, 0, "", probed},
 		{"unelevated-check-config", plainUser, []string{"--check-config"}, 0, checkSummaryClean, ""},
-		{"service-user-config-option-probe", elevatedService, []string{"--probe", "--config", "/etc/other.conf"}, 64, "slendmail: --config" + overrideRefused, ""},
-		{"service-user-config-option-check-config", elevatedService, []string{"--check-config", "--config", "/etc/other.conf"}, 64, "slendmail: --config" + overrideRefused, ""},
-		{"service-user-config-variable-probe", elevatedService, []string{sendmail.MarkerEnvConfig, "--probe"}, 64, "slendmail: SLENDMAIL_CONFIG" + overrideRefused, ""},
-		{"service-user-config-variable-check-config", elevatedService, []string{sendmail.MarkerEnvConfig, "--check-config"}, 64, "slendmail: SLENDMAIL_CONFIG" + overrideRefused, ""},
+		{"service-user-config-option-probe", elevatedService, []string{"--probe", "--config", "/etc/other.conf"}, 64, "mailcrier: --config" + overrideRefused, ""},
+		{"service-user-config-option-check-config", elevatedService, []string{"--check-config", "--config", "/etc/other.conf"}, 64, "mailcrier: --config" + overrideRefused, ""},
+		{"service-user-config-variable-probe", elevatedService, []string{sendmail.MarkerEnvConfig, "--probe"}, 64, "mailcrier: MAILCRIER_CONFIG" + overrideRefused, ""},
+		{"service-user-config-variable-check-config", elevatedService, []string{sendmail.MarkerEnvConfig, "--check-config"}, 64, "mailcrier: MAILCRIER_CONFIG" + overrideRefused, ""},
 		{"unelevated-marker-probe", plainUser, []string{sendmail.MarkerEnvConfig, "--probe"}, 0, "", probed},
 		{"unelevated-marker-check-config", plainUser, []string{sendmail.MarkerEnvConfig, "--check-config"}, 0, checkSummaryClean, ""},
 	}
@@ -277,7 +277,7 @@ func TestRunIgnoresAltConfigOption(t *testing.T) {
 		if code := inv.run(t); code != 0 {
 			t.Fatalf("Run(%q) = %d, want 0", args, code)
 		}
-		if log := inv.log("slendmail"); !strings.Contains(log, `level=WARN msg="option ignored" option=-C`) {
+		if log := inv.log("mailcrier"); !strings.Contains(log, `level=WARN msg="option ignored" option=-C`) {
 			t.Errorf("Run(%q) log lacks the warning:\n%s", args, log)
 		}
 	}
@@ -328,8 +328,8 @@ func TestRunReexecs(t *testing.T) {
 			}
 			wantEnv := []string{"USER=alice"}
 			wantArgv := []string{"/usr/sbin/sendmail", "-ti", "root"}
-			if len(inv.execs) != 2 || inv.execs[0].path != "/proc/self/exe" || inv.execs[1].path != "/usr/sbin/slendmail" {
-				t.Fatalf("exec calls = %v, want /proc/self/exe, then /usr/sbin/slendmail", inv.execs)
+			if len(inv.execs) != 2 || inv.execs[0].path != "/proc/self/exe" || inv.execs[1].path != "/usr/sbin/mailcrier" {
+				t.Fatalf("exec calls = %v, want /proc/self/exe, then /usr/sbin/mailcrier", inv.execs)
 			}
 			for _, call := range inv.execs {
 				if !slices.Equal(call.argv, wantArgv) || !slices.Equal(call.env, wantEnv) {
@@ -366,18 +366,18 @@ func TestRunHardenedModeAfterFailedReexec(t *testing.T) {
 	if inv.logOutput != io.Discard {
 		t.Errorf("standard log output = %T, want io.Discard", inv.logOutput)
 	}
-	if log := inv.log("slendmail"); !strings.Contains(log, `level=ERROR msg="reexec failed" err="exec /proc/self/exe: exec: permission denied\nexec /usr/sbin/slendmail: exec: permission denied"`) {
+	if log := inv.log("mailcrier"); !strings.Contains(log, `level=ERROR msg="reexec failed" err="exec /proc/self/exe: exec: permission denied\nexec /usr/sbin/mailcrier: exec: permission denied"`) {
 		t.Errorf("log lacks the reexec failure:\n%s", log)
 	}
 }
 
 // helperMode selects the role of the test binary started by
 // TestHTTP2DebugOutputHidesToken.
-const helperMode = "SLENDMAIL_TEST_HELPER_MODE"
+const helperMode = "MAILCRIER_TEST_HELPER_MODE"
 
 // TestHTTP2DebugOutputHidesToken runs an invocation in a child process
 // started with GODEBUG=http2debug=2, which the HTTP/2 transport reads in
-// package init, before any code of slendmail runs. Against an HTTP/2
+// package init, before any code of mailcrier runs. Against an HTTP/2
 // receiver the child must not print the token: elevated with a failed
 // re-exec it speaks HTTP/1.1 and drops the log output, unelevated its log
 // output is redacted. The unelevated case also proves the debug output is
@@ -405,8 +405,8 @@ func TestHTTP2DebugOutputHidesToken(t *testing.T) {
 			cmd.Env = append(os.Environ(),
 				"GODEBUG=http2debug=2",
 				helperMode+"="+tc.mode,
-				"SLENDMAIL_TEST_URL="+server.URL+"/hook/"+secretToken,
-				"SLENDMAIL_TEST_CA="+string(ca),
+				"MAILCRIER_TEST_URL="+server.URL+"/hook/"+secretToken,
+				"MAILCRIER_TEST_CA="+string(ca),
 			)
 			var stdout, stderr bytes.Buffer
 			cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -438,9 +438,9 @@ func TestHTTP2DebugOutputHidesToken(t *testing.T) {
 // stand-in on stdout, and an Exec that always fails.
 func runHTTP2DebugHelper(mode string) {
 	// Harden clears the environment of an elevated process.
-	targetURL := os.Getenv("SLENDMAIL_TEST_URL")
+	targetURL := os.Getenv("MAILCRIER_TEST_URL")
 	roots := x509.NewCertPool()
-	roots.AppendCertsFromPEM([]byte(os.Getenv("SLENDMAIL_TEST_CA")))
+	roots.AppendCertsFromPEM([]byte(os.Getenv("MAILCRIER_TEST_CA")))
 	transport := &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots}, ForceAttemptHTTP2: true}
 	creds := plainUser
 	if mode == "elevated" {

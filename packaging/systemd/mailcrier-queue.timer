@@ -1,0 +1,10 @@
+[Unit]
+Description=Deliver the mailcrier queue every 5 minutes
+Documentation=man:mailcrier(8)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target

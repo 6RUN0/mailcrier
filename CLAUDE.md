@@ -16,13 +16,13 @@ make units-verify # needs docker: systemd-analyze verify of packaging/systemd
 make smoke        # needs docker and dist/ of HEAD (make snapshot): packages
 make smoke-alpine # one of debian rocky9 rocky10 alpine
 make -j4 -O smoke # all distributions in parallel, 5-7 min with built images
-go build -o slendmail ./cmd/slendmail   # the binary; the name is gitignored
-SLENDMAIL_TELEGRAM_ENV=/path/to/telegram.env \
+go build -o mailcrier ./cmd/mailcrier   # the binary; the name is gitignored
+MAILCRIER_TELEGRAM_ENV=/path/to/telegram.env \
   go test -run TestLiveTelegram ./internal/backend/telegram   # real Bot API
 go test ./internal/backend/webhook -update   # rewrite golden files
 go test ./internal/app -run TestCallers -update   # caller golden files
 go test ./internal/render -run TestBuiltinGolden -update   # template golden
-mandoc -T lint -W warning docs/slendmail.8   # man page; not in make check
+mandoc -T lint -W warning docs/mailcrier.8   # man page; not in make check
 ```
 
 - Tools are pinned where Dependabot updates them: golangci-lint and
@@ -58,8 +58,8 @@ mandoc -T lint -W warning docs/slendmail.8   # man page; not in make check
   docker-default AppArmor profile of Ubuntu denies mount whatever the
   capabilities); `SMOKE_SYSTEMD_FLAGS=--privileged` is the fallback for a
   host where that is not enough.
-- A manual run of the new binary reads `/etc/slendmail.conf`, or the file
-  in `SLENDMAIL_CONFIG` or `--config` (honoured when not setgid-elevated).
+- A manual run of the new binary reads `/etc/mailcrier.conf`, or the file
+  in `MAILCRIER_CONFIG` or `--config` (honoured when not setgid-elevated).
 
 CI: `.github/workflows/ci.yml` runs `make check`, `make snapshot`,
 `make setgid-e2e`, `make units-verify` and, on the amd64 packages of the
@@ -80,7 +80,7 @@ proposing a new version.
 
 ## Architecture
 
-The program lives in `cmd/slendmail` (entry point) and `internal/`; the
+The program lives in `cmd/mailcrier` (entry point) and `internal/`; the
 root package holds only repository-wide tests, so `go build .` there fails
 with "no non-test Go files".
 
@@ -94,7 +94,7 @@ with "no non-test Go files".
   Everything time-dependent in the spool (ids, backoff, TTL, budgets, age
   of `tmp/` files) reads `Deps.Now`; only the context deadlines use the
   real clock. `app.SystemDeps`
-  builds the real ones (syslog `LOG_MAIL`, `/etc/slendmail.conf`,
+  builds the real ones (syslog `LOG_MAIL`, `/etc/mailcrier.conf`,
   environment proxies only without elevation).
 - Elevated means `egid != gid` and `uid != 0` (`internal/app/privilege.go`).
   `main` sets the umask, then calls `app.Harden` before `SystemDeps`, any
@@ -107,14 +107,14 @@ with "no non-test Go files".
   a hook is killed with its group; before that the default action
   discards a message being typed. Signals ignored at start stay ignored.
   `sanitizeEnv` must stay idempotent (`FuzzSanitize`), or the re-exec loops.
-  `SLENDMAIL_CONFIG` dropped by the re-exec is reported after it through
+  `MAILCRIER_CONFIG` dropped by the re-exec is reported after it through
   the argv marker `--ignored-env-config`, which `sendmail.Parse` accepts
   only as the first argument.
 - `internal/sendmail.Parse(argv0, args)` is the only command line parser:
   getopt-style short flags from the `shortFlags` table, long options before
   `--` only, usage errors exit 64 before stdin is read.
   `Invocation.Envelope` builds sender and recipients. The flag table is
-  repeated in README, `docs/slendmail.8` and `--help` (`sendmail.Usage`);
+  repeated in README, `docs/mailcrier.8` and `--help` (`sendmail.Usage`);
   change all four together. `TestUsage*` check `Usage` against the parser
   tables and the exit statuses of the manual page, and its layout.
 - `internal/message.Read` returns the message without Bcc and Resent-Bcc,
@@ -155,7 +155,7 @@ with "no non-test Go files".
   integer or a non-blank string, `channel` non-blank (both trimmed).
   Targets are `[target.<name>]` tables; keys per type are in
   `allowedKeys`, which lists only implemented keys, required ones in
-  `requiredKeys`; a new key goes into `docs/slendmail.8` in the same
+  `requiredKeys`; a new key goes into `docs/mailcrier.8` in the same
   change (`TestManPageListsKeys`; `TestManPageListsOptions` does the same
   for the flags of `sendmail`). `Error.Path` is the absolute path,
   `"/" + path` of `ConfigFS`, also inside the texts of file errors
@@ -197,7 +197,7 @@ with "no non-test Go files".
   Tests of either build carry the matching tag; `make test`, `build` and
   `lint-go` run both builds.
   `TestLiveTelegram` sends to the real Bot API only with
-  `SLENDMAIL_TELEGRAM_ENV` naming a file with `TELEGRAM_BOT_TOKEN` and
+  `MAILCRIER_TELEGRAM_ENV` naming a file with `TELEGRAM_BOT_TOKEN` and
   `TELEGRAM_CHAT_ID`.
 - `internal/route` (imports only `message`): `Router` from rules with
   compiled `*regexp.Regexp` (`app.newRouter` copies them from `config`),
@@ -262,7 +262,7 @@ with "no non-test Go files".
   `--status`, `--check-config` and `--probe`; `Run` keeps its own sequence
   for a message, which holds it on an error. `admitServiceMode`
   (`check.go`) gives 77 to an elevated caller other than the service user
-  and 64 to an ignored `--config` or `SLENDMAIL_CONFIG` before anything is
+  and 64 to an ignored `--config` or `MAILCRIER_CONFIG` before anything is
   loaded. `--check-config` (`check.go`) prints its findings to stderr and
   renders `sample.go`'s message through `delivery.Deliver` with
   `dryRunSender`; `--probe` (`probe.go`) sends it with `DeliverEach`,
@@ -302,9 +302,13 @@ with "no non-test Go files".
   `TestIDsCovered` reads only literals in the `Run` call.
 - `TestReadmeExamplesLoad` loads the TOML blocks of the README section
   "Configuration" with `config.Load`.
+- `TestFormerNameGone` fails when a tracked path or file carries the former
+  name of the program in any case; the only exception is the fork line
+  under the README title, once. It needs a git work tree: skipped without
+  one, failed without one when `CI` is set.
 - Multi-process spool tests (`internal/app/spool_process_test.go`) start
   the test binary itself as `-test.run=^TestSpoolHelper$` with
-  `SLENDMAIL_SPOOL_HELPER` set; the helper reports on fd 3 and waits on fd
+  `MAILCRIER_SPOOL_HELPER` set; the helper reports on fd 3 and waits on fd
   4, the parent synchronizes on those pipes and on `wait4(WUNTRACED)`,
   never on sleeps. Run them repeatedly with
   `go test -race -count=5 -run 'TestSpool' ./internal/app`. Tests with
@@ -348,7 +352,7 @@ with "no non-test Go files".
   `mtime` nor `SOURCE_DATE_EPOCH` changes; `make snapshot` sets it to the
   commit time first, so a workflow that publishes packages runs make, not
   goreleaser directly.
-- `packaging/slendmail.conf` is the conffile of the packages: any change to
+- `packaging/mailcrier.conf` is the conffile of the packages: any change to
   it in a release makes dpkg ask every administrator who edited the file,
   and rpm and apk write `.rpmnew` and `.apk-new` beside an edited one.
 - Every target's `New` copies the client with `backend.WithoutRedirects`:

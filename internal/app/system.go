@@ -21,11 +21,11 @@ import (
 
 // SystemConfigPath is the configuration file, relative to the root of
 // SystemDeps().ConfigFS.
-const SystemConfigPath = "etc/slendmail.conf"
+const SystemConfigPath = "etc/mailcrier.conf"
 
 // serviceUser is the system user that runs the queue and owns the
 // configuration together with root.
-const serviceUser = "slendmail"
+const serviceUser = "mailcrier"
 
 // CurrentProcess returns what Harden needs, without reading anything but
 // the command line, the environment and the ids.
@@ -96,7 +96,7 @@ func newTransport(isElevated bool) *http.Transport {
 	return transport
 }
 
-// lookupServiceUID returns the uid of the slendmail user, -1 when the
+// lookupServiceUID returns the uid of the mailcrier user, -1 when the
 // system has none.
 func lookupServiceUID() int {
 	account, err := user.Lookup(serviceUser)
@@ -149,7 +149,7 @@ func newFallbackLogger(tag string, dial func(tag string) (*syslog.Writer, error)
 	return logger
 }
 
-// messageHandler writes "slendmail: <message>" for warnings and errors and
+// messageHandler writes "mailcrier: <message>" for warnings and errors and
 // drops every attribute. Messages are constants, so they carry no data.
 type messageHandler struct {
 	writer io.Writer
@@ -165,7 +165,7 @@ func (h *messageHandler) Enabled(_ context.Context, level slog.Level) bool {
 func (h *messageHandler) Handle(_ context.Context, record slog.Record) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	_, err := io.WriteString(h.writer, "slendmail: "+record.Message+"\n")
+	_, err := io.WriteString(h.writer, "mailcrier: "+record.Message+"\n")
 	return err
 }
 

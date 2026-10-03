@@ -34,10 +34,10 @@ import (
 )
 
 const (
-	binary    = "/usr/sbin/slendmail"
-	config    = "/etc/slendmail.conf"
-	spoolDir  = "/var/spool/slendmail"
-	spoolNote = "slendmail: /var/spool/slendmail is left in place, it holds messages"
+	binary    = "/usr/sbin/mailcrier"
+	config    = "/etc/mailcrier.conf"
+	spoolDir  = "/var/spool/mailcrier"
+	spoolNote = "mailcrier: /var/spool/mailcrier is left in place, it holds messages"
 	// hookRecipient is the address the route of the exec target matches.
 	hookRecipient = "hook@example.org"
 )
@@ -86,26 +86,26 @@ type distro struct {
 // /etc/os-release, so that a minor update of an image keeps its entry.
 var distros = map[string]distro{
 	"debian/13": {
-		format: "deb", pattern: "/pkgs/slendmail_*_linux_amd64.deb",
-		install: []string{"dpkg", "-i"}, remove: []string{"dpkg", "-r", "slendmail"},
-		cron: []string{"cron", "-f", "-L", "15"}, cronFile: "/etc/cron.d/slendmail",
+		format: "deb", pattern: "/pkgs/mailcrier_*_linux_amd64.deb",
+		install: []string{"dpkg", "-i"}, remove: []string{"dpkg", "-r", "mailcrier"},
+		cron: []string{"cron", "-f", "-L", "15"}, cronFile: "/etc/cron.d/mailcrier",
 	},
 	"rocky/9": {
-		format: "rpm", pattern: "/pkgs/slendmail_*_linux_amd64.rpm",
-		install: []string{"rpm", "-i"}, remove: []string{"rpm", "-e", "slendmail"},
-		cron: []string{"crond", "-n", "-x", "proc"}, cronFile: "/etc/cron.d/slendmail",
+		format: "rpm", pattern: "/pkgs/mailcrier_*_linux_amd64.rpm",
+		install: []string{"rpm", "-i"}, remove: []string{"rpm", "-e", "mailcrier"},
+		cron: []string{"crond", "-n", "-x", "proc"}, cronFile: "/etc/cron.d/mailcrier",
 		mta: "/usr/sbin/sendmail.postfix", postfix: []string{"postfix"},
 	},
 	"rocky/10": {
-		format: "rpm", pattern: "/pkgs/slendmail_*_linux_amd64.rpm",
-		install: []string{"rpm", "-i"}, remove: []string{"rpm", "-e", "slendmail"},
-		cron: []string{"crond", "-n", "-x", "proc"}, cronFile: "/etc/cron.d/slendmail",
+		format: "rpm", pattern: "/pkgs/mailcrier_*_linux_amd64.rpm",
+		install: []string{"rpm", "-i"}, remove: []string{"rpm", "-e", "mailcrier"},
+		cron: []string{"crond", "-n", "-x", "proc"}, cronFile: "/etc/cron.d/mailcrier",
 		mta: "/usr/sbin/sendmail.postfix", postfix: []string{"postfix", "postfix-lmdb"},
 	},
 	"alpine/3": {
-		format: "apk", pattern: "/pkgs/slendmail_*_linux_amd64.apk",
-		install: []string{"apk", "add", "--allow-untrusted", "--no-network"}, remove: []string{"apk", "del", "--no-network", "slendmail"},
-		cron: []string{"crond", "-f", "-d", "0"}, cronFile: "/etc/crontabs/slendmail",
+		format: "apk", pattern: "/pkgs/mailcrier_*_linux_amd64.apk",
+		install: []string{"apk", "add", "--allow-untrusted", "--no-network"}, remove: []string{"apk", "del", "--no-network", "mailcrier"},
+		cron: []string{"crond", "-f", "-d", "0"}, cronFile: "/etc/crontabs/mailcrier",
 		mta: "/bin/busybox",
 	},
 }
@@ -209,10 +209,10 @@ func credential(t *testing.T, name string) *syscall.Credential {
 	return &syscall.Credential{Uid: uint32(uid), Gid: uint32(gid)}
 }
 
-// serviceGID returns the group slendmail the package created.
+// serviceGID returns the group mailcrier the package created.
 func serviceGID(t *testing.T) int {
 	t.Helper()
-	group, err := user.LookupGroup("slendmail")
+	group, err := user.LookupGroup("mailcrier")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +259,7 @@ func checkMode(t *testing.T, path string, uid, gid int, mode os.FileMode) {
 	}
 }
 
-// writeConfig replaces the configuration, root:slendmail 0640 as the
+// writeConfig replaces the configuration, root:mailcrier 0640 as the
 // package installs it.
 func writeConfig(t *testing.T, content string) {
 	t.Helper()
@@ -361,7 +361,7 @@ func listSpool(t *testing.T) string {
 	return list
 }
 
-// event is one request of slendmail to the receiver: the publish of a text
+// event is one request of mailcrier to the receiver: the publish of a text
 // (POST) or of an attachment (PUT).
 type event struct {
 	method, title, message, filename string
@@ -443,7 +443,7 @@ func (r *receiver) report() string {
 	return fmt.Sprintf("requests without a marker: %+v", r.unmatched)
 }
 
-// isEmpty tells that ch holds no request now; slendmail sends before it
+// isEmpty tells that ch holds no request now; mailcrier sends before it
 // exits, so after its exit nothing more arrives for its message.
 func isEmpty(ch <-chan event) bool {
 	select {

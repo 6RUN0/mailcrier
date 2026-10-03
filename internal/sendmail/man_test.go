@@ -12,7 +12,7 @@ import (
 // own to Fl, so that the synopsis, which names them too, does not count,
 // and neither does ".Fl tiIv" for t.
 func TestManPageListsOptions(t *testing.T) {
-	page, err := os.ReadFile("../../docs/slendmail.8")
+	page, err := os.ReadFile("../../docs/mailcrier.8")
 	if err != nil {
 		t.Fatal(err)
 	}

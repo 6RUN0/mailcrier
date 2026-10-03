@@ -51,11 +51,11 @@ func TestCheckConfigShoutrrr(t *testing.T) {
 		checkConfigCase
 	}{
 		{"unknown-service", checkConfigCase{doc: "[target.bus]\ntype = \"shoutrrr\"\nurl = \"foo://example.org\"\n", want: 78,
-			line: `error: /etc/slendmail.conf: target "bus": unknown shoutrrr service "foo"`}},
+			line: `error: /etc/mailcrier.conf: target "bus": unknown shoutrrr service "foo"`}},
 		{"url-rejected", checkConfigCase{doc: "[target.bus]\ntype = \"shoutrrr\"\nurl = \"telegram://telegram?chats=1\"\n", want: 78,
-			line: `error: /etc/slendmail.conf: target "bus": URL rejected by shoutrrr service "telegram"`}},
+			line: `error: /etc/mailcrier.conf: target "bus": URL rejected by shoutrrr service "telegram"`}},
 		{"native-type", checkConfigCase{doc: "[target.bus]\ntype = \"shoutrrr\"\nurl = \"telegram://123456:ABC@telegram?chats=1\"\n",
-			line: `warning: /etc/slendmail.conf:3:1: target "bus": shoutrrr service "telegram" has a native target type "telegram"`}},
+			line: `warning: /etc/mailcrier.conf:3:1: target "bus": shoutrrr service "telegram" has a native target type "telegram"`}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, tc.check)

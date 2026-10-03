@@ -46,9 +46,9 @@ func (c parseErrorCase) check(t *testing.T) {
 	config := "[target.api]\ntype = \"http\"\nurl = \"http://127.0.0.1:1\"\ntemplate = '" + c.template + "'\n"
 	inv := &invocation{config: config, spoolDir: dir, stdin: strings.NewReader("Subject: t\n\nb\n")}
 	if code := inv.run(t); code != 78 {
-		t.Fatalf("Run() = %d, want 78; log:\n%s", code, inv.log("slendmail"))
+		t.Fatalf("Run() = %d, want 78; log:\n%s", code, inv.log("mailcrier"))
 	}
-	log := inv.log("slendmail")
+	log := inv.log("mailcrier")
 	if !strings.Contains(log, "configuration rejected") || !strings.Contains(log, c.want) {
 		t.Errorf("log lacks %q:\n%s", c.want, log)
 	}
@@ -69,9 +69,9 @@ func TestRunTemplateParseError(t *testing.T) {
 		config := "[target.api]\ntype = \"http\"\nurl = \"http://127.0.0.1:1\"\ntemplate = '{{ now }}'\n"
 		inv := &invocation{config: config, spoolDir: t.TempDir(), args: []string{"-q"}, stdin: strings.NewReader("")}
 		if code := inv.run(t); code != 78 {
-			t.Fatalf("Run(-q) = %d, want 78; log:\n%s", code, inv.log("slendmail"))
+			t.Fatalf("Run(-q) = %d, want 78; log:\n%s", code, inv.log("mailcrier"))
 		}
-		if log := inv.log("slendmail"); !strings.Contains(log, "configuration rejected") || !strings.Contains(log, `target \"api\": template: api:1:`) {
+		if log := inv.log("mailcrier"); !strings.Contains(log, "configuration rejected") || !strings.Contains(log, `target \"api\": template: api:1:`) {
 			t.Errorf("log:\n%s", log)
 		}
 	})
@@ -88,7 +88,7 @@ func TestRunUserTemplates(t *testing.T) {
 		"[target.broken]\ntype = \"http\"\nurl = \"" + server.URL + "/broken\"\ntemplate = '{{ .Date | tz \"Mars/Olympus\" }}'\n"
 	inv := &invocation{config: config, stdin: strings.NewReader("Subject: disk failed\n\none\ntwo\n")}
 	if code := inv.run(t); code != 0 {
-		t.Fatalf("Run() = %d, want 0; log:\n%s", code, inv.log("slendmail"))
+		t.Fatalf("Run() = %d, want 0; log:\n%s", code, inv.log("mailcrier"))
 	}
 	t.Run("http-without-preset", func(t *testing.T) {
 		if got, want := received.bodies["/api"], `{"title": "DISK FAILED", "lines": 2}`; got != want || received.contentTypes["/api"] != "application/json" {
@@ -100,7 +100,7 @@ func TestRunUserTemplates(t *testing.T) {
 		if err := json.Unmarshal([]byte(received.bodies["/broken"]), &body); err != nil || body["subject"] != "disk failed" {
 			t.Errorf("body %q, %v, want the generic-json document", received.bodies["/broken"], err)
 		}
-		log := inv.log("slendmail")
+		log := inv.log("mailcrier")
 		want := `level=WARN msg="template failed, built-in used" target=broken err="user template: template: broken:1:`
 		if !strings.Contains(log, want) || !strings.Contains(log, "unknown time zone") {
 			t.Errorf("log lacks %q:\n%s", want, log)
@@ -145,7 +145,7 @@ func TestRunRequestParts(t *testing.T) {
 			"[target.api.query]\nsubject = \"{{ .Subject }}\"\n[target.api.headers]\nX-Host = \"{{ .Hostname | toUpper }}\"\n"
 		inv := &invocation{config: config, stdin: strings.NewReader(stdin)}
 		if code := inv.run(t); code != 0 || len(received.requests) != 1 {
-			t.Fatalf("Run() = %d, %d requests; log:\n%s", code, len(received.requests), inv.log("slendmail"))
+			t.Fatalf("Run() = %d, %d requests; log:\n%s", code, len(received.requests), inv.log("mailcrier"))
 		}
 		req := received.requests[0]
 		if req.Method != http.MethodGet || req.URL.EscapedPath() != "/in/hosts/host1.example.org/disk%20a%2Fb%20failed" ||
@@ -158,8 +158,8 @@ func TestRunRequestParts(t *testing.T) {
 	t.Run("T-TPL-16/fixed-path-to-other-host", func(t *testing.T) {
 		config := "[target.api]\ntype = \"http\"\nmethod = \"GET\"\nurl = \"http://127.0.0.1:1\"\npath = \"//evil.example/{{ .Hostname }}\"\n"
 		inv := &invocation{config: config, spoolDir: t.TempDir(), stdin: strings.NewReader(stdin)}
-		if code := inv.run(t); code != 78 || !strings.Contains(inv.log("slendmail"), `value of key \"path\" must start with a single /`) {
-			t.Errorf("Run() = %d; log:\n%s", code, inv.log("slendmail"))
+		if code := inv.run(t); code != 78 || !strings.Contains(inv.log("mailcrier"), `value of key \"path\" must start with a single /`) {
+			t.Errorf("Run() = %d; log:\n%s", code, inv.log("mailcrier"))
 		}
 	})
 	t.Run("T-TPL-16/path-renders-host", rejectedRequestCase{"path", "{{ .Subject }}", "path: must start with a single /"}.check)
@@ -174,22 +174,22 @@ func TestRunRequestParts(t *testing.T) {
 		config := "[target.api]\ntype = \"http\"\nmethod = \"GET\"\nurl = \"" + server.URL + "/in\"\n[target.api.headers]\nX-H = '{{ index .To 5 }}'\n"
 		inv := &invocation{config: config, spoolDir: dir, stdin: strings.NewReader(stdin)}
 		if code := inv.run(t); code != 69 {
-			t.Fatalf("Run() = %d, want 69; log:\n%s", code, inv.log("slendmail"))
+			t.Fatalf("Run() = %d, want 69; log:\n%s", code, inv.log("mailcrier"))
 		}
 		queueRun := &invocation{config: config, spoolDir: dir, args: []string{"-q"}, stdin: strings.NewReader("")}
 		if code := queueRun.run(t); code != 0 {
-			t.Fatalf("Run(-q) = %d; log:\n%s", code, queueRun.log("slendmail"))
+			t.Fatalf("Run(-q) = %d; log:\n%s", code, queueRun.log("mailcrier"))
 		}
 		entries, _ := filepath.Glob(filepath.Join(dir, "*", "*.eml"))
-		if len(entries) != 0 || len(received.requests) != 0 || !strings.Contains(inv.log("slendmail"), "request template failed") {
-			t.Errorf("entries %v, %d requests; log:\n%s", entries, len(received.requests), inv.log("slendmail"))
+		if len(entries) != 0 || len(received.requests) != 0 || !strings.Contains(inv.log("mailcrier"), "request template failed") {
+			t.Errorf("entries %v, %d requests; log:\n%s", entries, len(received.requests), inv.log("mailcrier"))
 		}
 	})
 	t.Run("T-TPL-04/header-parse-error", func(t *testing.T) {
 		config := "[target.api]\ntype = \"http\"\nmethod = \"GET\"\nurl = \"http://127.0.0.1:1\"\n[target.api.headers]\nX-H = \"{{ .Subject \"\n"
 		inv := &invocation{config: config, spoolDir: t.TempDir(), stdin: strings.NewReader(stdin)}
-		if code := inv.run(t); code != 78 || !strings.Contains(inv.log("slendmail"), `template: api.headers.X-H:1:`) {
-			t.Errorf("Run() = %d; log:\n%s", code, inv.log("slendmail"))
+		if code := inv.run(t); code != 78 || !strings.Contains(inv.log("mailcrier"), `template: api.headers.X-H:1:`) {
+			t.Errorf("Run() = %d; log:\n%s", code, inv.log("mailcrier"))
 		}
 	})
 }
@@ -210,9 +210,9 @@ func (c rejectedRequestCase) check(t *testing.T) {
 	}
 	inv := &invocation{config: config, stdin: strings.NewReader("Subject: http://evil.example/x\n\nline one\nline two\n")}
 	if code := inv.run(t); code != 69 || len(received.requests) != 0 {
-		t.Fatalf("Run() = %d, %d requests, want 69 and none; log:\n%s", code, len(received.requests), inv.log("slendmail"))
+		t.Fatalf("Run() = %d, %d requests, want 69 and none; log:\n%s", code, len(received.requests), inv.log("mailcrier"))
 	}
-	if log := inv.log("slendmail"); !strings.Contains(log, c.want) || strings.Contains(log, "evil") {
+	if log := inv.log("mailcrier"); !strings.Contains(log, c.want) || strings.Contains(log, "evil") {
 		t.Errorf("log lacks %q or quotes the message:\n%s", c.want, log)
 	}
 }

@@ -104,9 +104,9 @@ func TestRunExitStatusMatrix(t *testing.T) {
 			rec := &recorder{statuses: tc.statuses}
 			inv := &invocation{config: twoTargets, stdin: strings.NewReader("Subject: t\n\nb\n"), deliver: rec.deliver}
 			if code := inv.run(t); code != tc.want {
-				t.Fatalf("Run() = %d, want %d; log:\n%s", code, tc.want, inv.log("slendmail"))
+				t.Fatalf("Run() = %d, want %d; log:\n%s", code, tc.want, inv.log("mailcrier"))
 			}
-			log := inv.log("slendmail")
+			log := inv.log("mailcrier")
 			for _, want := range tc.wantLog {
 				if !strings.Contains(log, want) {
 					t.Errorf("log lacks %q:\n%s", want, log)
@@ -162,7 +162,7 @@ func (tc runRejectsCommandLineCase) check(t *testing.T) {
 	if code := inv.run(t); code != 64 {
 		t.Fatalf("Run() = %d, want 64", code)
 	}
-	if got := inv.stderr.String(); got != "slendmail: "+tc.wantStderr+"\n" {
+	if got := inv.stderr.String(); got != "mailcrier: "+tc.wantStderr+"\n" {
 		t.Errorf("stderr = %q", got)
 	}
 	if strings.Contains(inv.output(), "x@example.org") {
@@ -181,8 +181,8 @@ func TestRunModes(t *testing.T) {
 	t.Run("T-MTA-31/mailq", runModesCase{"/usr/bin/mailq", nil, 0, "queue is empty\n"}.check)
 	t.Run("T-MTA-31/bp", runModesCase{"", []string{"-bp"}, 0, "queue is empty\n"}.check)
 	t.Run("T-MTA-34/q-interval", runModesCase{"", []string{"-q30m"}, 0, ""}.check)
-	t.Run("version", runModesCase{"", []string{"--version"}, 0, "slendmail "}.check)
-	t.Run("help", runModesCase{"", []string{"--help"}, 0, "usage: slendmail"}.check)
+	t.Run("version", runModesCase{"", []string{"--version"}, 0, "mailcrier "}.check)
+	t.Run("help", runModesCase{"", []string{"--help"}, 0, "usage: mailcrier"}.check)
 	t.Run("status-without-spool", runModesCase{"", []string{"--status"}, 0, "queued=0 held=0 failed=0 tmp=0 bytes=0 oldest_age_seconds=0\n"}.check)
 }
 
@@ -233,8 +233,8 @@ func (tc runWithoutRecipientsCase) check(t *testing.T) {
 	if len(rec.env.Recipients) != 0 || len(rec.data) != 2 {
 		t.Errorf("recipients %q, %d deliveries; want none and 2", rec.env.Recipients, len(rec.data))
 	}
-	if !strings.Contains(inv.log("slendmail"), "recipients=0") {
-		t.Errorf("log lacks recipients=0:\n%s", inv.log("slendmail"))
+	if !strings.Contains(inv.log("mailcrier"), "recipients=0") {
+		t.Errorf("log lacks recipients=0:\n%s", inv.log("mailcrier"))
 	}
 }
 
@@ -315,7 +315,7 @@ func TestRunLogsOptionWarnings(t *testing.T) {
 		if code := inv.run(t); code != 0 {
 			t.Fatalf("Run() = %d, want 0", code)
 		}
-		log := inv.log("slendmail")
+		log := inv.log("mailcrier")
 		for _, want := range []string{
 			`level=WARN msg="unknown option" option=-x`,
 			`level=WARN msg="unknown option" option=--color`,
@@ -338,7 +338,7 @@ func TestRunLogsOptionWarnings(t *testing.T) {
 		if code := inv.run(t); code != 0 {
 			t.Fatalf("Run() = %d, want 0", code)
 		}
-		log := inv.log("slendmail")
+		log := inv.log("mailcrier")
 		if strings.Count(log, `msg="unknown option"`) != 16 || !strings.Contains(log, `level=WARN msg="warnings suppressed" count=4`) {
 			t.Errorf("log does not cap the warnings:\n%s", log)
 		}
@@ -378,8 +378,8 @@ func TestRunReadWarnings(t *testing.T) {
 		if len(rec.data) != 2 || rec.data[0].Subject != "t" || rec.data[0].Body != "not a header\nbody\n" {
 			t.Errorf("deliveries = %+v", rec.data)
 		}
-		if want := `level=WARN msg="` + message.WarningMalformedHeader + `"`; !strings.Contains(inv.log("slendmail"), want) {
-			t.Errorf("log lacks %q:\n%s", want, inv.log("slendmail"))
+		if want := `level=WARN msg="` + message.WarningMalformedHeader + `"`; !strings.Contains(inv.log("mailcrier"), want) {
+			t.Errorf("log lacks %q:\n%s", want, inv.log("mailcrier"))
 		}
 	})
 	t.Run("T-ADJ-25/delivered-exits-0", func(t *testing.T) {
@@ -431,7 +431,7 @@ func TestRunDotConvention(t *testing.T) {
 // TestRunCronieCommandLine runs cronie's mailer command line against a
 // local HTTP receiver, as an operator would by hand:
 //
-//	printf 'To: root\nSubject: t\n\nb\n' | slendmail -FCronDaemon -i -odi -oem -oi -t -f root
+//	printf 'To: root\nSubject: t\n\nb\n' | mailcrier -FCronDaemon -i -odi -oem -oi -t -f root
 //
 // The message arrives and the exit status is 0.
 func TestRunCronieCommandLine(t *testing.T) {
@@ -461,7 +461,7 @@ func TestRunCronieCommandLine(t *testing.T) {
 		default:
 			t.Fatal("receiver got no request")
 		}
-		if log := inv.log("slendmail"); strings.Contains(log, "level=WARN") || !strings.Contains(log, "recipients=1") {
+		if log := inv.log("mailcrier"); strings.Contains(log, "level=WARN") || !strings.Contains(log, "recipients=1") {
 			t.Errorf("log has a warning or lacks recipients=1:\n%s", log)
 		}
 	})
@@ -498,7 +498,7 @@ func TestRunKeepsConfiguredTruncated(t *testing.T) {
 		stdin:  strings.NewReader("Subject: t\n\n" + strings.Repeat("строка\n", 100)),
 	}
 	if code := inv.run(t); code != 0 {
-		t.Fatalf("Run() = %d, want 0; log:\n%s", code, inv.log("slendmail"))
+		t.Fatalf("Run() = %d, want 0; log:\n%s", code, inv.log("mailcrier"))
 	}
 	select {
 	case body := <-bodies:

@@ -98,19 +98,19 @@ func TestProbe(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("Run() = %d, want 0; output:\n%s", code, inv.output())
 		}
-		if body := <-server.bodies; !strings.Contains(body, "slendmail probe from host1.example.org") {
+		if body := <-server.bodies; !strings.Contains(body, "mailcrier probe from host1.example.org") {
 			t.Errorf("receiver got %q", body)
 		}
 		if got := inv.stdout.String(); got != "target=a class=ok\n" {
 			t.Errorf("stdout = %q", got)
 		}
-		if log := inv.log("slendmail"); !strings.Contains(log, `level=INFO msg="probe sent" targets=1`) {
+		if log := inv.log("mailcrier"); !strings.Contains(log, `level=INFO msg="probe sent" targets=1`) {
 			t.Errorf("log lacks the record:\n%s", log)
 		}
 	})
 	t.Run("rules-do-not-apply", func(t *testing.T) {
 		server := newStatusServer(t, 200, 0)
-		doc := httpTarget("a", server.URL) + httpTarget("b", server.URL) + "[[suppress]]\nsubject = \"slendmail probe*\"\n[[route]]\ntargets = [\"a\"]\n"
+		doc := httpTarget("a", server.URL) + httpTarget("b", server.URL) + "[[suppress]]\nsubject = \"mailcrier probe*\"\n[[route]]\ntargets = [\"a\"]\n"
 		if code, inv := probe(t, doc); code != 0 || server.requests.Load() != 2 {
 			t.Errorf("Run() = %d with %d requests, want 0 and 2; output:\n%s", code, server.requests.Load(), inv.output())
 		}
@@ -128,7 +128,7 @@ func TestProbe(t *testing.T) {
 		if code != 64 || a.requests.Load() != 0 {
 			t.Errorf("Run() = %d with %d requests, want 64 and none", code, a.requests.Load())
 		}
-		if got := inv.stderr.String(); got != "slendmail: --probe: no target \"nope\"\n" {
+		if got := inv.stderr.String(); got != "mailcrier: --probe: no target \"nope\"\n" {
 			t.Errorf("stderr = %q", got)
 		}
 	})
@@ -220,7 +220,7 @@ func TestProbe(t *testing.T) {
 		if code != 78 || server.requests.Load() != 0 {
 			t.Errorf("Run() = %d with %d requests, want 78 and none", code, server.requests.Load())
 		}
-		if got := inv.stderr.String(); !strings.HasPrefix(got, "error: /etc/slendmail.conf:5:1: unknown key") {
+		if got := inv.stderr.String(); !strings.HasPrefix(got, "error: /etc/mailcrier.conf:5:1: unknown key") {
 			t.Errorf("stderr = %q", got)
 		}
 	})
@@ -250,7 +250,7 @@ func TestProbeRunsHooks(t *testing.T) {
 				t.Fatalf("Run() = %d, want %d; output:\n%s", code, tc.want, inv.output())
 			}
 			stdin, err := os.ReadFile(path + ".stdin")
-			if err != nil || !strings.Contains(string(stdin), "Subject: slendmail probe from host1.example.org\n") {
+			if err != nil || !strings.Contains(string(stdin), "Subject: mailcrier probe from host1.example.org\n") {
 				t.Errorf("hook stdin = %q, %v", stdin, err)
 			}
 		})

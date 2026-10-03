@@ -1,11 +1,11 @@
 ---
 version: 2
-project_name: slendmail
+project_name: mailcrier
 
 builds:
-  - id: slendmail
-    main: ./cmd/slendmail
-    binary: slendmail
+  - id: mailcrier
+    main: ./cmd/mailcrier
+    binary: mailcrier
     env:
       - CGO_ENABLED=0
     goos:
@@ -21,9 +21,9 @@ builds:
     ldflags:
       - -s -w -buildid=
     mod_timestamp: "{{ .CommitTimestamp }}"
-  - id: slendmail-minimal
-    main: ./cmd/slendmail
-    binary: slendmail-minimal
+  - id: mailcrier-minimal
+    main: ./cmd/mailcrier
+    binary: mailcrier-minimal
     tags:
       - noshoutrrr
     env:
@@ -43,21 +43,21 @@ builds:
     mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
-  - id: slendmail
+  - id: mailcrier
     ids:
-      - slendmail
+      - mailcrier
     formats:
       - binary
-  - id: slendmail-minimal
+  - id: mailcrier-minimal
     ids:
-      - slendmail-minimal
+      - mailcrier-minimal
     formats:
       - binary
 
 nfpms:
-  - id: slendmail
+  - id: mailcrier
     ids:
-      - slendmail
+      - mailcrier
     formats:
       - deb
       - rpm
@@ -69,7 +69,7 @@ nfpms:
     description: |-
       sendmail replacement that sends mail to chat services
       Local tools such as cron, sudo, mdadm or smartd pipe a message into
-      /usr/sbin/sendmail; slendmail delivers it to Telegram, Discord, Slack,
+      /usr/sbin/sendmail; mailcrier delivers it to Telegram, Discord, Slack,
       ntfy, an HTTP webhook, a shoutrrr service or a program of your own.
     bindir: /usr/sbin
     mtime: "{{ .CommitDate }}"
@@ -113,49 +113,49 @@ nfpms:
           postremove: packaging/scripts/apk/post-deinstall.sh
     contents:
       - dst: /usr/sbin/sendmail
-        src: slendmail
+        src: mailcrier
         type: symlink
         packager: deb
         file_info:
           mode: 0o777
       - dst: /usr/lib/sendmail
-        src: ../sbin/slendmail
+        src: ../sbin/mailcrier
         type: symlink
         packager: deb
         file_info:
           mode: 0o777
       - dst: /usr/bin/mailq
-        src: ../sbin/slendmail
+        src: ../sbin/mailcrier
         type: symlink
         packager: deb
         file_info:
           mode: 0o777
       - dst: /usr/bin/newaliases
-        src: ../sbin/slendmail
+        src: ../sbin/mailcrier
         type: symlink
         packager: deb
         file_info:
           mode: 0o777
       - dst: /usr/sbin/sendmail
-        src: slendmail
+        src: mailcrier
         type: symlink
         packager: apk
         file_info:
           mode: 0o777
       - dst: /usr/lib/sendmail
-        src: ../sbin/slendmail
+        src: ../sbin/mailcrier
         type: symlink
         packager: apk
         file_info:
           mode: 0o777
       - dst: /usr/bin/mailq
-        src: ../sbin/slendmail
+        src: ../sbin/mailcrier
         type: symlink
         packager: apk
         file_info:
           mode: 0o777
       - dst: /usr/bin/newaliases
-        src: ../sbin/slendmail
+        src: ../sbin/mailcrier
         type: symlink
         packager: apk
         file_info:
@@ -172,144 +172,144 @@ nfpms:
       - dst: /usr/bin/newaliases
         type: ghost
         packager: rpm
-      - dst: /etc/slendmail.conf
-        src: packaging/slendmail.conf
+      - dst: /etc/mailcrier.conf
+        src: packaging/mailcrier.conf
         type: config|noreplace
         file_info:
           owner: root
-          group: slendmail
+          group: mailcrier
           mode: 0o640
-      - dst: /etc/slendmail.d
+      - dst: /etc/mailcrier.d
         type: dir
         file_info:
           owner: root
-          group: slendmail
+          group: mailcrier
           mode: 0o750
-      - dst: /var/spool/slendmail
+      - dst: /var/spool/mailcrier
         type: dir
         file_info:
           owner: root
-          group: slendmail
+          group: mailcrier
           mode: 0o750
-      - dst: /var/spool/slendmail/tmp
+      - dst: /var/spool/mailcrier/tmp
         type: dir
         file_info:
           owner: root
-          group: slendmail
+          group: mailcrier
           mode: 0o2770
-      - dst: /var/spool/slendmail/queue
+      - dst: /var/spool/mailcrier/queue
         type: dir
         file_info:
           owner: root
-          group: slendmail
+          group: mailcrier
           mode: 0o2770
-      - dst: /var/spool/slendmail/hold
+      - dst: /var/spool/mailcrier/hold
         type: dir
         file_info:
           owner: root
-          group: slendmail
+          group: mailcrier
           mode: 0o2770
-      - dst: /var/spool/slendmail/failed
+      - dst: /var/spool/mailcrier/failed
         type: dir
         file_info:
           owner: root
-          group: slendmail
+          group: mailcrier
           mode: 0o2770
-      - dst: /var/spool/slendmail/locks
+      - dst: /var/spool/mailcrier/locks
         type: dir
         file_info:
           owner: root
-          group: slendmail
+          group: mailcrier
           mode: 0o2770
-      - dst: /usr/lib/systemd/system/slendmail-queue.service
-        src: packaging/systemd/slendmail-queue.service
+      - dst: /usr/lib/systemd/system/mailcrier-queue.service
+        src: packaging/systemd/mailcrier-queue.service
         packager: deb
         file_info:
           mode: 0o644
-      - dst: /usr/lib/systemd/system/slendmail-queue.timer
-        src: packaging/systemd/slendmail-queue.timer
+      - dst: /usr/lib/systemd/system/mailcrier-queue.timer
+        src: packaging/systemd/mailcrier-queue.timer
         packager: deb
         file_info:
           mode: 0o644
-      - dst: /usr/lib/systemd/system/slendmail-queue.service
-        src: packaging/systemd/slendmail-queue.service
+      - dst: /usr/lib/systemd/system/mailcrier-queue.service
+        src: packaging/systemd/mailcrier-queue.service
         packager: rpm
         file_info:
           mode: 0o644
-      - dst: /usr/lib/systemd/system/slendmail-queue.timer
-        src: packaging/systemd/slendmail-queue.timer
+      - dst: /usr/lib/systemd/system/mailcrier-queue.timer
+        src: packaging/systemd/mailcrier-queue.timer
         packager: rpm
         file_info:
           mode: 0o644
-      - dst: /etc/cron.d/slendmail
-        src: packaging/cron/slendmail
+      - dst: /etc/cron.d/mailcrier
+        src: packaging/cron/mailcrier
         type: config|noreplace
         packager: deb
         file_info:
           mode: 0o644
-      - dst: /etc/cron.d/slendmail
-        src: packaging/cron/slendmail
+      - dst: /etc/cron.d/mailcrier
+        src: packaging/cron/mailcrier
         type: config|noreplace
         packager: rpm
         file_info:
           mode: 0o644
-      - dst: /etc/crontabs/slendmail
-        src: packaging/cron/crontabs-slendmail
+      - dst: /etc/crontabs/mailcrier
+        src: packaging/cron/crontabs-mailcrier
         packager: apk
         file_info:
           mode: 0o600
-      - dst: /usr/share/man/man8/slendmail.8
-        src: docs/slendmail.8
+      - dst: /usr/share/man/man8/mailcrier.8
+        src: docs/mailcrier.8
         file_info:
           mode: 0o644
-      - dst: /usr/share/doc/slendmail/examples/slendmail.conf
-        src: packaging/examples/slendmail.conf
+      - dst: /usr/share/doc/mailcrier/examples/mailcrier.conf
+        src: packaging/examples/mailcrier.conf
         file_info:
           mode: 0o644
-      - dst: /usr/share/doc/slendmail/examples/telegram.conf
+      - dst: /usr/share/doc/mailcrier/examples/telegram.conf
         src: packaging/examples/telegram.conf
         file_info:
           mode: 0o644
-      - dst: /usr/share/doc/slendmail/examples/team-chat.conf
+      - dst: /usr/share/doc/mailcrier/examples/team-chat.conf
         src: packaging/examples/team-chat.conf
         file_info:
           mode: 0o644
-      - dst: /usr/share/doc/slendmail/examples/ntfy.conf
+      - dst: /usr/share/doc/mailcrier/examples/ntfy.conf
         src: packaging/examples/ntfy.conf
         file_info:
           mode: 0o644
-      - dst: /usr/share/doc/slendmail/examples/webhook.conf
+      - dst: /usr/share/doc/mailcrier/examples/webhook.conf
         src: packaging/examples/webhook.conf
         file_info:
           mode: 0o644
-      - dst: /usr/share/doc/slendmail/examples/hook.conf
+      - dst: /usr/share/doc/mailcrier/examples/hook.conf
         src: packaging/examples/hook.conf
         file_info:
           mode: 0o644
-      - dst: /usr/share/doc/slendmail/examples/routes.conf
+      - dst: /usr/share/doc/mailcrier/examples/routes.conf
         src: packaging/examples/routes.conf
         file_info:
           mode: 0o644
-      - dst: /usr/share/doc/slendmail/examples/templates.conf
+      - dst: /usr/share/doc/mailcrier/examples/templates.conf
         src: packaging/examples/templates.conf
         file_info:
           mode: 0o644
-      - dst: /usr/share/doc/slendmail/examples/container.conf
+      - dst: /usr/share/doc/mailcrier/examples/container.conf
         src: packaging/examples/container.conf
         file_info:
           mode: 0o644
-      - dst: /usr/share/doc/slendmail/copyright
+      - dst: /usr/share/doc/mailcrier/copyright
         src: LICENSE
         packager: deb
         file_info:
           mode: 0o644
-      - dst: /usr/share/licenses/slendmail/LICENSE
+      - dst: /usr/share/licenses/mailcrier/LICENSE
         src: LICENSE
         type: license
         packager: rpm
         file_info:
           mode: 0o644
-      - dst: /usr/share/licenses/slendmail/LICENSE
+      - dst: /usr/share/licenses/mailcrier/LICENSE
         src: LICENSE
         packager: apk
         file_info:

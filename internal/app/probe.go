@@ -41,7 +41,7 @@ func runProbe(ctx context.Context, d Deps, log *slog.Logger, newLogger func(tag 
 	}
 	selected, unknown := selectProbeTargets(targets, inv.Recipients)
 	if unknown != "" {
-		_, _ = fmt.Fprintf(d.Stderr, "slendmail: %s: no target %q\n", sendmail.OptionProbe, unknown)
+		_, _ = fmt.Fprintf(d.Stderr, "mailcrier: %s: no target %q\n", sendmail.OptionProbe, unknown)
 		log.Error("probe target unknown", "target", unknown)
 		return exitUsage
 	}

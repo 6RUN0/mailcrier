@@ -56,7 +56,7 @@ const (
 )
 
 // envConfig names another configuration file, like --config.
-const envConfig = "SLENDMAIL_CONFIG"
+const envConfig = "MAILCRIER_CONFIG"
 
 // Deps are the parts of the environment an invocation uses.
 type Deps struct {
@@ -65,7 +65,7 @@ type Deps struct {
 	NewLogger func(tag string) *slog.Logger
 	// ConfigFS is the file system root, "/" in a real invocation; ConfigPath
 	// is the default configuration file relative to it. An absolute path
-	// from --config or SLENDMAIL_CONFIG and the secret files named in the
+	// from --config or MAILCRIER_CONFIG and the secret files named in the
 	// configuration are read from ConfigFS with the leading slash removed.
 	ConfigFS   fs.FS
 	ConfigPath string
@@ -159,7 +159,7 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 	}
 	inv, warnings, err := sendmail.Parse(d.Program, args)
 	if err != nil {
-		_, _ = fmt.Fprintf(d.Stderr, "slendmail: %v\n", err)
+		_, _ = fmt.Fprintf(d.Stderr, "mailcrier: %v\n", err)
 		log.Error("command line rejected", "err", err)
 		return exitUsage
 	}
@@ -439,7 +439,7 @@ func runMode(d Deps, log *slog.Logger, mode sendmail.Mode) int {
 	case sendmail.NewAliases:
 		return exitOK
 	case sendmail.Version:
-		_, _ = fmt.Fprintln(d.Stdout, "slendmail", buildVersion())
+		_, _ = fmt.Fprintln(d.Stdout, "mailcrier", buildVersion())
 		return exitOK
 	case sendmail.Help:
 		_, _ = io.WriteString(d.Stdout, sendmail.Usage)
@@ -485,7 +485,7 @@ func newCallID() string {
 }
 
 // selectConfigPath returns the configuration file relative to d.ConfigFS:
-// --config wins over SLENDMAIL_CONFIG, which wins over the default. An
+// --config wins over MAILCRIER_CONFIG, which wins over the default. An
 // elevated process ignores both, with a warning: they would let any user
 // read an arbitrary file, or send the message to a receiver of their own,
 // with the group privilege.

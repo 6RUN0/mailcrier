@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const configPath = "etc/slendmail.conf"
+const configPath = "etc/mailcrier.conf"
 
 func load(t *testing.T, doc string, extra fstest.MapFS) (*Config, error) {
 	t.Helper()
@@ -28,7 +28,7 @@ syslog_tag = "mail-notify"
 
 [target.hook]
 type = "http"
-url_file = "/etc/slendmail.d/hook.url"
+url_file = "/etc/mailcrier.d/hook.url"
 preset = "generic-json"
 method = "PUT"
 
@@ -58,7 +58,7 @@ type = "exec"
 argv = ["/usr/local/bin/notify", "--to", "ops"]
 timeout = "10s"
 `
-	secret := fstest.MapFS{"etc/slendmail.d/hook.url": {Data: []byte("https://example.org/hooks/secret\n")}}
+	secret := fstest.MapFS{"etc/mailcrier.d/hook.url": {Data: []byte("https://example.org/hooks/secret\n")}}
 	cfg, err := load(t, doc, secret)
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -309,7 +309,7 @@ func TestLoadRejects(t *testing.T) {
 		},
 		{
 			name: "token-and-token-file",
-			doc:  "[target.tg]\ntype = \"telegram\"\ntoken = \"123:abc\"\ntoken_file = \"/etc/slendmail.d/tg.token\"\nchat_id = \"1\"\n",
+			doc:  "[target.tg]\ntype = \"telegram\"\ntoken = \"123:abc\"\ntoken_file = \"/etc/mailcrier.d/tg.token\"\nchat_id = \"1\"\n",
 			want: `:4:1: target "tg": keys "token" and "token_file" are mutually exclusive`,
 		},
 		{
@@ -339,8 +339,8 @@ func TestLoadRejects(t *testing.T) {
 		},
 		{
 			name: "missing-secret-file",
-			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl_file = \"/etc/slendmail.d/hook.url\"\n",
-			want: `:4:1: target "hook": url_file: /etc/slendmail.d/hook.url: file does not exist`,
+			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl_file = \"/etc/mailcrier.d/hook.url\"\n",
+			want: `:4:1: target "hook": url_file: /etc/mailcrier.d/hook.url: file does not exist`,
 		},
 		{
 			name: "wrong-value-type",
@@ -514,9 +514,9 @@ func TestLoadErrorOmitsValues(t *testing.T) {
 }
 
 func TestLoadRejectsBadURLFileContent(t *testing.T) {
-	doc := "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl_file = \"/etc/slendmail.d/hook.url\"\n"
+	doc := "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl_file = \"/etc/mailcrier.d/hook.url\"\n"
 	for _, content := range []string{"", "\n", "hooks.example.org/SECRET\n"} {
-		_, err := load(t, doc, fstest.MapFS{"etc/slendmail.d/hook.url": {Data: []byte(content)}})
+		_, err := load(t, doc, fstest.MapFS{"etc/mailcrier.d/hook.url": {Data: []byte(content)}})
 		want := "/" + configPath + `:4:1: target "hook": value of key "url_file" is not an absolute http or https URL`
 		if err == nil || err.Error() != want {
 			t.Errorf("url_file content %q: error %v, want %s", content, err, want)
@@ -529,9 +529,9 @@ func TestLoadRejectsBadURLFileContent(t *testing.T) {
 // template needs no preset.
 func TestLoadTemplates(t *testing.T) {
 	doc := "[target.hook]\ntype = \"http\"\nurl = \"https://example.org\"\ntemplate = \"{{ toJson .Subject }}\"\n" +
-		"[target.tg]\ntype = \"telegram\"\ntoken = \"1:a\"\nchat_id = 1\ntemplate_file = \"/etc/slendmail.d/tg.tmpl\"\n" +
+		"[target.tg]\ntype = \"telegram\"\ntoken = \"1:a\"\nchat_id = 1\ntemplate_file = \"/etc/mailcrier.d/tg.tmpl\"\n" +
 		"[target.bus]\ntype = \"shoutrrr\"\nurl = \"gotify://example.org/token\"\ntemplate = \"{{ .Body }}\"\n"
-	cfg, err := load(t, doc, fstest.MapFS{"etc/slendmail.d/tg.tmpl": {Data: []byte("<b>{{ .Subject | tgHTML }}</b>\n\n")}})
+	cfg, err := load(t, doc, fstest.MapFS{"etc/mailcrier.d/tg.tmpl": {Data: []byte("<b>{{ .Subject | tgHTML }}</b>\n\n")}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -629,7 +629,7 @@ func TestReadmeExamplesLoad(t *testing.T) {
 		t.Fatalf("README section %q has no toml block", readmeConfigHeading)
 	}
 	secrets := fstest.MapFS{}
-	for _, name := range []string{"etc/slendmail.d/hook.url", "etc/slendmail.d/tg.token", "etc/slendmail.d/discord.url", "etc/slendmail.d/slack.token", "etc/slendmail.d/ntfy.url", "etc/slendmail.d/mm.url", "etc/slendmail.d/bus.url"} {
+	for _, name := range []string{"etc/mailcrier.d/hook.url", "etc/mailcrier.d/tg.token", "etc/mailcrier.d/discord.url", "etc/mailcrier.d/slack.token", "etc/mailcrier.d/ntfy.url", "etc/mailcrier.d/mm.url", "etc/mailcrier.d/bus.url"} {
 		secrets[name] = &fstest.MapFile{Data: []byte("https://hooks.example.org/in/secret\n")}
 	}
 	for i, block := range blocks {
@@ -683,7 +683,7 @@ func TestLoadSpool(t *testing.T) {
 			t.Fatalf("Load() error = %v", err)
 		}
 		want := Spool{
-			Dir: "/var/spool/slendmail", DrainBudget: Duration{10 * time.Second}, DrainMaxMessages: 20,
+			Dir: "/var/spool/mailcrier", DrainBudget: Duration{10 * time.Second}, DrainMaxMessages: 20,
 			RunBudget: Duration{time.Minute}, QueueTTL: Duration{7 * 24 * time.Hour}, HoldTTL: Duration{7 * 24 * time.Hour},
 			FailedTTL: Duration{30 * 24 * time.Hour}, MaxMessages: 1000, MaxBytes: 256 << 20,
 			MaxMessagesPerUID: 200, MaxBytesPerUID: 64 << 20,

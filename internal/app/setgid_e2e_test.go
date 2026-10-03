@@ -26,11 +26,11 @@ import (
 	"time"
 )
 
-// slendmailBinary is the binary under test, built with CGO_ENABLED=0.
-var slendmailBinary = flag.String("slendmail-binary", "", "path of the slendmail binary to install setgid")
+// mailcrierBinary is the binary under test, built with CGO_ENABLED=0.
+var mailcrierBinary = flag.String("mailcrier-binary", "", "path of the mailcrier binary to install setgid")
 
-// isInstalled runs the tests against /usr/sbin/slendmail of a package,
-// whose user and group slendmail have ids of their own.
+// isInstalled runs the tests against /usr/sbin/mailcrier of a package,
+// whose user and group mailcrier have ids of their own.
 var isInstalled = flag.Bool("installed", false, "test the binary, user, group and spool a package installed")
 
 // Ids of the throwaway system user and group, one number for both; the
@@ -56,8 +56,8 @@ func TestSetgidReexec(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Fatal("must run as root: it installs a setgid binary and a system group")
 	}
-	if *slendmailBinary == "" && !*isInstalled {
-		t.Fatal("-slendmail-binary or -installed is required")
+	if *mailcrierBinary == "" && !*isInstalled {
+		t.Fatal("-mailcrier-binary or -installed is required")
 	}
 	strace, err := exec.LookPath("strace")
 	if err != nil {
@@ -92,7 +92,7 @@ func TestSetgidReexec(t *testing.T) {
 	installSetgid(t)
 	ca := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: receiver.Certificate().Raw})
 	writeFile(t, "/etc/ssl/certs/ca-certificates.crt", ca, 0, 0, 0o644)
-	writeFile(t, "/etc/slendmail.conf", []byte(httpTargetConfig(receiver.URL+"/hook/"+secretToken)), 0, serviceGID, 0o640)
+	writeFile(t, "/etc/mailcrier.conf", []byte(httpTargetConfig(receiver.URL+"/hook/"+secretToken)), 0, serviceGID, 0o640)
 	evilConfig := filepath.Join(dir, "evil.conf")
 	writeFile(t, evilConfig, []byte(httpTargetConfig(evil.URL)), 0, 0, 0o644)
 	// Both variables, because with an empty SSL_CERT_FILE alone Go still
@@ -108,7 +108,7 @@ func TestSetgidReexec(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, strace, "-f", "-qq", "-e", "trace=execve,umask,openat", "-o", trace, "-u", nobodyUser,
-		"/usr/sbin/slendmail", "--config", evilConfig, "-ti")
+		"/usr/sbin/mailcrier", "--config", evilConfig, "-ti")
 	cmd.Env = []string{
 		"PATH=/usr/sbin:/usr/bin:/sbin:/bin",
 		"USER=" + nobodyUser,
@@ -117,10 +117,10 @@ func TestSetgidReexec(t *testing.T) {
 		"HTTP_PROXY=http://" + proxy,
 		"SSL_CERT_FILE=" + emptyBundle,
 		"SSL_CERT_DIR=" + emptyCertDir,
-		"SLENDMAIL_CONFIG=" + evilConfig,
+		"MAILCRIER_CONFIG=" + evilConfig,
 		// The time package opens a TZ path as a zone file; before the
 		// re-exec that would happen with the group of the binary.
-		"TZ=/etc/slendmail.conf",
+		"TZ=/etc/mailcrier.conf",
 	}
 	const bodyMarker = "BODY-MARKER-5c1d"
 	cmd.Stdin = strings.NewReader("Subject: setgid e2e\n\n" + bodyMarker + "\n")
@@ -129,7 +129,7 @@ func TestSetgidReexec(t *testing.T) {
 	runErr := cmd.Run()
 	t.Logf("output:\n%s", output.String())
 	if runErr != nil {
-		t.Errorf("slendmail failed: %v", runErr)
+		t.Errorf("mailcrier failed: %v", runErr)
 	}
 
 	select {
@@ -150,9 +150,9 @@ func TestSetgidReexec(t *testing.T) {
 	}
 	// Without syslog an elevated process tells its caller only constant
 	// messages: one warning per ignored override.
-	wantOutput := "slendmail: syslog unavailable, logging to stderr\n" +
-		"slendmail: configuration override ignored\n" +
-		"slendmail: configuration override ignored\n"
+	wantOutput := "mailcrier: syslog unavailable, logging to stderr\n" +
+		"mailcrier: configuration override ignored\n" +
+		"mailcrier: configuration override ignored\n"
 	if output.String() != wantOutput {
 		t.Errorf("output =\n%s\nwant\n%s", output.String(), wantOutput)
 	}
@@ -163,7 +163,7 @@ func TestSetgidReexec(t *testing.T) {
 	}
 	t.Logf("strace:\n%s", traced)
 	execs := successfulExecs(string(traced))
-	if len(execs) != 2 || execs[0].path != "/usr/sbin/slendmail" || execs[1].path != selfExe {
+	if len(execs) != 2 || execs[0].path != "/usr/sbin/mailcrier" || execs[1].path != selfExe {
 		t.Errorf("successful execve calls %+v, want the start and exactly one re-exec through %s", execs, selfExe)
 	}
 	if !strings.Contains(string(traced), "umask(007)") {
@@ -171,7 +171,7 @@ func TestSetgidReexec(t *testing.T) {
 	}
 	if len(execs) > 0 {
 		beforeReexec := string(traced)[:execs[len(execs)-1].offset]
-		if strings.Contains(beforeReexec, `openat(AT_FDCWD, "/etc/slendmail.conf"`) {
+		if strings.Contains(beforeReexec, `openat(AT_FDCWD, "/etc/mailcrier.conf"`) {
 			t.Error("the configuration path from TZ was opened before the re-exec")
 		}
 	}
@@ -200,9 +200,9 @@ func installSetgid(t *testing.T) {
 			checkInstalled(t)
 			return
 		}
-		appendFile(t, "/etc/group", fmt.Sprintf("slendmail:x:%d:\n", serviceGID))
-		appendFile(t, "/etc/passwd", fmt.Sprintf("slendmail:x:%d:%d::/nonexistent:/usr/sbin/nologin\n", serviceUID, serviceGID))
-		installFile(t, *slendmailBinary, "/usr/sbin/slendmail", 0, serviceGID, 0o755|os.ModeSetgid)
+		appendFile(t, "/etc/group", fmt.Sprintf("mailcrier:x:%d:\n", serviceGID))
+		appendFile(t, "/etc/passwd", fmt.Sprintf("mailcrier:x:%d:%d::/nonexistent:/usr/sbin/nologin\n", serviceUID, serviceGID))
+		installFile(t, *mailcrierBinary, "/usr/sbin/mailcrier", 0, serviceGID, 0o755|os.ModeSetgid)
 		for _, dir := range append([]string{spoolDir}, spoolAreas()...) {
 			if err := os.MkdirAll(dir, 0o755); err != nil {
 				t.Fatal(err)
@@ -225,16 +225,16 @@ func spoolAreas() []string {
 	return []string{spoolDir + "/tmp", spoolDir + "/queue", spoolDir + "/hold", spoolDir + "/failed", spoolDir + "/locks"}
 }
 
-// checkInstalled sets the service ids from the user and group slendmail
-// and checks that the binary is root:slendmail 2755 and every spool area
-// root:slendmail 2770.
+// checkInstalled sets the service ids from the user and group mailcrier
+// and checks that the binary is root:mailcrier 2755 and every spool area
+// root:mailcrier 2770.
 func checkInstalled(t *testing.T) {
 	t.Helper()
-	account, err := user.Lookup("slendmail")
+	account, err := user.Lookup("mailcrier")
 	if err != nil {
 		t.Fatal(err)
 	}
-	group, err := user.LookupGroup("slendmail")
+	group, err := user.LookupGroup("mailcrier")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +244,7 @@ func checkInstalled(t *testing.T) {
 	if serviceGID, err = strconv.Atoi(group.Gid); err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]os.FileMode{"/usr/sbin/slendmail": 0o755 | os.ModeSetgid}
+	want := map[string]os.FileMode{"/usr/sbin/mailcrier": 0o755 | os.ModeSetgid}
 	for _, dir := range spoolAreas() {
 		want[dir] = os.ModeDir | 0o770 | os.ModeSetgid
 	}
@@ -262,21 +262,21 @@ func checkInstalled(t *testing.T) {
 }
 
 // spoolDir is the spool directory of the packages.
-const spoolDir = "/var/spool/slendmail"
+const spoolDir = "/var/spool/mailcrier"
 
 // TestSetgidSpool runs the spool with real ids, laid out as the packages
 // do. A message of an unprivileged user sent while the configuration is
 // broken is held; its files belong to the caller and the service group,
 // and the caller can neither look into the spool nor see more than the
-// counts in mailq. Once the configuration is fixed, -q as slendmail
+// counts in mailq. Once the configuration is fixed, -q as mailcrier
 // delivers the entry of the other user. A temporary failure then queues
 // the next message and the call exits 0.
 func TestSetgidSpool(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Fatal("must run as root: it installs a setgid binary and a system group")
 	}
-	if *slendmailBinary == "" && !*isInstalled {
-		t.Fatal("-slendmail-binary or -installed is required")
+	if *mailcrierBinary == "" && !*isInstalled {
+		t.Fatal("-mailcrier-binary or -installed is required")
 	}
 	var isUp atomic.Bool
 	delivered := make(chan string, 4)
@@ -292,8 +292,8 @@ func TestSetgidSpool(t *testing.T) {
 	nobody := &syscall.Credential{Uid: nobodyID, Gid: nobodyID}
 	service := &syscall.Credential{Uid: uint32(serviceUID), Gid: uint32(serviceGID)}
 
-	writeFile(t, "/etc/slendmail.conf", []byte("[target.hook]\ntype = \"http\"\n"), 0, serviceGID, 0o640)
-	out, err := runAs(t, nobody, "Subject: held\n\nbody\n", "/usr/sbin/slendmail", "-ti")
+	writeFile(t, "/etc/mailcrier.conf", []byte("[target.hook]\ntype = \"http\"\n"), 0, serviceGID, 0o640)
+	out, err := runAs(t, nobody, "Subject: held\n\nbody\n", "/usr/sbin/mailcrier", "-ti")
 	if code := exitCode(err); code != 78 {
 		t.Fatalf("call with a broken configuration = %d (%v), want 78\n%s", code, err, out)
 	}
@@ -301,14 +301,14 @@ func TestSetgidSpool(t *testing.T) {
 	if out, err := runAs(t, nobody, "", "/bin/ls", spoolDir+"/hold"); err == nil {
 		t.Errorf("the caller lists the spool:\n%s", out)
 	}
-	if out, err := runAs(t, nobody, "", "/usr/sbin/slendmail", "-bp"); err != nil || !strings.HasPrefix(out, "0 queued, 1 held, 0 failed; oldest ") || strings.Count(out, "\n") != 1 {
+	if out, err := runAs(t, nobody, "", "/usr/sbin/mailcrier", "-bp"); err != nil || !strings.HasPrefix(out, "0 queued, 1 held, 0 failed; oldest ") || strings.Count(out, "\n") != 1 {
 		t.Errorf("mailq as the caller = %v, output:\n%s\nwant the counts line only", err, out)
 	}
 
-	writeFile(t, "/etc/slendmail.conf", []byte(httpTargetConfig(receiver.URL+"/hook")), 0, serviceGID, 0o640)
+	writeFile(t, "/etc/mailcrier.conf", []byte(httpTargetConfig(receiver.URL+"/hook")), 0, serviceGID, 0o640)
 	isUp.Store(true)
-	if out, err := runAs(t, service, "", "/usr/sbin/slendmail", "-q"); err != nil {
-		t.Fatalf("-q as slendmail failed: %v\n%s", err, out)
+	if out, err := runAs(t, service, "", "/usr/sbin/mailcrier", "-q"); err != nil {
+		t.Fatalf("-q as mailcrier failed: %v\n%s", err, out)
 	}
 	select {
 	case path := <-delivered:
@@ -318,12 +318,12 @@ func TestSetgidSpool(t *testing.T) {
 	default:
 		t.Error("the queue run delivered nothing")
 	}
-	if out, err := runAs(t, service, "", "/usr/sbin/slendmail", "-bp"); err != nil || out != "queue is empty\n" {
-		t.Errorf("mailq as slendmail = %v, output %q, want an empty queue", err, out)
+	if out, err := runAs(t, service, "", "/usr/sbin/mailcrier", "-bp"); err != nil || out != "queue is empty\n" {
+		t.Errorf("mailq as mailcrier = %v, output %q, want an empty queue", err, out)
 	}
 
 	isUp.Store(false)
-	if out, err := runAs(t, nobody, "Subject: queued\n\nbody\n", "/usr/sbin/slendmail", "-ti"); err != nil {
+	if out, err := runAs(t, nobody, "Subject: queued\n\nbody\n", "/usr/sbin/mailcrier", "-ti"); err != nil {
 		t.Fatalf("call with the receiver down = %v, want 0 for a queued message\n%s", err, out)
 	}
 	checkEntryFiles(t, spoolDir+"/queue")
@@ -337,8 +337,8 @@ func TestSetgidHookDropsGroup(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Fatal("must run as root: it installs a setgid binary and a system group")
 	}
-	if *slendmailBinary == "" && !*isInstalled {
-		t.Fatal("-slendmail-binary or -installed is required")
+	if *mailcrierBinary == "" && !*isInstalled {
+		t.Fatal("-mailcrier-binary or -installed is required")
 	}
 	dir, err := os.MkdirTemp("", "setgid-hook-")
 	if err != nil {
@@ -350,12 +350,12 @@ func TestSetgidHookDropsGroup(t *testing.T) {
 	}
 	report := filepath.Join(dir, "report")
 	hook := filepath.Join(dir, "hook")
-	script := "#!/bin/sh\n{ echo \"groups $(id -G)\"; echo \"egid $(id -g)\"; cat /etc/slendmail.conf >/dev/null 2>&1 && echo \"config readable\"; } >> " + report + "\nexit 0\n"
+	script := "#!/bin/sh\n{ echo \"groups $(id -G)\"; echo \"egid $(id -g)\"; cat /etc/mailcrier.conf >/dev/null 2>&1 && echo \"config readable\"; } >> " + report + "\nexit 0\n"
 	writeFile(t, hook, []byte(script), 0, 0, 0o755)
 	installSetgid(t)
-	writeFile(t, "/etc/slendmail.conf", []byte("[target.run]\ntype = \"exec\"\nargv = [\""+hook+"\"]\n"), 0, serviceGID, 0o640)
+	writeFile(t, "/etc/mailcrier.conf", []byte("[target.run]\ntype = \"exec\"\nargv = [\""+hook+"\"]\n"), 0, serviceGID, 0o640)
 
-	out, err := runAs(t, &syscall.Credential{Uid: nobodyID, Gid: nobodyID}, "Subject: hook\n\nbody\n", "/usr/sbin/slendmail", "-ti")
+	out, err := runAs(t, &syscall.Credential{Uid: nobodyID, Gid: nobodyID}, "Subject: hook\n\nbody\n", "/usr/sbin/mailcrier", "-ti")
 	if err != nil {
 		t.Fatalf("call with an exec target = %v, want 0\n%s", err, out)
 	}

@@ -1,0 +1,14 @@
+[Unit]
+Description=Deliver the mailcrier queue
+Documentation=man:mailcrier(8)
+
+[Service]
+Type=oneshot
+User=mailcrier
+Group=mailcrier
+ExecStart=/usr/sbin/mailcrier -q
+TimeoutStartSec=3min
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=yes

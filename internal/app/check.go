@@ -21,14 +21,14 @@ var modeOptions = map[sendmail.Mode]string{sendmail.Probe: sendmail.OptionProbe,
 // admitServiceMode decides whether a service mode, --probe or
 // --check-config, may run, before the configuration is chosen and without
 // reading stdin. It refuses with 77 an elevated caller other than root and
-// the slendmail user: the modes read the whole configuration or send to
-// every target. It refuses with 64 a --config or SLENDMAIL_CONFIG that an
+// the mailcrier user: the modes read the whole configuration or send to
+// every target. It refuses with 64 a --config or MAILCRIER_CONFIG that an
 // elevated process ignores, so that the mode never reports on another
 // file than the caller named, and arguments of --check-config.
 func admitServiceMode(d Deps, log *slog.Logger, inv sendmail.Invocation) (code int, isAdmitted bool) {
 	option := modeOptions[inv.Mode]
 	if !d.Credentials.isPrivilegedCaller() {
-		_, _ = fmt.Fprintf(d.Stderr, "slendmail: %s: permission denied\n", option)
+		_, _ = fmt.Fprintf(d.Stderr, "mailcrier: %s: permission denied\n", option)
 		log.Error("mode refused, caller not privileged", "option", option, "uid", d.Credentials.UID)
 		return exitNoPerm, false
 	}
@@ -41,13 +41,13 @@ func admitServiceMode(d Deps, log *slog.Logger, inv sendmail.Invocation) (code i
 			source = sendmail.OptionConfig
 		}
 		if source != "" {
-			_, _ = fmt.Fprintf(d.Stderr, "slendmail: %s is ignored for a setgid-elevated caller\n", source)
+			_, _ = fmt.Fprintf(d.Stderr, "mailcrier: %s is ignored for a setgid-elevated caller\n", source)
 			log.Error("configuration override refused", "option", option, "source", source)
 			return exitUsage, false
 		}
 	}
 	if inv.Mode == sendmail.CheckConfig && len(inv.Recipients) > 0 {
-		_, _ = fmt.Fprintf(d.Stderr, "slendmail: %s takes no arguments\n", option)
+		_, _ = fmt.Fprintf(d.Stderr, "mailcrier: %s takes no arguments\n", option)
 		log.Error("command line rejected", "err", option+" takes no arguments")
 		return exitUsage, false
 	}

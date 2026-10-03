@@ -18,7 +18,7 @@ func TestRunRejectsShoutrrrWithoutLibrary(t *testing.T) {
 	if code := inv.run(t); code != 78 {
 		t.Fatalf("Run() = %d, want 78", code)
 	}
-	if log := inv.log("slendmail"); !strings.Contains(log, shoutrrrRejection) {
+	if log := inv.log("mailcrier"); !strings.Contains(log, shoutrrrRejection) {
 		t.Errorf("log lacks %q:\n%s", shoutrrrRejection, log)
 	}
 }

@@ -97,9 +97,9 @@ func TestCheckFile(t *testing.T) {
 		},
 		{
 			name:    "man-page",
-			file:    "docs/slendmail.8",
-			content: ".TH SLENDMAIL 8\nsee X-12\n",
-			want:    []finding{{where: "docs/slendmail.8", line: 2, ref: "X-12"}},
+			file:    "docs/mailcrier.8",
+			content: ".TH MAILCRIER 8\nsee X-12\n",
+			want:    []finding{{where: "docs/mailcrier.8", line: 2, ref: "X-12"}},
 		},
 		{
 			name:    "fixture-is-data",

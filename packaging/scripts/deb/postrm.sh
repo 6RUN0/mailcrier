@@ -10,21 +10,21 @@ fi
 
 if [ "$1" = "purge" ]; then
 	if [ -x "/usr/bin/deb-systemd-helper" ]; then
-		deb-systemd-helper purge slendmail-queue.timer >/dev/null || true
+		deb-systemd-helper purge mailcrier-queue.timer >/dev/null || true
 	fi
 fi
 
 if [ "$1" = "purge" ]; then
-	dpkg-statoverride --quiet --remove /usr/sbin/slendmail || true
+	dpkg-statoverride --quiet --remove /usr/sbin/mailcrier || true
 fi
 
 if [ "$1" = "remove" ] || [ "$1" = "purge" ]; then
 	has_mail=
-	for f in /var/spool/slendmail/queue/*.eml /var/spool/slendmail/hold/*.eml \
-		/var/spool/slendmail/failed/*.eml; do
+	for f in /var/spool/mailcrier/queue/*.eml /var/spool/mailcrier/hold/*.eml \
+		/var/spool/mailcrier/failed/*.eml; do
 		if [ -e "$f" ]; then has_mail=yes; fi
 	done
 	if [ -n "$has_mail" ]; then
-		echo "slendmail: /var/spool/slendmail is left in place, it holds messages"
+		echo "mailcrier: /var/spool/mailcrier is left in place, it holds messages"
 	fi
 fi

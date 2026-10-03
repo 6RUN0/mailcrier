@@ -48,7 +48,7 @@ func TestRunDeliversToExecTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	env := string(envFile)
-	for _, want := range []string{"\nSLENDMAIL_SUBJECT=" + strings.Repeat("s", 4096) + "\n", "\nSLENDMAIL_TO=ops@example.org\n", "\nSLENDMAIL_TARGET=run\n", "\nTZ=Europe/Berlin\n"} {
+	for _, want := range []string{"\nMAILCRIER_SUBJECT=" + strings.Repeat("s", 4096) + "\n", "\nMAILCRIER_TO=ops@example.org\n", "\nMAILCRIER_TARGET=run\n", "\nTZ=Europe/Berlin\n"} {
 		if !strings.Contains("\n"+env, want) {
 			t.Errorf("environment lacks %.80q:\n%.300s", want, env)
 		}
@@ -56,7 +56,7 @@ func TestRunDeliversToExecTarget(t *testing.T) {
 	if strings.Contains(env, "hidden") || strings.Contains(string(stdin), "hidden") {
 		t.Error("the blind copy reached the hook")
 	}
-	log := inv.log("slendmail")
+	log := inv.log("mailcrier")
 	if !strings.Contains(log, `level=INFO msg="hook output" target=run output="posting to ***\n"`) || strings.Contains(log, "SECRET-TOKEN") {
 		t.Errorf("hook output not logged masked:\n%s", log)
 	}

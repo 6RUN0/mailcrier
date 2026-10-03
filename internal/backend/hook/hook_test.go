@@ -84,8 +84,8 @@ func TestSendPassesMessageAndEnvironment(t *testing.T) {
 	env := readEnv(t, path)
 	want := map[string]string{
 		"PATH": "/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8", "TZ": "Europe/Berlin",
-		"SLENDMAIL_SUBJECT": "backup", "SLENDMAIL_FROM": "cron@example.org", "SLENDMAIL_TO": "ops@example.org, dev@example.org",
-		"SLENDMAIL_HOSTNAME": "db1.example.org", "SLENDMAIL_TARGET": "run", "SLENDMAIL_MSGID": "<1@example.org>", "SLENDMAIL_SIZE": "63",
+		"MAILCRIER_SUBJECT": "backup", "MAILCRIER_FROM": "cron@example.org", "MAILCRIER_TO": "ops@example.org, dev@example.org",
+		"MAILCRIER_HOSTNAME": "db1.example.org", "MAILCRIER_TARGET": "run", "MAILCRIER_MSGID": "<1@example.org>", "MAILCRIER_SIZE": "63",
 	}
 	for key, value := range want {
 		if env[key] != value {
@@ -105,7 +105,7 @@ func TestSendDoesNotInterpretSubject(t *testing.T) {
 	path, dir := writeHook(t, recordingHook)
 	msg := testMessage()
 	msg.Subject = "$(touch " + dir + "/a); touch " + dir + "/b `touch " + dir + "/c`\nX-Injected: 1\r\n|| touch " + dir + "/d"
-	if err := New(Options{Name: "run", Argv: []string{path, "$SLENDMAIL_SUBJECT"}}).Send(context.Background(), backend.Payload{Message: msg}); err != nil {
+	if err := New(Options{Name: "run", Argv: []string{path, "$MAILCRIER_SUBJECT"}}).Send(context.Background(), backend.Payload{Message: msg}); err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
 	for _, name := range []string{"a", "b", "c", "d"} {
@@ -113,12 +113,12 @@ func TestSendDoesNotInterpretSubject(t *testing.T) {
 			t.Errorf("file %s created: the subject was executed", name)
 		}
 	}
-	if argv, _ := os.ReadFile(path + ".argv"); string(argv) != "$SLENDMAIL_SUBJECT\n" {
+	if argv, _ := os.ReadFile(path + ".argv"); string(argv) != "$MAILCRIER_SUBJECT\n" {
 		t.Errorf("argv = %q, want the configured argument only", argv)
 	}
 	wantSubject := strings.NewReplacer("\r", " ", "\n", " ").Replace(msg.Subject)
-	if got := readEnv(t, path)["SLENDMAIL_SUBJECT"]; got != wantSubject {
-		t.Errorf("SLENDMAIL_SUBJECT = %q, want %q", got, wantSubject)
+	if got := readEnv(t, path)["MAILCRIER_SUBJECT"]; got != wantSubject {
+		t.Errorf("MAILCRIER_SUBJECT = %q, want %q", got, wantSubject)
 	}
 }
 
@@ -133,9 +133,9 @@ func TestSendCutsLongValues(t *testing.T) {
 	if err := New(Options{Name: "run", Argv: []string{path}}).Send(context.Background(), backend.Payload{Message: msg}); err != nil {
 		t.Fatalf("Send() error = %v", err)
 	}
-	subject := readEnv(t, path)["SLENDMAIL_SUBJECT"]
+	subject := readEnv(t, path)["MAILCRIER_SUBJECT"]
 	if want := "x" + strings.Repeat("я", (maxEnvValue-1)/2); subject != want {
-		t.Errorf("SLENDMAIL_SUBJECT has %d bytes, want %d cut at a character", len(subject), len(want))
+		t.Errorf("MAILCRIER_SUBJECT has %d bytes, want %d cut at a character", len(subject), len(want))
 	}
 	if stdin, _ := os.ReadFile(path + ".stdin"); !bytes.Equal(stdin, msg.Raw) {
 		t.Errorf("stdin has %d bytes, want the message of %d", len(stdin), len(msg.Raw))

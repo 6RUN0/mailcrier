@@ -13,7 +13,7 @@ import (
 // that are not single entries of those tables, each as a word of its own:
 // a flag added to the parser without --help fails here.
 func TestUsageListsOptions(t *testing.T) {
-	words := []string{OptionConfig, "-oi", "-bm", "-bi", "-bp", "-bs", "mailq", "newaliases", "SLENDMAIL_CONFIG"}
+	words := []string{OptionConfig, "-oi", "-bm", "-bi", "-bp", "-bs", "mailq", "newaliases", "MAILCRIER_CONFIG"}
 	for option := range longModes {
 		words = append(words, option)
 	}
@@ -58,7 +58,7 @@ func TestUsageListsIgnoredFlags(t *testing.T) {
 // has exactly the codes of EXIT STATUS in the manual page, each starting
 // a line, so that a code added to or dropped from the manual fails here.
 func TestUsageListsExitStatuses(t *testing.T) {
-	page, err := os.ReadFile("../../docs/slendmail.8")
+	page, err := os.ReadFile("../../docs/mailcrier.8")
 	if err != nil {
 		t.Fatal(err)
 	}

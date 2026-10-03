@@ -1,0 +1,2 @@
+MAILTO=""
+*/5 * * * * mailcrier if [ -x /usr/sbin/mailcrier ] && [ ! -d /run/systemd/system ]; then /usr/sbin/mailcrier -q; fi

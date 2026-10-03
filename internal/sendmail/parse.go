@@ -31,7 +31,7 @@ const (
 	Status
 )
 
-// Long options of slendmail itself. They are recognized only where an
+// Long options of mailcrier itself. They are recognized only where an
 // option may start, before "--", so the value of -f or -F never becomes
 // one.
 const (
@@ -42,7 +42,7 @@ const (
 	OptionCheckConfig = "--check-config"
 	OptionStatus      = "--status"
 	// MarkerEnvConfig is put first on the command line by the re-exec that
-	// drops SLENDMAIL_CONFIG from the environment, so that the new process
+	// drops MAILCRIER_CONFIG from the environment, so that the new process
 	// can warn about the variable it no longer sees.
 	MarkerEnvConfig = "--ignored-env-config"
 )

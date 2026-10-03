@@ -1,22 +1,22 @@
 package sendmail
 
 // Usage is the text of --help: the modes, flags, configuration files and
-// exit statuses of docs/slendmail.8, for hosts without the manual page.
+// exit statuses of docs/mailcrier.8, for hosts without the manual page.
 // TestUsageListsOptions and TestUsageListsExitStatuses keep it complete,
 // TestUsageLayout within 79 columns of ASCII.
-const Usage = `usage: slendmail [flags] [--] [recipient ...]
-       slendmail -q | -bp | --status | --check-config | --version | --help
-       slendmail --probe [-- target ...]
+const Usage = `usage: mailcrier [flags] [--] [recipient ...]
+       mailcrier -q | -bp | --status | --check-config | --version | --help
+       mailcrier --probe [-- target ...]
        mailq | newaliases
 
 Reads one message on stdin and sends it as a notification to the targets
-of /etc/slendmail.conf: Telegram, Discord, Slack, ntfy, HTTP, a program or
+of /etc/mailcrier.conf: Telegram, Discord, Slack, ntfy, HTTP, a program or
 shoutrrr. A target that fails temporarily gets it from a later queue run.
-sendmail, mailq and newaliases are links to slendmail.
+sendmail, mailq and newaliases are links to mailcrier.
 
 Modes, no message is read:
   -q              run the queue once; an interval after -q is ignored
-  -bp, mailq      list the queue: every entry for root, the slendmail user
+  -bp, mailq      list the queue: every entry for root, the mailcrier user
                   and a caller without the setgid bit, the numbers for
                   everyone else
   --status        print the queue counts as one logfmt line
@@ -44,27 +44,27 @@ Message flags:
   -V -v -X. -C and unknown flags are logged and ignored.
 
 Configuration:
-  --config PATH, else SLENDMAIL_CONFIG=PATH
+  --config PATH, else MAILCRIER_CONFIG=PATH
                   read another file; ignored with a warning when the setgid
                   bit applies to a caller other than root, and then
                   --check-config and --probe exit 64
-  /etc/slendmail.conf
+  /etc/mailcrier.conf
                   TOML, one [target.NAME] table per target
-  /etc/slendmail.d/
+  /etc/mailcrier.d/
                   files of token_file, url_file and template_file, by
                   convention; any absolute path works
   A minimal configuration:
     [target.ops-telegram]
     type = "telegram"
-    token_file = "/etc/slendmail.d/tg.token"
+    token_file = "/etc/mailcrier.d/tg.token"
     chat_id = -1001234567890
   Check it with --check-config, then send a test with
   --probe -- ops-telegram.
-  Examples: /usr/share/doc/slendmail/examples/ and
+  Examples: /usr/share/doc/mailcrier/examples/ and
   https://github.com/6RUN0/mailcrier/tree/main/packaging/examples
 
 Files:
-  /var/spool/slendmail/
+  /var/spool/mailcrier/
                   the spool, unless dir of [spool] names another, or none
                   when dir is "": entries in queue/, hold/ and failed/,
                   files being written in tmp/, queue run locks in locks/
@@ -82,10 +82,10 @@ Exit status:
   74  a target failed temporarily and the spool entry could not be written,
       -q could not read the spool, or --status found no spool directory
   75  --probe only: a target failed temporarily, none rejected
-  77  --check-config or --probe by a setgid caller other than the slendmail
+  77  --check-config or --probe by a setgid caller other than the mailcrier
       user
   78  the configuration cannot be read or is invalid; a message being sent
       is held, --check-config, --probe and -q hold nothing
 
-The manual: man 8 slendmail.
+The manual: man 8 mailcrier.
 `

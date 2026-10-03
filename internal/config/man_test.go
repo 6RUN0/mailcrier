@@ -13,7 +13,7 @@ import (
 // .Ic, so that a key added to the schema is documented in the same
 // change. The free keys of headers and query are not keys of the schema.
 func TestManPageListsKeys(t *testing.T) {
-	page, err := os.ReadFile("../../docs/slendmail.8")
+	page, err := os.ReadFile("../../docs/mailcrier.8")
 	if err != nil {
 		t.Fatal(err)
 	}

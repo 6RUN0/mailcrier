@@ -58,7 +58,7 @@ func (tc serviceStatusCase) check(t *testing.T) {
 		t.Fatalf("Run() = %d, want 69", code)
 	}
 	want := fmt.Sprintf("class=%s status=%d", tc.wantClass, tc.status)
-	if log := inv.log("slendmail"); requests.Load() != 1 || !strings.Contains(log, want) {
+	if log := inv.log("mailcrier"); requests.Load() != 1 || !strings.Contains(log, want) {
 		t.Errorf("%d requests, log lacks %q:\n%s", requests.Load(), want, log)
 	}
 }
@@ -108,7 +108,7 @@ func TestRunSeveralSlackTargets(t *testing.T) {
 		"[target.dev]\ntype = \"slack\"\ntoken = \"xoxb-dev\"\nchannel = \"#dev-alerts\"\n"
 	inv := &invocation{config: config, client: rewritingClient(server), stdin: strings.NewReader("Subject: t\n\nb\n")}
 	if code := inv.run(t); code != 0 {
-		t.Fatalf("Run() = %d, want 0; log:\n%s", code, inv.log("slendmail"))
+		t.Fatalf("Run() = %d, want 0; log:\n%s", code, inv.log("mailcrier"))
 	}
 	if want := "map[#alerts:Bearer xoxb-prod #dev-alerts:Bearer xoxb-dev]"; fmt.Sprint(posts) != want {
 		t.Errorf("posts = %v, want %s", posts, want)
@@ -132,18 +132,18 @@ func TestRunWebhookPresets(t *testing.T) {
 		mu.Unlock()
 	}))
 	defer server.Close()
-	config := "[target.mm]\ntype = \"http\"\npreset = \"mattermost\"\nurl = \"" + server.URL + "/mm\"\nusername = \"slendmail\"\nchannel = \"alerts\"\n\n" +
+	config := "[target.mm]\ntype = \"http\"\npreset = \"mattermost\"\nurl = \"" + server.URL + "/mm\"\nusername = \"mailcrier\"\nchannel = \"alerts\"\n\n" +
 		"[target.sw]\ntype = \"http\"\npreset = \"slack-webhook\"\nurl = \"" + server.URL + "/sw\"\n\n" +
 		"[target.api]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"" + server.URL + "/api\"\n" +
 		"[target.api.headers]\nAuthorization = \"Bearer api-token-123\"\n\"Content-Type\" = \"application/vnd.example+json\"\n"
 	inv := &invocation{config: config, stdin: strings.NewReader("Subject: disk @channel\n\nsda <failed> & gone\n")}
 	if code := inv.run(t); code != 0 {
-		t.Fatalf("Run() = %d, want 0; log:\n%s", code, inv.log("slendmail"))
+		t.Fatalf("Run() = %d, want 0; log:\n%s", code, inv.log("mailcrier"))
 	}
 	t.Run("mattermost-username-and-channel", func(t *testing.T) {
 		body := bodies["/mm"]
 		text, _ := body["text"].(string)
-		if body["username"] != "slendmail" || body["channel"] != "alerts" || !strings.HasPrefix(text, "#### disk @\u200bchannel") {
+		if body["username"] != "mailcrier" || body["channel"] != "alerts" || !strings.HasPrefix(text, "#### disk @\u200bchannel") {
 			t.Errorf("body = %v", body)
 		}
 	})
@@ -184,8 +184,8 @@ func TestRunSlackWebhookLimit(t *testing.T) {
 	if n := len([]rune(body["text"])); n > 40000 || n < 30000 || !strings.HasSuffix(body["text"], "[truncated, 52.8 KiB in full]```") {
 		t.Errorf("text of %d characters, ends %q", n, body["text"][max(0, len(body["text"])-30):])
 	}
-	if !strings.Contains(inv.log("slendmail"), `msg="text truncated for target" target=sw`) {
-		t.Errorf("log lacks the truncation record:\n%s", inv.log("slendmail"))
+	if !strings.Contains(inv.log("mailcrier"), `msg="text truncated for target" target=sw`) {
+		t.Errorf("log lacks the truncation record:\n%s", inv.log("mailcrier"))
 	}
 }
 

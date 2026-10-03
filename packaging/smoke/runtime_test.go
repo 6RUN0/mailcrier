@@ -50,7 +50,7 @@ func TestSmokeRuntime(t *testing.T) {
 			}
 		}
 		checkMode(t, config, 0, gid, 0o640)
-		checkMode(t, "/etc/slendmail.d", 0, gid, os.ModeDir|0o750)
+		checkMode(t, "/etc/mailcrier.d", 0, gid, os.ModeDir|0o750)
 		checkMode(t, spoolDir, 0, gid, os.ModeDir|0o750)
 		for _, area := range spoolAreas {
 			checkMode(t, filepath.Join(spoolDir, area), 0, gid, os.ModeDir|os.ModeSetgid|0o770)
@@ -59,9 +59,9 @@ func TestSmokeRuntime(t *testing.T) {
 			t.Error(err)
 		}
 		if d.format == "rpm" {
-			got := run(t, nil, "", "rpm", "-V", "slendmail").out
+			got := run(t, nil, "", "rpm", "-V", "mailcrier").out
 			if fields := strings.Fields(got); len(fields) != 2 || fields[0] != ".M....G.." || fields[1] != binary {
-				t.Errorf("rpm -V slendmail =\n%s\nwant .M....G.. %s alone", got, binary)
+				t.Errorf("rpm -V mailcrier =\n%s\nwant .M....G.. %s alone", got, binary)
 			}
 		}
 		for _, link := range []string{"/usr/bin/newaliases", "/usr/bin/mailq"} {
@@ -74,7 +74,7 @@ func TestSmokeRuntime(t *testing.T) {
 	}
 	writeConfig(t, workingConfig(recv.URL, filepath.Join(dir, "hook")))
 
-	// Only a queue run as root or slendmail delivers the entry of queuer;
+	// Only a queue run as root or mailcrier delivers the entry of queuer;
 	// nothing in this test runs one but the cron job of the package. The
 	// receiver cannot tell which run delivered it, so the step relies on
 	// that: a call that took the entries of other users would pass too.
@@ -152,7 +152,7 @@ func TestSmokeRuntime(t *testing.T) {
 		}
 		groups, group, _ := strings.Cut(line, " / ")
 		if slices.Contains(strings.Fields(groups), strconv.Itoa(serviceGID(t))) {
-			t.Errorf("the hook runs with the group slendmail: groups %s", groups)
+			t.Errorf("the hook runs with the group mailcrier: groups %s", groups)
 		}
 		if group != strconv.Itoa(int(alice.Gid)) {
 			t.Errorf("the hook runs with group %s, want %d of alice", group, alice.Gid)

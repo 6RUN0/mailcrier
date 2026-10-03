@@ -25,15 +25,15 @@ import (
 // Environment of the helper process: the step of Move to die after, the
 // spool directory and the configuration.
 const (
-	helperStep   = "SLENDMAIL_MOVE_HELPER_STEP"
-	helperDir    = "SLENDMAIL_MOVE_HELPER_DIR"
-	helperConfig = "SLENDMAIL_MOVE_HELPER_CONFIG"
+	helperStep   = "MAILCRIER_MOVE_HELPER_STEP"
+	helperDir    = "MAILCRIER_MOVE_HELPER_DIR"
+	helperConfig = "MAILCRIER_MOVE_HELPER_CONFIG"
 )
 
-// serviceCreds run the queue over every entry, as the slendmail user.
+// serviceCreds run the queue over every entry, as the mailcrier user.
 var serviceCreds = app.Credentials{UID: 990, GID: 990, EGID: 990, ServiceUID: 990}
 
-// runQueue runs slendmail -q once in this process with the clock at now.
+// runQueue runs mailcrier -q once in this process with the clock at now.
 func runQueue(dir, config string, now time.Time) int {
 	deps := app.Deps{
 		NewLogger:      func(string) *slog.Logger { return slog.New(slog.NewTextHandler(os.Stderr, nil)) },

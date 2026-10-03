@@ -125,7 +125,7 @@ func TestBuildRequestFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opts := Options{URL: "https://mm.example.org/hooks/x", Fields: map[string]string{"username": "slendmail", "channel": "town-square"}}
+	opts := Options{URL: "https://mm.example.org/hooks/x", Fields: map[string]string{"username": "mailcrier", "channel": "town-square"}}
 	req, err := buildRequest(context.Background(), opts, backend.Payload{Text: document})
 	if err != nil {
 		t.Fatal(err)

@@ -77,9 +77,9 @@ jobs:
           name: packages
           path: |
             dist/metadata.json
-            dist/slendmail_*_linux_amd64.deb
-            dist/slendmail_*_linux_amd64.rpm
-            dist/slendmail_*_linux_amd64.apk
+            dist/mailcrier_*_linux_amd64.deb
+            dist/mailcrier_*_linux_amd64.rpm
+            dist/mailcrier_*_linux_amd64.apk
           if-no-files-found: error
           retention-days: 3
 

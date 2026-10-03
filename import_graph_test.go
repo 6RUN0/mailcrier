@@ -21,7 +21,7 @@ const modulePath = "github.com/6RUN0/mailcrier"
 // alone. A package missing from the table fails the test, so a new package
 // needs an explicit decision here.
 var allowedImports = map[string][]string{
-	"cmd/slendmail":      {"internal/app"},
+	"cmd/mailcrier":      {"internal/app"},
 	"internal/app":       {"internal/sendmail", "internal/config", "internal/message", "internal/route", "internal/render", "internal/text", "internal/delivery", "internal/spool", "internal/backend", "internal/backend/*", "internal/redact"},
 	"internal/delivery":  {"internal/backend", "internal/render", "internal/text", "internal/message", "internal/spool"},
 	"internal/backend/*": {"internal/backend", "internal/text", "internal/message"},

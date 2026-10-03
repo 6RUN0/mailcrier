@@ -19,7 +19,7 @@ func TestSyslogHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = conn.Close() }()
-	writer, err := syslog.Dial("udp", conn.LocalAddr().String(), syslog.LOG_MAIL|syslog.LOG_INFO, "slendmail")
+	writer, err := syslog.Dial("udp", conn.LocalAddr().String(), syslog.LOG_MAIL|syslog.LOG_INFO, "mailcrier")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestSyslogHandler(t *testing.T) {
 		if !strings.HasPrefix(packet, tc.priority) {
 			t.Errorf("packet %q, want priority %s", packet, tc.priority)
 		}
-		if !strings.HasSuffix(strings.TrimSuffix(packet, "\n"), `slendmail[`+pidOf(packet)+`]: msg="target failed" msgid=m1 target=hook`) {
+		if !strings.HasSuffix(strings.TrimSuffix(packet, "\n"), `mailcrier[`+pidOf(packet)+`]: msg="target failed" msgid=m1 target=hook`) {
 			t.Errorf("packet %q lacks the logfmt record without time and level", packet)
 		}
 	}
@@ -62,12 +62,12 @@ func readPacket(t *testing.T, conn net.PacketConn) string {
 
 // pidOf extracts the pid that log/syslog puts after the tag.
 func pidOf(packet string) string {
-	start := strings.Index(packet, "slendmail[")
+	start := strings.Index(packet, "mailcrier[")
 	end := strings.Index(packet, "]:")
 	if start < 0 || end < start {
 		return ""
 	}
-	return packet[start+len("slendmail[") : end]
+	return packet[start+len("mailcrier[") : end]
 }
 
 // TestFallbackLoggerUsesStderr pins that a missing syslog daemon does not
@@ -77,7 +77,7 @@ func TestFallbackLoggerUsesStderr(t *testing.T) {
 	dial := func(string) (*syslog.Writer, error) {
 		return nil, errors.New("dial unix /dev/log: connect: no such file or directory")
 	}
-	logger := newFallbackLogger("slendmail", dial, &stderr, false)
+	logger := newFallbackLogger("mailcrier", dial, &stderr, false)
 	logger.Error("target failed", "target", "hook")
 	lines := strings.Split(strings.TrimSpace(stderr.String()), "\n")
 	if len(lines) != 2 {
@@ -99,11 +99,11 @@ func TestFallbackLoggerElevated(t *testing.T) {
 	dial := func(string) (*syslog.Writer, error) {
 		return nil, errors.New("dial unix /dev/log: connect: no such file or directory")
 	}
-	logger := newFallbackLogger("slendmail", dial, &stderr, true).With("call", "0123")
+	logger := newFallbackLogger("mailcrier", dial, &stderr, true).With("call", "0123")
 	logger.Info("message received", "size", 10)
-	logger.Error("configuration rejected, message not delivered", "err", "etc/slendmail.conf:3:1: target \"hook\"")
+	logger.Error("configuration rejected, message not delivered", "err", "etc/mailcrier.conf:3:1: target \"hook\"")
 	logger.Error("target failed", "target", "hook", "status", 502)
-	want := "slendmail: syslog unavailable, logging to stderr\nslendmail: configuration rejected, message not delivered\nslendmail: target failed\n"
+	want := "mailcrier: syslog unavailable, logging to stderr\nmailcrier: configuration rejected, message not delivered\nmailcrier: target failed\n"
 	if got := stderr.String(); got != want {
 		t.Errorf("stderr =\n%s\nwant\n%s", got, want)
 	}

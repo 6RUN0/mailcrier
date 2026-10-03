@@ -27,8 +27,8 @@ import (
 // Environment of the spool helper process: its mode, and the parameters
 // of its one Run as JSON.
 const (
-	spoolHelperMode = "SLENDMAIL_SPOOL_HELPER"
-	spoolHelperArgs = "SLENDMAIL_SPOOL_HELPER_ARGS"
+	spoolHelperMode = "MAILCRIER_SPOOL_HELPER"
+	spoolHelperArgs = "MAILCRIER_SPOOL_HELPER_ARGS"
 )
 
 // Modes of the spool helper process.

@@ -37,11 +37,11 @@ func TestSmokeLifecycle(t *testing.T) {
 			t.Fatalf("call with %s exited %d, want %d:\n%s", marker, r.code, want, r.out)
 		}
 	}
-	// queueRun runs -q as slendmail.
+	// queueRun runs -q as mailcrier.
 	queueRun := func(t *testing.T) {
 		t.Helper()
-		if r := run(t, credential(t, "slendmail"), "", binary, "-q"); r.code != 0 {
-			t.Fatalf("-q as slendmail exited %d:\n%s\n%s", r.code, r.out, report())
+		if r := run(t, credential(t, "mailcrier"), "", binary, "-q"); r.code != 0 {
+			t.Fatalf("-q as mailcrier exited %d:\n%s\n%s", r.code, r.out, report())
 		}
 	}
 
@@ -70,8 +70,8 @@ func TestSmokeLifecycle(t *testing.T) {
 			t.Errorf("configuration changed by the reinstall: %q %v %v, %v", content, after.Mode(), after.ModTime(), err)
 		}
 		if d.format == "deb" {
-			if overrides := mustRun(t, "", "dpkg-statoverride", "--list", binary); overrides != "root slendmail 2755 "+binary+"\n" {
-				t.Errorf("dpkg-statoverride --list %s =\n%s\nwant one entry root slendmail 2755", binary, overrides)
+			if overrides := mustRun(t, "", "dpkg-statoverride", "--list", binary); overrides != "root mailcrier 2755 "+binary+"\n" {
+				t.Errorf("dpkg-statoverride --list %s =\n%s\nwant one entry root mailcrier 2755", binary, overrides)
 			}
 		}
 		if len(spoolMessages(t, "queue")) != 1 || len(spoolMessages(t, "hold")) != 1 {
@@ -94,12 +94,12 @@ func TestSmokeLifecycle(t *testing.T) {
 		t.Run("T-PKG-12/rpm-setperms", func(t *testing.T) {
 			const lostMarker, sentMarker = "smoke-setperms-lost-27b8", "smoke-setperms-sent-d40f"
 			lost, sent := recv.expect(lostMarker), recv.expect(sentMarker)
-			mustRun(t, "", "rpm", "--setperms", "slendmail")
+			mustRun(t, "", "rpm", "--setperms", "mailcrier")
 			send(t, alice, lostMarker, 78)
 			if !isEmpty(lost) || len(allSpoolMessages(t)) != 0 {
 				t.Errorf("a call without the setgid bit was delivered or spooled\n%s", report())
 			}
-			mustRun(t, "", "chgrp", "slendmail", binary)
+			mustRun(t, "", "chgrp", "mailcrier", binary)
 			mustRun(t, "", "chmod", "2755", binary)
 			send(t, alice, sentMarker, 0)
 			waitEvent(t, sent, time.Now().Add(10*time.Second), "the message after chmod 2755", report)
@@ -134,8 +134,8 @@ func TestSmokeLifecycle(t *testing.T) {
 			t.Errorf("locks/ = %v after the removal, want %v", got, locks)
 		}
 		for _, database := range []string{"passwd", "group"} {
-			if r := run(t, nil, "", "getent", database, "slendmail"); r.code != 0 {
-				t.Errorf("slendmail is gone from %s after the removal", database)
+			if r := run(t, nil, "", "getent", database, "mailcrier"); r.code != 0 {
+				t.Errorf("mailcrier is gone from %s after the removal", database)
 			}
 		}
 		switch d.format {
@@ -169,7 +169,7 @@ func TestSmokeLifecycle(t *testing.T) {
 		switch d.format {
 		case "deb":
 			command := cronCommand(t, d.cronFile)
-			if r := run(t, nil, "", "runuser", "-u", "slendmail", "--", "sh", "-c", command); r.code != 0 || r.out != "" {
+			if r := run(t, nil, "", "runuser", "-u", "mailcrier", "--", "sh", "-c", command); r.code != 0 || r.out != "" {
 				t.Errorf("cron job %q without the binary exited %d:\n%s", command, r.code, r.out)
 			}
 		case "rpm":
@@ -187,7 +187,7 @@ func TestSmokeLifecycle(t *testing.T) {
 
 	if d.format == "deb" {
 		t.Run("T-PKG-13/purge-with-mail", func(t *testing.T) {
-			out := mustRun(t, "", "dpkg", "-P", "slendmail")
+			out := mustRun(t, "", "dpkg", "-P", "mailcrier")
 			t.Logf("purge:\n%s", out)
 			if !strings.Contains(out, spoolNote) {
 				t.Errorf("purge did not name the spool:\n%s", out)
@@ -226,7 +226,7 @@ func TestSmokeLifecycle(t *testing.T) {
 			t.Errorf("%s stays after the removal\n%s", spoolDir, listSpool(t))
 		}
 		if d.format == "deb" {
-			out := mustRun(t, "", "dpkg", "-P", "slendmail")
+			out := mustRun(t, "", "dpkg", "-P", "mailcrier")
 			t.Logf("purge:\n%s", out)
 			checkRemovalOutput(t, out)
 			if r := run(t, nil, "", "dpkg-statoverride", "--list", binary); r.code != 1 {
@@ -271,8 +271,8 @@ func TestSmokeLifecycle(t *testing.T) {
 			}
 			// apk 3.0 records the package as installed all the same and runs
 			// its post-install; that state is logged, not required.
-			info := run(t, nil, "", "apk", "info", "-e", "slendmail")
-			t.Logf("apk info -e slendmail exited %d: %s", info.code, info.out)
+			info := run(t, nil, "", "apk", "info", "-e", "mailcrier")
+			t.Logf("apk info -e mailcrier exited %d: %s", info.code, info.out)
 		})
 	}
 }
@@ -289,7 +289,7 @@ func reinstall(t *testing.T, d distro) string {
 	case "rpm":
 		return mustRun(t, "", "rpm", "-Uvh", "--replacepkgs", pkg)
 	}
-	name, _, _ := strings.Cut(mustRun(t, "", "apk", "list", "-I", "slendmail"), " ")
+	name, _, _ := strings.Cut(mustRun(t, "", "apk", "list", "-I", "mailcrier"), " ")
 	repo := t.TempDir()
 	arch := filepath.Join(repo, "x86_64")
 	if err := os.Mkdir(arch, 0o755); err != nil {
@@ -303,7 +303,7 @@ func reinstall(t *testing.T, d distro) string {
 		t.Fatal(err)
 	}
 	mustRun(t, "", "apk", "index", "-q", "--allow-untrusted", "-o", filepath.Join(arch, "APKINDEX.tar.gz"), filepath.Join(arch, name+".apk"))
-	out := mustRun(t, "", "apk", "fix", "--reinstall", "--allow-untrusted", "--no-network", "--repository", repo, "slendmail")
+	out := mustRun(t, "", "apk", "fix", "--reinstall", "--allow-untrusted", "--no-network", "--repository", repo, "mailcrier")
 	if !strings.Contains(out, "post-upgrade") {
 		t.Errorf("apk fix --reinstall ran no post-upgrade:\n%s", out)
 	}

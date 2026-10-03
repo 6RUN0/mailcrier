@@ -13,11 +13,11 @@ import (
 	"unsafe"
 )
 
-const timer = "slendmail-queue.timer"
+const timer = "mailcrier-queue.timer"
 
 // TestSmokeSystemd runs in a container whose PID 1 is systemd: the install
 // enables and starts the queue timer, the cron line of the package stands
-// back, the queue service delivers as slendmail under its sandbox options,
+// back, the queue service delivers as mailcrier under its sandbox options,
 // a reinstall keeps the timer running and the removal stops and disables
 // it. It does not wait for the timer to fire: that is the work of systemd.
 func TestSmokeSystemd(t *testing.T) {
@@ -62,7 +62,7 @@ func TestSmokeSystemd(t *testing.T) {
 		}
 		writeConfig(t, working)
 		command := cronCommand(t, d.cronFile)
-		if r := run(t, nil, "", "runuser", "-u", "slendmail", "--", "sh", "-c", command); r.code != 0 || r.out != "" {
+		if r := run(t, nil, "", "runuser", "-u", "mailcrier", "--", "sh", "-c", command); r.code != 0 || r.out != "" {
 			t.Errorf("cron job %q under systemd exited %d:\n%s", command, r.code, r.out)
 		}
 		if got := spoolMessages(t, "hold"); len(got) != 1 {
@@ -76,19 +76,19 @@ func TestSmokeSystemd(t *testing.T) {
 		// The unit as systemd loaded it; the run itself does not report the
 		// user or the sandbox it had.
 		for property, want := range map[string]string{
-			"User": "slendmail", "Group": "slendmail", "NoNewPrivileges": "yes",
+			"User": "mailcrier", "Group": "mailcrier", "NoNewPrivileges": "yes",
 			"ProtectSystem": "full", "ProtectHome": "yes", "PrivateTmp": "yes",
 		} {
-			if got := systemctl(t, "show", "-p", property, "--value", "slendmail-queue.service"); got != want {
-				t.Errorf("slendmail-queue.service %s=%q, want %q", property, got, want)
+			if got := systemctl(t, "show", "-p", property, "--value", "mailcrier-queue.service"); got != want {
+				t.Errorf("mailcrier-queue.service %s=%q, want %q", property, got, want)
 			}
 		}
-		if r := run(t, nil, "", "systemctl", "start", "slendmail-queue.service"); r.code != 0 {
-			t.Errorf("systemctl start slendmail-queue.service exited %d:\n%s\n%s", r.code, r.out,
-				run(t, nil, "", "journalctl", "-u", "slendmail-queue.service", "--no-pager").out)
+		if r := run(t, nil, "", "systemctl", "start", "mailcrier-queue.service"); r.code != 0 {
+			t.Errorf("systemctl start mailcrier-queue.service exited %d:\n%s\n%s", r.code, r.out,
+				run(t, nil, "", "journalctl", "-u", "mailcrier-queue.service", "--no-pager").out)
 		}
-		if got := systemctl(t, "show", "-p", "Result", "--value", "slendmail-queue.service"); got != "success" {
-			t.Errorf("slendmail-queue.service result %q, want success", got)
+		if got := systemctl(t, "show", "-p", "Result", "--value", "mailcrier-queue.service"); got != "success" {
+			t.Errorf("mailcrier-queue.service result %q, want success", got)
 		}
 		waitEvent(t, held, time.Now().Add(10*time.Second), "the held message", report)
 		if got := allSpoolMessages(t); len(got) != 0 {
@@ -121,7 +121,7 @@ func TestSmokeSystemd(t *testing.T) {
 		if d.format != "deb" {
 			return
 		}
-		mustRun(t, "", "dpkg", "-P", "slendmail")
+		mustRun(t, "", "dpkg", "-P", "mailcrier")
 		if _, err := os.Lstat("/etc/systemd/system/timers.target.wants/" + timer); err == nil {
 			t.Errorf("the link of %s stays after dpkg -P", timer)
 		}

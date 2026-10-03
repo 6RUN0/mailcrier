@@ -1,4 +1,6 @@
-# Slendmail
+# Mailcrier
+
+Started as a fork of github.com/iggy/slendmail.
 
 A sendmail replacement for machines that send no email: cron, at, sudo,
 mdadm, smartd, fail2ban and every other tool that pipes a message into
@@ -20,19 +22,19 @@ own instead.
 ## Build
 
 ```sh
-go build -o slendmail ./cmd/slendmail
+go build -o mailcrier ./cmd/mailcrier
 ```
 
 With `-tags noshoutrrr` the binary leaves out the shoutrrr library and
 the 12 modules it brings, about 3 MB of 13.7 MB (linux/amd64, `-trimpath
 -ldflags='-s -w'`, go1.27.1); a `shoutrrr` target then rejects the
 configuration with exit status 78 and `built without shoutrrr` in the log.
-Releases carry both builds, the smaller one as `slendmail-minimal`.
+Releases carry both builds, the smaller one as `mailcrier-minimal`.
 
-The binary goes to `/usr/sbin/slendmail`, with `/usr/sbin/sendmail`,
+The binary goes to `/usr/sbin/mailcrier`, with `/usr/sbin/sendmail`,
 `/usr/lib/sendmail`, `/usr/bin/newaliases` and `/usr/bin/mailq` as links
 to it; see "Options, privileges and containers" for ownership and modes.
-The manual page is `docs/slendmail.8`.
+The manual page is `docs/mailcrier.8`.
 
 ## Install
 
@@ -40,54 +42,54 @@ Each release has deb, rpm and apk packages of the full build for amd64,
 arm64 and armv7, without signatures (`apk add --allow-untrusted`):
 
 ```sh
-apt install ./slendmail_<version>_linux_amd64.deb
-dnf install ./slendmail_<version>_linux_amd64.rpm
-apk add --allow-untrusted ./slendmail_<version>_linux_amd64.apk
+apt install ./mailcrier_<version>_linux_amd64.deb
+dnf install ./mailcrier_<version>_linux_amd64.rpm
+apk add --allow-untrusted ./mailcrier_<version>_linux_amd64.apk
 ```
 
 | Path | Owner and mode |
 |---|---|
-| `/usr/sbin/slendmail` | `root:slendmail 2755`, set by the scripts after unpacking |
+| `/usr/sbin/mailcrier` | `root:mailcrier 2755`, set by the scripts after unpacking |
 | `/usr/sbin/sendmail`, `/usr/lib/sendmail`, `/usr/bin/mailq`, `/usr/bin/newaliases` | links to it; in rpm the alternative `mta` |
-| `/etc/slendmail.conf` | `root:slendmail 0640`, no target |
-| `/etc/slendmail.d/` | `root:slendmail 0750`, for `token_file` and the like |
-| `/var/spool/slendmail/` | `root:slendmail 0750`; `tmp`, `queue`, `hold`, `failed`, `locks` in it `2770` |
-| `slendmail-queue.timer` and `.service`, `/etc/cron.d/slendmail` | queue run, deb and rpm |
-| `/etc/crontabs/slendmail` | queue run, apk |
-| `/usr/share/doc/slendmail/examples/` | example configurations, see "Configuration" |
+| `/etc/mailcrier.conf` | `root:mailcrier 0640`, no target |
+| `/etc/mailcrier.d/` | `root:mailcrier 0750`, for `token_file` and the like |
+| `/var/spool/mailcrier/` | `root:mailcrier 0750`; `tmp`, `queue`, `hold`, `failed`, `locks` in it `2770` |
+| `mailcrier-queue.timer` and `.service`, `/etc/cron.d/mailcrier` | queue run, deb and rpm |
+| `/etc/crontabs/mailcrier` | queue run, apk |
+| `/usr/share/doc/mailcrier/examples/` | example configurations, see "Configuration" |
 
-The install creates the system group and user `slendmail` (home
-`/var/spool/slendmail`, no login shell) unless they exist. Then, as root:
+The install creates the system group and user `mailcrier` (home
+`/var/spool/mailcrier`, no login shell) unless they exist. Then, as root:
 
-1. Write a target into `/etc/slendmail.conf`; its comments and the examples
-   show how. A secret goes alone into a file under `/etc/slendmail.d`,
-   `root:slendmail 0640`.
-2. `slendmail --check-config` reports errors and warnings, exit status 0
+1. Write a target into `/etc/mailcrier.conf`; its comments and the examples
+   show how. A secret goes alone into a file under `/etc/mailcrier.d`,
+   `root:mailcrier 0640`.
+2. `mailcrier --check-config` reports errors and warnings, exit status 0
    when the file loads.
-3. `slendmail --probe` sends a test message to every target.
+3. `mailcrier --probe` sends a test message to every target.
 
-On upgrade, rpm and apk set the owner and mode of `/etc/slendmail.conf`
-back to `root:slendmail 0640` when its content is that of the package;
+On upgrade, rpm and apk set the owner and mode of `/etc/mailcrier.conf`
+back to `root:mailcrier 0640` when its content is that of the package;
 dpkg keeps them. A secret therefore belongs in a file under
-`/etc/slendmail.d/`, where the package ships no file and changes none.
+`/etc/mailcrier.d/`, where the package ships no file and changes none.
 
 Until a target is set, every message is held in `hold/` with exit status
-78, and `slendmail-queue.service` exits 78 every 5 minutes and is listed by
+78, and `mailcrier-queue.service` exits 78 every 5 minutes and is listed by
 `systemctl --failed`; the first queue run after the configuration is fixed
 delivers the held messages.
 
 The timer is enabled on install and started where systemd runs; where it
 does not, the cron file runs the queue. The package scripts never run
-slendmail and never touch the configuration.
+mailcrier and never touch the configuration.
 
 - Debian and Ubuntu: the package provides, conflicts with and replaces
   `mail-transport-agent`, so installing it removes the MTA in place
-  (postfix, exim4, msmtp-mta, ...), and removing slendmail does not bring
+  (postfix, exim4, msmtp-mta, ...), and removing mailcrier does not bring
   that one back. The setgid bit is a `dpkg-statoverride` entry, which dpkg
   applies to every later version; one the administrator set before is
   kept.
 - RHEL, Rocky, Alma, Fedora: the links are the alternative `mta` with
-  priority 100, above postfix (60) and sendmail (90), so slendmail is the
+  priority 100, above postfix (60) and sendmail (90), so mailcrier is the
   active one after install; `alternatives --config mta` chooses another.
   After removal the remaining MTA is active again.
 - Alpine: the package replaces the BusyBox link `/usr/sbin/sendmail`, and
@@ -102,8 +104,8 @@ In rpm and apk the binary is unpacked as `root:root 0755` on install and on
 every upgrade, and the install script then gives it the group and the
 setgid bit. Consequences:
 
-- `rpm -V slendmail` reports `.M....G..  /usr/sbin/slendmail` and `apk audit
-  --check-permissions` reports `M usr/sbin/slendmail`; that is expected.
+- `rpm -V mailcrier` reports `.M....G..  /usr/sbin/mailcrier` and `apk audit
+  --check-permissions` reports `M usr/sbin/mailcrier`; that is expected.
 - During an upgrade, between unpacking and the script, a call of a user
   other than root cannot read the configuration: it exits 78 and the
   message is lost, since `hold/` is not writable for that user either.
@@ -111,24 +113,24 @@ setgid bit. Consequences:
   upgrade with `--noscripts`, `apk fix` and `apk add --no-scripts` remove
   the bit for good, with the same result for every such call until it is
   restored as root:
-  `chgrp slendmail /usr/sbin/slendmail && chmod 2755 /usr/sbin/slendmail`
+  `chgrp mailcrier /usr/sbin/mailcrier && chmod 2755 /usr/sbin/mailcrier`
   (`chgrp` first: it clears the bit).
 
 Removal (`dpkg -r`, `rpm -e`, `apk del`) stops the timer. It keeps the
 user, the group and a changed configuration (`dpkg -P` deletes it, `rpm -e`
-keeps it as `/etc/slendmail.conf.rpmsave`). A spool without messages in
+keeps it as `/etc/mailcrier.conf.rpmsave`). A spool without messages in
 `queue/`, `hold/` and `failed/` is removed with the package; one with
 messages stays, and every format prints its path on removal (deb on
 `dpkg -r` and on `dpkg -P`). A call during the removal can leave the spool
 with nothing but `locks/` in it, and files an interrupted call left in
 `tmp/` keep it as well (dpkg reports the directory as not empty);
 such a directory holds no message and can be deleted. Debian keeps
-`/etc/cron.d/slendmail` until `dpkg -P`; its job does nothing while the
+`/etc/cron.d/mailcrier` until `dpkg -P`; its job does nothing while the
 binary is missing.
 
 ## Configuration
 
-The program reads `/etc/slendmail.conf`, a TOML file. Every run parses the
+The program reads `/etc/mailcrier.conf`, a TOML file. Every run parses the
 file strictly: an unknown key, a key that the target type does not use, or
 an invalid value rejects the file, the message is not delivered but held
 in the spool (see "Spool and queue"), and the exit status is 78. A package
@@ -136,12 +138,12 @@ installs an example without targets, so until targets are configured every
 message is held with status 78; that is expected.
 
 Example configurations to copy whole are installed in
-`/usr/share/doc/slendmail/examples/` and kept in
+`/usr/share/doc/mailcrier/examples/` and kept in
 [`packaging/examples/`](packaging/examples/):
 
 | File | Shows |
 |---|---|
-| `slendmail.conf` | every table with its defaults and one minimal target of each type, as comments like the installed file |
+| `mailcrier.conf` | every table with its defaults and one minimal target of each type, as comments like the installed file |
 | `telegram.conf` | one Telegram chat with a forum topic, `on_long` and `max_lines` |
 | `team-chat.conf` | Slack, Discord and Mattermost together |
 | `ntfy.conf` | ntfy with the file limit of ntfy.sh and a template |
@@ -153,7 +155,7 @@ Example configurations to copy whole are installed in
 
 ```toml
 [general]
-syslog_tag = "slendmail"        # optional, default "slendmail"
+syslog_tag = "mailcrier"        # optional, default "mailcrier"
 http_timeout = "15s"            # optional, one HTTP request
 deadline = "30s"                # optional, delivery to all targets
 
@@ -167,7 +169,7 @@ not_sent = "[not sent]"
 
 [target.hook]                   # the table key is the target name: [a-z0-9-]
 type = "http"
-url_file = "/etc/slendmail.d/hook.url"  # or url = "https://..."
+url_file = "/etc/mailcrier.d/hook.url"  # or url = "https://..."
 preset = "generic-json"
 ```
 
@@ -202,7 +204,7 @@ preset = "generic-json"
   level, after one `syslog unavailable` warning; PHP-FPM passes the stderr
   of a worker to its own log only with `catch_workers_output = yes` in the
   pool configuration. A setgid-elevated process without syslog writes to
-  stderr only `slendmail: <message>` for warnings and errors, without
+  stderr only `mailcrier: <message>` for warnings and errors, without
   fields, because its caller must not see what only the group may read.
   Each record is a constant message with logfmt fields: `call` (16 hex
   digits, one value per invocation) on every record, `msgid` (the
@@ -256,7 +258,7 @@ it is, and the service rejects a bigger file.
 ```toml
 [target.ops-telegram]
 type = "telegram"
-token_file = "/etc/slendmail.d/tg.token"   # or token = "123456:ABC..."
+token_file = "/etc/mailcrier.d/tg.token"   # or token = "123456:ABC..."
 chat_id = -1001234567890                   # or "-1001234567890", "@channel"
 message_thread_id = 42                     # optional, forum topic
 disable_notification = true                # optional, silent messages
@@ -278,7 +280,7 @@ disable_notification = true                # optional, silent messages
 ```toml
 [target.ops-discord]
 type = "discord"
-url_file = "/etc/slendmail.d/discord.url"  # https://discord.com/api/webhooks/<id>/<token>
+url_file = "/etc/mailcrier.d/discord.url"  # https://discord.com/api/webhooks/<id>/<token>
 ```
 
 - `discord`: one webhook execution per message with `wait=true`, so that
@@ -293,7 +295,7 @@ url_file = "/etc/slendmail.d/discord.url"  # https://discord.com/api/webhooks/<i
 ```toml
 [target.prod-slack]
 type = "slack"
-token_file = "/etc/slendmail.d/slack.token"  # bot token, xoxb-...
+token_file = "/etc/mailcrier.d/slack.token"  # bot token, xoxb-...
 channel = "#alerts"                          # channel name or ID
 ```
 
@@ -314,7 +316,7 @@ channel = "#alerts"                          # channel name or ID
 [target.phone]
 type = "ntfy"
 # https://ntfy.sh/<topic>, user:password@ allowed
-url_file = "/etc/slendmail.d/ntfy.url"
+url_file = "/etc/mailcrier.d/ntfy.url"
 max_file_size = 2000000         # optional, ntfy.sh takes files of 2 MB
 ```
 
@@ -331,8 +333,8 @@ max_file_size = 2000000         # optional, ntfy.sh takes files of 2 MB
 [target.mm]
 type = "http"
 preset = "mattermost"           # mattermost | slack-webhook | generic-json
-url_file = "/etc/slendmail.d/mm.url"
-username = "slendmail"          # optional, mattermost only
+url_file = "/etc/mailcrier.d/mm.url"
+username = "mailcrier"          # optional, mattermost only
 channel = "alerts"              # optional, mattermost only
 
 [target.api]
@@ -414,16 +416,16 @@ timeout = "30s"                 # optional, the default
     and files are not valid for it.
   - Environment: only `PATH=/usr/sbin:/usr/bin:/sbin:/bin`,
     `LANG=C.UTF-8`, `TZ` when the caller set it (a setgid call keeps only
-    a zone name), and `SLENDMAIL_SUBJECT` (the decoded subject),
-    `SLENDMAIL_FROM` (the address of From, or the envelope sender),
-    `SLENDMAIL_TO` (the envelope recipients joined by `, `, without the
-    addresses only Bcc or Resent-Bcc named), `SLENDMAIL_HOSTNAME`,
-    `SLENDMAIL_TARGET` (the target name), `SLENDMAIL_MSGID` (the
-    Message-ID, empty when there is none) and `SLENDMAIL_SIZE` (the bytes
+    a zone name), and `MAILCRIER_SUBJECT` (the decoded subject),
+    `MAILCRIER_FROM` (the address of From, or the envelope sender),
+    `MAILCRIER_TO` (the envelope recipients joined by `, `, without the
+    addresses only Bcc or Resent-Bcc named), `MAILCRIER_HOSTNAME`,
+    `MAILCRIER_TARGET` (the target name), `MAILCRIER_MSGID` (the
+    Message-ID, empty when there is none) and `MAILCRIER_SIZE` (the bytes
     on stdin). In each value CR, LF and NUL become spaces, and the value
     is cut at a character to 4096 bytes; the whole environment stays
     within 64 KiB. The values come from whoever wrote the message: a hook
-    quotes them (`"$SLENDMAIL_SUBJECT"`) and never hands them to `eval`
+    quotes them (`"$MAILCRIER_SUBJECT"`) and never hands them to `eval`
     or `sh -c`.
   - Outcome: exit status 0 is a delivery; 75 (`EX_TEMPFAIL`) a temporary
     failure, queued and retried; any other status, or death by a signal,
@@ -436,39 +438,39 @@ timeout = "30s"                 # optional, the default
     that left the group with `setsid` survives. After the hook exits, the
     call waits at most 2 s for children that still hold its stdout or
     stderr, and then goes on without them. `SIGINT`, `SIGTERM` or
-    `SIGHUP` to slendmail end the run the same way: the group is killed,
+    `SIGHUP` to mailcrier end the run the same way: the group is killed,
     the failure is temporary and the message stays queued (a second
-    signal ends slendmail at once). This holds once the message is read;
+    signal ends mailcrier at once). This holds once the message is read;
     a signal while it is still coming in, such as Ctrl-C while it is
-    typed, ends slendmail and discards the message, as sendmail does. A
-    signal that slendmail was started with ignored, as under `nohup`,
-    stays ignored. When slendmail dies by `SIGKILL`, the kernel kills the
+    typed, ends mailcrier and discards the message, as sendmail does. A
+    signal that mailcrier was started with ignored, as under `nohup`,
+    stays ignored. When mailcrier dies by `SIGKILL`, the kernel kills the
     hook itself (parent death signal), but children the hook started
     survive and finish on their own.
   - Output: stdout and stderr together, the first 4096 bytes, go into one
     `hook output` record with `target`, `output` and `output_size` (all
     bytes printed), the secrets of the configuration masked.
   - Ids: a setgid call starts the hook with the real uid and gid of the
-    caller and the caller's supplementary groups, without the `slendmail`
+    caller and the caller's supplementary groups, without the `mailcrier`
     group, so the hook reads neither the configuration nor the spool. A
-    queue run as the `slendmail` user (the systemd timer or the cron file)
-    starts the hooks of queued messages as `slendmail` with the group
-    `slendmail`, which reads the configuration with all tokens and every
+    queue run as the `mailcrier` user (the systemd timer or the cron file)
+    starts the hooks of queued messages as `mailcrier` with the group
+    `mailcrier`, which reads the configuration with all tokens and every
     spool entry: the hook program must be trusted that far. The working
     directory is that of the caller.
   - Secrets: `argv` is visible to every local user through `ps` and
-    `/proc/<pid>/cmdline` while the hook runs, and slendmail does not
+    `/proc/<pid>/cmdline` while the hook runs, and mailcrier does not
     mask it in the log, so it holds no token. A hook that needs one reads
     it itself; started by a setgid call it runs as the caller, so the
     secret is readable by every user who can run `sendmail`. Where that is
     not acceptable, the hook has to refuse to run as anyone but
-    `slendmail` (exit 75 keeps the message queued for the queue run of
-    that user), and then reads what `slendmail` reads, as said above.
+    `mailcrier` (exit 75 keeps the message queued for the queue run of
+    that user), and then reads what `mailcrier` reads, as said above.
 
 ```toml
 [target.bus]
 type = "shoutrrr"
-url_file = "/etc/slendmail.d/bus.url"   # a service URL, gotify://host/token
+url_file = "/etc/mailcrier.d/bus.url"   # a service URL, gotify://host/token
 ```
 
 - `shoutrrr`: one message through a service of the shoutrrr library
@@ -476,7 +478,7 @@ url_file = "/etc/slendmail.d/bus.url"   # a service URL, gotify://host/token
   URL: `gotify`, `matrix`, `teams`, `pushover`, `smtp`, `generic` and the
   others its documentation lists. The text is that of the plain template
   (subject, host, sender, body), without files and without a title; there
-  is no length limit of slendmail's, each service cuts or splits a long
+  is no length limit of mailcrier's, each service cuts or splits a long
   text as the library does. An unknown scheme or a URL the service rejects
   exits 78 when the configuration is loaded. `matrix` takes an access token
   only (`matrix://:token@host`): with a user name the library logs in while
@@ -496,7 +498,7 @@ url_file = "/etc/slendmail.d/bus.url"   # a service URL, gotify://host/token
 ```toml
 [target.ops-telegram]
 type = "telegram"
-token_file = "/etc/slendmail.d/tg.token"
+token_file = "/etc/mailcrier.d/tg.token"
 chat_id = -1001234567890
 on_long = "file"        # optional: file | truncate | blockquote
 long_file = "text"      # optional: text (message.txt) | eml (message.eml)
@@ -542,7 +544,7 @@ max_lines = 40          # optional, lines of the body in the text
 ```toml
 [target.ops-telegram]
 type = "telegram"
-token_file = "/etc/slendmail.d/tg.token"
+token_file = "/etc/mailcrier.d/tg.token"
 chat_id = -1001234567890
 template = '''
 <b>{{ .Subject | default .Strings.NoSubject | tgHTML }}</b>
@@ -655,12 +657,12 @@ template = '''
 ```toml
 [target.ops-telegram]
 type = "telegram"
-token_file = "/etc/slendmail.d/tg.token"
+token_file = "/etc/mailcrier.d/tg.token"
 chat_id = -1001234567890
 
 [target.mm]
 type = "http"
-url_file = "/etc/slendmail.d/mm.url"
+url_file = "/etc/mailcrier.d/mm.url"
 preset = "mattermost"
 
 [[suppress]]
@@ -758,7 +760,7 @@ telegram_direct_max = 10        # optional, the default
 
 [target.ops-telegram]
 type = "telegram"
-token_file = "/etc/slendmail.d/tg.token"
+token_file = "/etc/mailcrier.d/tg.token"
 chat_id = -1001234567890
 ```
 
@@ -808,7 +810,7 @@ chat_id = -1001234567890
 
 ```toml
 [spool]                         # optional; the values are the defaults
-dir = "/var/spool/slendmail"    # "" turns the spool off
+dir = "/var/spool/mailcrier"    # "" turns the spool off
 drain_budget = "10s"            # queue run after the own message of a call
 drain_max_messages = 20
 run_budget = "60s"              # queue run of -q
@@ -822,7 +824,7 @@ max_queue_bytes_per_uid = 67108864
 
 [target.hook]
 type = "http"
-url_file = "/etc/slendmail.d/hook.url"
+url_file = "/etc/mailcrier.d/hook.url"
 preset = "generic-json"
 ```
 
@@ -857,25 +859,25 @@ preset = "generic-json"
 - Each call runs the queue for at most `drain_budget` and
   `drain_max_messages` entries after delivering its own message, only for
   the entries of its caller's uid, and not at all while another call of the
-  same user is doing so (`locks/drain-<uid>.lock`). `slendmail -q` runs it
-  for at most `run_budget`: root, the `slendmail` user and a process
+  same user is doing so (`locks/drain-<uid>.lock`). `mailcrier -q` runs it
+  for at most `run_budget`: root, the `mailcrier` user and a process
   without the setgid bit take every entry, any other user only their own.
   An entry is locked while a process works on it, and a run skips locked
   entries, so parallel runs never deliver an entry twice.
-- The packages run `slendmail -q` as `slendmail` every 5 minutes: the
-  systemd timer `slendmail-queue.timer` (its service stops a run after 3
+- The packages run `mailcrier -q` as `mailcrier` every 5 minutes: the
+  systemd timer `mailcrier-queue.timer` (its service stops a run after 3
   minutes, which covers `run_budget` of 60 seconds and the delivery under
   way; a larger `run_budget` needs a larger `TimeoutStartSec` in a
   drop-in), or where systemd is not running
-  `/etc/cron.d/slendmail`, or `/etc/crontabs/slendmail` on Alpine, all
+  `/etc/cron.d/mailcrier`, or `/etc/crontabs/mailcrier` on Alpine, all
   without mail from cron since `-q` logs to syslog only (`MAILTO=` for
   BusyBox crond, which takes `MAILTO=""` for an address). Without a running cron
   daemon or timer, as in most containers, only the calls themselves run the
-  queue; a container that sends rarely runs `slendmail -q` from a
+  queue; a container that sends rarely runs `mailcrier -q` from a
   scheduler such as supercronic, a sidecar or a health check.
 - Limits: all entries in `tmp/`, `queue/` and `hold/` together stay within
   `max_queue_messages` and `max_queue_bytes`, those of one uid within the
-  `_per_uid` limits; users other than root and `slendmail` fill at most 80%
+  `_per_uid` limits; users other than root and `mailcrier` fill at most 80%
   of the totals, so root still gets its mail queued. Parallel calls never
   exceed a limit together, but near it they may all be refused where one
   would have fit. A message over a limit
@@ -889,12 +891,12 @@ preset = "generic-json"
   exclude processes over NFS. The directory must exist; the program creates
   `tmp`, `queue`, `hold`, `failed` and `locks` in it when missing, which
   suits a container. With the setgid install the packages create the
-  directory and all five as `root:slendmail 2770`: made by the program,
+  directory and all five as `root:mailcrier 2770`: made by the program,
   they would belong to whichever user sent first. Entries are created with
   mode `0660`.
 - `mailq` and `-bp` list the entries of `queue/`, `hold/` and `failed/`
   with the state, attempts, next attempt and last error of each target,
-  for root, the `slendmail` user and a process without the setgid bit;
+  for root, the `mailcrier` user and a process without the setgid bit;
   anyone else sees one line of counts; a spool directory that does not
   exist lists as `queue is empty`. `--status` prints one logfmt line for
   monitoring,
@@ -904,15 +906,15 @@ preset = "generic-json"
 
 ### Options, privileges and containers
 
-- `--config PATH` or the environment variable `SLENDMAIL_CONFIG` names
+- `--config PATH` or the environment variable `MAILCRIER_CONFIG` names
   another configuration file; `--config` wins. sendmail's `-C` is always
   ignored with a warning.
 - `--check-config` checks the configuration, see "Checking the
   configuration": it reads neither stdin nor the spool and sends nothing,
   writes its findings to stderr and exits 0 without an error, 78 with
-  one. It takes no arguments (64). root, the `slendmail` user and a
+  one. It takes no arguments (64). root, the `mailcrier` user and a
   caller without the setgid bit may run it.
-- `--probe` sends a sample message, subject `slendmail probe from
+- `--probe` sends a sample message, subject `mailcrier probe from
   <host>`, to every target of the configuration, or with `--probe --
   name ...` to the targets named (an unknown name exits 64 before
   anything is sent; the names go after `--`, since a name may start with
@@ -924,27 +926,27 @@ preset = "generic-json"
   shows `template=fallback` with status 0, and `--check-config` shows the
   template error. The exit status is 0 when every target took the
   message, 69 when one rejected it, and 75 when one failed temporarily
-  and none rejected it. root, the `slendmail` user and a caller without
+  and none rejected it. root, the `mailcrier` user and a caller without
   the setgid bit may run it. Mail flags such as `-f` or `-t` are ignored,
   and of several mode options the last one wins.
-- The intended install is setgid: binary `root:slendmail 2755`,
-  configuration and `*_file` files `root:slendmail 0640`, so that cron jobs
+- The intended install is setgid: binary `root:mailcrier 2755`,
+  configuration and `*_file` files `root:mailcrier 0640`, so that cron jobs
   of any user can send while only root and the binary read the secrets.
   When a user other than root runs the binary and the kernel applies the
   setgid bit:
   - before doing anything else the process executes itself once more,
-    through `/proc/self/exe` or else `/usr/sbin/slendmail`, with the
+    through `/proc/self/exe` or else `/usr/sbin/mailcrier`, with the
     environment reduced to `USER`, `LOGNAME`, `HOME`, `LANG`, `LC_*` and
     `TZ` (a zone name such as `Europe/Berlin` only), so that `GODEBUG`,
     proxy or TLS variables of the caller cannot act with the group
     privilege. If both fail, it replaces its environment the same way and
     goes on with HTTP/2 off, the Go debug output dropped and no proxy, and
     logs `reexec failed` as an error;
-  - `--config` and `SLENDMAIL_CONFIG` are ignored with a warning; with
+  - `--config` and `MAILCRIER_CONFIG` are ignored with a warning; with
     `--check-config` or `--probe` they exit 64 instead, so that a mode
     never works on another file than the one named;
   - `--probe` and `--check-config` exit 77 for everyone but root and the
-    `slendmail` user.
+    `mailcrier` user.
 - Without the setgid bit taking effect the binary runs with the ids of its
   caller, and that is the normal mode for containers: Docker with
   `--security-opt no-new-privileges`, Kubernetes with
@@ -952,12 +954,12 @@ preset = "generic-json"
   `NoNewPrivileges=yes` or `RestrictSUIDSGID=yes`, or a binary copied
   without the bit. The configuration and its `*_file` files must then be
   readable by the caller (for PHP-FPM, for example `0640 root:www-data`),
-  `--config` and `SLENDMAIL_CONFIG` work, and secrets mounted as files
+  `--config` and `MAILCRIER_CONFIG` work, and secrets mounted as files
   (Docker or Kubernetes secrets) go in through `*_file`. For PHP set
   `sendmail_path = /usr/sbin/sendmail -t -i` with `/usr/sbin/sendmail` a
   link to the binary, and pass the variable with
-  `env[SLENDMAIL_CONFIG] = /run/secrets/slendmail.conf` in the pool
-  configuration. The spool directory, `/var/spool/slendmail` unless
+  `env[MAILCRIER_CONFIG] = /run/secrets/mailcrier.conf` in the pool
+  configuration. The spool directory, `/var/spool/mailcrier` unless
   `[spool] dir` names another, must exist and be writable by the caller (a
   volume, when queued messages must survive the container); without it a
   temporary failure exits 73, and `dir = ""` turns the spool off.
@@ -967,7 +969,7 @@ preset = "generic-json"
 
 ### Checking the configuration
 
-`slendmail --check-config` loads the configuration and builds its targets
+`mailcrier --check-config` loads the configuration and builds its targets
 as every call does, so it finds every error that would reject a message
 with 78, and adds warnings about what loads but may not work as meant.
 The errors and warnings go to stderr, one per line, and a last line counts
@@ -996,19 +998,19 @@ targets = ["ops"]
 
 <!-- rumdl-disable MD013 -->
 ```text
-warning: /etc/slendmail.conf:4:1: target "ops": preset "slack-webhook" on a Discord host does not disable mentions, use type "discord"
-warning: /etc/slendmail.conf:6:9: target "backup": no route names this target
-warning: /etc/slendmail.conf:10:3: routes have no rule without conditions: a message no rule matches is held and the call exits 64, or the message is lost with the spool off
-/etc/slendmail.conf: 0 errors, 3 warnings
+warning: /etc/mailcrier.conf:4:1: target "ops": preset "slack-webhook" on a Discord host does not disable mentions, use type "discord"
+warning: /etc/mailcrier.conf:6:9: target "backup": no route names this target
+warning: /etc/mailcrier.conf:10:3: routes have no rule without conditions: a message no rule matches is held and the call exits 64, or the message is lost with the spool off
+/etc/mailcrier.conf: 0 errors, 3 warnings
 ```
 <!-- rumdl-enable MD013 -->
 
 | Warning | Cause | What to do |
 |---|---|---|
-| `file of key "token_file" is readable by all users` (or `url_file`) | the secret file has the read bit for others | `chmod o-r`, owner group `slendmail`, mode `0640` |
+| `file of key "token_file" is readable by all users` (or `url_file`) | the secret file has the read bit for others | `chmod o-r`, owner group `mailcrier`, mode `0640` |
 | `file is readable by all users and holds secrets` | the configuration writes out `token`, `url`, `headers`, `query` or `path` and has the read bit for others | `chmod 0640`, or move the secrets into `*_file` files |
-| `file of key "..." is not readable by the group of the binary, every call of another user exits 78` | a `*_file` or `template_file`, or the configuration itself, belongs to the group of the binary without the read bit for the group, or to another group without the read bit for others: the kernel applies the bits of one class only | `chgrp slendmail` and `chmod g+r` |
-| `directory of key "..." is not searchable by the group of the binary, ...` | a directory on the way to the file, `/` included, belongs to the group of the binary without the search bit for the group, or to another group without the search bit for others | `chmod o+x`, or group `slendmail` with `g+x` |
+| `file of key "..." is not readable by the group of the binary, every call of another user exits 78` | a `*_file` or `template_file`, or the configuration itself, belongs to the group of the binary without the read bit for the group, or to another group without the read bit for others: the kernel applies the bits of one class only | `chgrp mailcrier` and `chmod g+r` |
+| `directory of key "..." is not searchable by the group of the binary, ...` | a directory on the way to the file, `/` included, belongs to the group of the binary without the search bit for the group, or to another group without the search bit for others | `chmod o+x`, or group `mailcrier` with `g+x` |
 | `shoutrrr service "telegram" has a native target type "telegram"` (also `slack`, `discord`, `ntfy`) | the shoutrrr target sends plain text without the escaping, length limits and files of the service | use the target type of the service |
 | `preset "slack-webhook" on a Discord host does not disable mentions` | the Slack-compatible endpoint of a Discord webhook lets `@everyone` from a message ping the channel | use type `discord` |
 | `routes have no rule without conditions` | routes exist, but no rule matches every message | add a last `[[route]]` with `targets` only; a condition such as `subject = "*"` does not count |
@@ -1019,9 +1021,9 @@ warning: /etc/slendmail.conf:10:3: routes have no rule without conditions: a mes
 | `the sample message does not render, the target gets nothing` | the built-in template does not fit `max_text`, for JSON or MarkdownV2 | raise `max_text` |
 
 The four checks of permissions run only when the setgid bit applied to
-the process, which is the case for root and for the `slendmail` user with
+the process, which is the case for root and for the `mailcrier` user with
 another primary group; without the bit (a container, a binary without
-the bit, `sudo -u slendmail` with the primary group `slendmail`) they are
+the bit, `sudo -u mailcrier` with the primary group `mailcrier`) they are
 skipped, because the group that reads the files is unknown. They read the
 mode and the owner group only: access control lists are not seen, and for
 a directory that is a symbolic link the target directory is checked but
@@ -1067,7 +1069,7 @@ option: `-f --probe` names a sender.
   logged by name, without its value, and ignored. A group of unknown
   letters yields one warning, and a command line at most 16 plus one
   `warnings suppressed` record with the count. A flag sendmail knows but
-  slendmail does not never stops the call: refusing it would lose the
+  mailcrier does not never stops the call: refusing it would lose the
   message of a cron job.
 - Called as `newaliases` the binary does nothing and exits 0; called as
   `mailq` it lists the queue, see "Spool and queue". `/etc/aliases` and
@@ -1144,11 +1146,11 @@ option: `-f --probe` names a sender.
 | a target failed temporarily and the spool entry could not be written; `-q` or `--status` could not read the spool, `mailq` a spool that exists | 74 |
 | `--probe` only: a target failed temporarily and none rejected the sample message; nothing is queued | 75 |
 | usage error: `-f` or `-r` without a value, a line break in the sender, the full name or a recipient, `-bs`, `--config` without a value; stdin is not read | 64 |
-| `--check-config` with an argument, `--probe` naming no configured target, or either from an elevated caller with `--config` or `SLENDMAIL_CONFIG` | 64 |
+| `--check-config` with an argument, `--probe` naming no configured target, or either from an elevated caller with `--config` or `MAILCRIER_CONFIG` | 64 |
 | no route selects a target; the message is held, or lost with the spool off | 64 |
 | stdin cannot be read | 66 |
 | panic in the main goroutine (a bug; the redacted record in the log carries the details) | 70 |
-| `--probe` or `--check-config` from an elevated caller other than root and the `slendmail` user | 77 |
+| `--probe` or `--check-config` from an elevated caller other than root and the `mailcrier` user | 77 |
 | for a call with a message: the configuration cannot be read, parsed or validated, defines no targets, or holds a template that does not parse; the message is held | 78 |
 | `--check-config` found an error, or `--probe` cannot use the configuration; nothing is held | 78 |
 
