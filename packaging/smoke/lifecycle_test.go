@@ -168,16 +168,7 @@ func TestSmokeLifecycle(t *testing.T) {
 	t.Run("T-PKG-14/cron-job-after-removal", func(t *testing.T) {
 		switch d.format {
 		case "deb":
-			data, err := os.ReadFile(d.cronFile)
-			if err != nil {
-				t.Fatalf("the conffile %s is gone after dpkg -r: %v", d.cronFile, err)
-			}
-			var command string
-			for line := range strings.Lines(string(data)) {
-				if fields := strings.Fields(line); len(fields) > 6 && strings.HasPrefix(line, "*/5 ") {
-					command = strings.Join(fields[6:], " ")
-				}
-			}
+			command := cronCommand(t, d.cronFile)
 			if r := run(t, nil, "", "runuser", "-u", "slendmail", "--", "sh", "-c", command); r.code != 0 || r.out != "" {
 				t.Errorf("cron job %q without the binary exited %d:\n%s", command, r.code, r.out)
 			}

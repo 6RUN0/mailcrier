@@ -66,6 +66,15 @@ SMOKE_DISTROS := debian rocky9 rocky10 alpine
 SMOKE_TESTS := TestSmokeSetgid TestSmokeRuntime TestSmokeLifecycle
 SMOKE_VOLUMES := -v $(CURDIR)/dist:/pkgs:ro -v $(E2E_DIR):/e2e:ro -v $(CURDIR)/testdata/callers:/callers:ro
 
+# TestSmokeSystemd runs where the packages ship the queue timer, in the
+# systemd stage of the image with systemd as PID 1. SYS_ADMIN lets the
+# container remount its cgroup namespace writable; apparmor=unconfined,
+# because the docker-default profile of Ubuntu denies mount whatever the
+# capabilities. SMOKE_SYSTEMD_FLAGS=--privileged is the fallback for a host
+# where that is not enough.
+SMOKE_SYSTEMD_DISTROS := debian rocky9 rocky10
+SMOKE_SYSTEMD_FLAGS ?=
+
 .PHONY: check lint lint-go lint-yaml lint-actions tidy test fuzz build licenses vuln check-refs check-commits snapshot setgid-e2e units-verify \
 	smoke smoke-dist $(addprefix smoke-,$(SMOKE_DISTROS)) FORCE
 
@@ -144,10 +153,34 @@ smoke: $(addprefix smoke-,$(SMOKE_DISTROS))
 # state, and every failure is worth seeing.
 $(addprefix smoke-,$(SMOKE_DISTROS)): smoke-%: smoke-dist $(E2E_DIR)/smoke.test $(E2E_DIR)/app.test
 	docker build --target plain -t slendmail-smoke-$* packaging/smoke/$*
+	$(if $(filter $*,$(SMOKE_SYSTEMD_DISTROS)),docker build --target systemd -t slendmail-smoke-$*-systemd packaging/smoke/$*)
 	status=0; for test in $(SMOKE_TESTS); do \
 		docker run --rm --network none --cap-add SYS_PTRACE $(SMOKE_VOLUMES) slendmail-smoke-$* \
 			/e2e/smoke.test -test.run "^$$test\$$" -test.v -test.timeout 20m || status=1; \
-	done; exit $$status
+	done; \
+	$(if $(filter $*,$(SMOKE_SYSTEMD_DISTROS)),$(call smoke-systemd,$*) || status=1;) \
+	exit $$status
+
+# The container is removed by the id in its cidfile, also when systemd or
+# the test fails, and a container an interrupted run left behind before the
+# next one starts; on a failure its state and output come first.
+define smoke-systemd
+cid=$(E2E_DIR)/smoke-$(1).cid; \
+	if [ -f $$cid ]; then docker rm -f $$(cat $$cid) >/dev/null 2>&1; rm -f $$cid; fi; \
+	docker run -d --cidfile $$cid --network none --cgroupns=private --tmpfs /run --tmpfs /run/lock \
+		--cap-add SYS_ADMIN --security-opt apparmor=unconfined $(SMOKE_SYSTEMD_FLAGS) $(SMOKE_VOLUMES) \
+		slendmail-smoke-$(1)-systemd >/dev/null && \
+	docker exec $$(cat $$cid) /e2e/smoke.test -test.run '^TestSmokeSystemd$$' -test.v -test.timeout 20m; \
+	s=$$?; \
+	if [ -f $$cid ]; then \
+		if [ $$s != 0 ]; then \
+			docker inspect -f 'container {{.State.Status}}, exit code {{.State.ExitCode}}' $$(cat $$cid); \
+			docker logs $$(cat $$cid) 2>&1 | tail -50; \
+		fi; \
+		docker rm -f $$(cat $$cid) >/dev/null; \
+	fi; \
+	rm -f $$cid; [ $$s = 0 ]
+endef
 
 smoke-dist:
 	@for format in deb rpm apk; do \

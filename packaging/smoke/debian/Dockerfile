@@ -7,3 +7,16 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -m alice \
     && useradd -m queuer
+
+FROM plain AS systemd
+
+# The policy-rc.d of the Docker image would keep deb-systemd-invoke from
+# starting the timer. Docker mounts the cgroup tree read-only unless the
+# container is privileged; with CAP_SYS_ADMIN and without an AppArmor
+# profile, whose docker-default denies mount, the container remounts its
+# own cgroup namespace writable, which systemd needs as PID 1.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends systemd systemd-sysv \
+    && rm -rf /var/lib/apt/lists/* /usr/sbin/policy-rc.d
+
+CMD ["sh", "-c", "mount -o remount,rw /sys/fs/cgroup && exec /sbin/init"]
