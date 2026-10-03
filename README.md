@@ -115,9 +115,16 @@ setgid bit. Consequences:
   (`chgrp` first: it clears the bit).
 
 Removal (`dpkg -r`, `rpm -e`, `apk del`) stops the timer. It keeps the
-user, the group, a changed configuration (`dpkg -P` deletes it, `rpm -e`
-keeps it as `/etc/slendmail.conf.rpmsave`) and a spool that still holds
-messages, whose path the scripts print (deb on `dpkg -P`).
+user, the group and a changed configuration (`dpkg -P` deletes it, `rpm -e`
+keeps it as `/etc/slendmail.conf.rpmsave`). A spool without messages in
+`queue/`, `hold/` and `failed/` is removed with the package; one with
+messages stays, and every format prints its path on removal (deb on
+`dpkg -r` and on `dpkg -P`). A call during the removal can leave the spool
+with nothing but `locks/` in it, and files an interrupted call left in
+`tmp/` keep it as well (dpkg reports the directory as not empty);
+such a directory holds no message and can be deleted. Debian keeps
+`/etc/cron.d/slendmail` until `dpkg -P`; its job does nothing while the
+binary is missing.
 
 ## Configuration
 

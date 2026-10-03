@@ -812,14 +812,15 @@ as
 .Li slendmail
 every 5 minutes.
 .It Pa /etc/cron.d/slendmail , Pa /etc/crontabs/slendmail
-The same queue run by cron where systemd is not running, the second on
-Alpine.
+The same queue run by cron where systemd is not running and the binary is
+installed, the second on Alpine.
 .It Pa /var/spool/slendmail/queue/ , Pa hold/ , Pa failed/
 Entries: the message and its state beside it.
 .It Pa /var/spool/slendmail/tmp/
 Files being written; a queue run removes those older than one hour.
 .It Pa /var/spool/slendmail/locks/
-Queue run locks, one per user.
+Queue run locks, one per user; removal of the package deletes them when
+the spool holds no message.
 .El
 .Sh EXIT STATUS
 .Bl -tag -width Ds

@@ -109,6 +109,7 @@ nfpms:
       apk:
         scripts:
           postinstall: packaging/scripts/apk/post-install.sh
+          preremove: packaging/scripts/apk/pre-deinstall.sh
           postremove: packaging/scripts/apk/post-deinstall.sh
     contents:
       - dst: /usr/sbin/sendmail

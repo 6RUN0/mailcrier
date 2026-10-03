@@ -30,10 +30,12 @@ import (
 // users; cron with MAILTO empty, because -q reports to syslog and a mail
 // from cron would come back through this very program, and without quotes
 // in the BusyBox crontab, whose crond takes MAILTO="" for an address and
-// mails the output through sendmail; the cron.d line
-// only where systemd is not running, so that the timer and cron do not
-// both run the queue; the service with a time limit, so that a run that
-// hangs does not keep the timer from starting the next one.
+// mails the output through sendmail; the cron.d line only where systemd is
+// not running, so that the timer and cron do not both run the queue; both
+// cron lines only while the binary is installed, since a removed deb keeps
+// /etc/cron.d/slendmail as a conffile and Debian Policy wants a cron job
+// to check for its program; the service with a time limit, so that a run
+// that hangs does not keep the timer from starting the next one.
 func TestQueueRunnerFiles(t *testing.T) {
 	cases := []struct {
 		path  string
@@ -41,8 +43,8 @@ func TestQueueRunnerFiles(t *testing.T) {
 	}{
 		{"packaging/systemd/slendmail-queue.service", []string{"Type=oneshot", "User=slendmail", "Group=slendmail", "ExecStart=/usr/sbin/slendmail -q", "TimeoutStartSec=3min"}},
 		{"packaging/systemd/slendmail-queue.timer", []string{"OnBootSec=2min", "OnUnitActiveSec=5min", "WantedBy=timers.target"}},
-		{"packaging/cron/slendmail", []string{`MAILTO=""`, "*/5 * * * * slendmail [ -d /run/systemd/system ] || /usr/sbin/slendmail -q"}},
-		{"packaging/cron/crontabs-slendmail", []string{"MAILTO=", "*/5 * * * * /usr/sbin/slendmail -q"}},
+		{"packaging/cron/slendmail", []string{`MAILTO=""`, "*/5 * * * * slendmail if [ -x /usr/sbin/slendmail ] && [ ! -d /run/systemd/system ]; then /usr/sbin/slendmail -q; fi"}},
+		{"packaging/cron/crontabs-slendmail", []string{"MAILTO=", "*/5 * * * * if [ -x /usr/sbin/slendmail ]; then /usr/sbin/slendmail -q; fi"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.path, func(t *testing.T) {
@@ -256,6 +258,7 @@ func TestPackageContents(t *testing.T) {
 				"apk-postinstall": "packaging/scripts/apk/post-install.sh",
 				"apk-preupgrade":  "packaging/scripts/preinstall.sh",
 				"apk-postupgrade": "packaging/scripts/apk/post-upgrade.sh",
+				"apk-preremove":   "packaging/scripts/apk/pre-deinstall.sh",
 				"apk-postremove":  "packaging/scripts/apk/post-deinstall.sh",
 			}},
 		} {
@@ -335,19 +338,26 @@ var commandPath = regexp.MustCompile("(?m)(?:^|[;&|(!{`]|\\b(?:if|elif|then|else
 var shellComment = regexp.MustCompile(`(?m)(?:^|\s)#.*$`)
 
 // scriptStubs are the commands a package script may run; each one is a
-// stub that logs its arguments.
+// stub that logs its arguments. rm is the real one: the scripts delete
+// files of the spool, which lies in the temporary directory.
 var scriptStubs = []string{"dpkg-statoverride", "deb-systemd-helper", "deb-systemd-invoke", "systemctl", "alternatives", "chgrp", "chmod", "touch", "getent", "groupadd", "useradd", "addgroup", "adduser", "slendmail"}
 
 // scriptCase runs one package script with arguments in a temporary
 // directory: present lists what exists there ("run-systemd", "spool",
-// "nologin"), without drops stubs, and exits gives the exit status of a
-// stub per prefix of its arguments ("" for any). fails expects the script
-// to exit non-zero.
+// "nologin"), files the files created there with their directories, of
+// which remain must exist after the script and the others must not;
+// env adds variables to the environment; without drops stubs, and exits
+// gives the exit status of a stub per prefix of its arguments ("" for
+// any). spool expects the script to name the spool on stdout, fails to
+// exit non-zero.
 type scriptCase struct {
 	name    string
 	event   string
 	args    []string
 	present []string
+	files   []string
+	remain  []string
+	env     []string
 	without []string
 	exits   map[string]map[string]int
 	want    []string
@@ -388,6 +398,13 @@ func writeStubs(t *testing.T, tc scriptCase, dir string) {
 	t.Helper()
 	bin := filepath.Join(dir, "bin")
 	if err := os.Mkdir(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	rm, err := exec.LookPath("rm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(rm, filepath.Join(bin, "rm")); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range scriptStubs {
@@ -437,11 +454,13 @@ func scriptShells(t *testing.T) map[string][]string {
 // upgrade where it acts on removal, never run slendmail or touch its
 // configuration, set the group of the binary before its mode (chgrp clears
 // the setgid bit), keep a timer the administrator masked only through the
-// unmask of debhelper, and exit 0 when a command that is not essential
-// fails, because a failed script leaves dpkg half done and stops an rpm
-// erase. It must fail when the group, the user, the setgid bit or the
-// alternative cannot be set up: the package would install a binary that
-// cannot read its configuration.
+// unmask of debhelper, delete the queue run locks before removal only when
+// the spool holds no message (the package manager then removes the empty
+// spool), name the spool after removal only when it holds one, and exit 0
+// when a command that is not essential fails, because a failed script
+// leaves dpkg half done and stops an rpm erase. It must fail when the
+// group, the user, the setgid bit or the alternative cannot be set up: the
+// package would install a binary that cannot read its configuration.
 func TestPackageScripts(t *testing.T) {
 	section := readNFPM(t)
 	scripts := packageScripts(section)
@@ -487,10 +506,11 @@ func TestPackageScripts(t *testing.T) {
 		{name: "deb-preremove-upgrade", event: "deb-preremove", args: []string{"upgrade", "0.2.0"}, present: []string{"run-systemd"}},
 		{name: "deb-preremove-remove", event: "deb-preremove", args: []string{"remove"}, present: []string{"run-systemd"},
 			exits: failing("deb-systemd-invoke"), want: []string{"deb-systemd-invoke stop " + timer}},
-		{name: "deb-postremove-upgrade", event: "deb-postremove", args: []string{"upgrade", "0.2.0"}, present: []string{"run-systemd", "spool"}},
+		{name: "deb-postremove-upgrade", event: "deb-postremove", args: []string{"upgrade", "0.2.0"}, present: []string{"run-systemd"},
+			files: []string{"spool/hold/x.eml"}, remain: []string{"spool/hold/x.eml"}},
 		{name: "deb-postremove-remove", event: "deb-postremove", args: []string{"remove"}, present: []string{"run-systemd"},
 			want: []string{"systemctl --system daemon-reload"}},
-		{name: "deb-postremove-purge", event: "deb-postremove", args: []string{"purge"}, present: []string{"spool"}, spool: true,
+		{name: "deb-postremove-purge", event: "deb-postremove", args: []string{"purge"}, present: []string{"spool"},
 			exits: failing("deb-systemd-helper", "dpkg-statoverride"),
 			want:  []string{"deb-systemd-helper purge " + timer, "dpkg-statoverride --quiet --remove /usr/sbin/slendmail"}},
 		{name: "rpm-postinstall-install", event: "rpm-postinstall", args: []string{"1"}, present: []string{"run-systemd"},
@@ -503,15 +523,51 @@ func TestPackageScripts(t *testing.T) {
 		{name: "rpm-preremove-erase", event: "rpm-preremove", args: []string{"0"}, present: []string{"run-systemd"},
 			exits: failing("systemctl", "alternatives"),
 			want:  []string{"systemctl disable " + timer, "systemctl stop " + timer, "alternatives --remove mta /usr/sbin/slendmail"}},
-		{name: "rpm-postremove-upgrade", event: "rpm-postremove", args: []string{"1"}, present: []string{"run-systemd", "spool"}},
-		{name: "rpm-postremove-erase", event: "rpm-postremove", args: []string{"0"}, present: []string{"run-systemd", "spool"}, spool: true,
+		{name: "rpm-postremove-upgrade", event: "rpm-postremove", args: []string{"1"}, present: []string{"run-systemd"},
+			files: []string{"spool/hold/x.eml"}, remain: []string{"spool/hold/x.eml"}},
+		{name: "rpm-postremove-erase", event: "rpm-postremove", args: []string{"0"}, present: []string{"run-systemd", "spool"},
 			exits: failing("systemctl"), want: []string{"systemctl daemon-reload"}},
 		{name: "apk-postinstall", event: "apk-postinstall", args: []string{"0.1.0"},
 			want: append(slices.Clone(setgid), "touch {crontabs}/cron.update")},
 		{name: "apk-postupgrade", event: "apk-postupgrade", args: []string{"0.2.0", "0.1.0"},
 			exits: failing("touch"), want: append(slices.Clone(setgid), "touch {crontabs}/cron.update")},
-		{name: "apk-postremove", event: "apk-postremove", args: []string{"0.1.0"}, present: []string{"spool"}, spool: true,
+		{name: "apk-postremove", event: "apk-postremove", args: []string{"0.1.0"}, present: []string{"spool"},
 			exits: failing("touch"), want: []string{"touch {crontabs}/cron.update"}},
+		{name: "deb-preremove-remove-locks", event: "deb-preremove", args: []string{"remove"},
+			files: []string{"spool/locks/drain-0.lock", "spool/locks/drain-1000.lock", "spool/tmp/x"}, remain: []string{"spool/tmp/x"}},
+		{name: "deb-preremove-remove-mail", event: "deb-preremove", args: []string{"remove"},
+			files: []string{"spool/locks/drain-0.lock", "spool/hold/x.eml"}, remain: []string{"spool/locks/drain-0.lock", "spool/hold/x.eml"}},
+		{name: "deb-preremove-remove-dpkg-root", event: "deb-preremove", args: []string{"remove"}, present: []string{"run-systemd"},
+			env: []string{"DPKG_ROOT=/nonexistent"}, files: []string{"spool/locks/drain-0.lock"}, remain: []string{"spool/locks/drain-0.lock"}},
+		{name: "deb-preremove-upgrade-locks", event: "deb-preremove", args: []string{"upgrade", "0.2.0"},
+			files: []string{"spool/locks/drain-0.lock"}, remain: []string{"spool/locks/drain-0.lock"}},
+		{name: "rpm-preremove-erase-locks", event: "rpm-preremove", args: []string{"0"},
+			files: []string{"spool/locks/drain-0.lock", "spool/locks/drain-1000.lock"},
+			want:  []string{"systemctl disable " + timer, "alternatives --remove mta /usr/sbin/slendmail"}},
+		{name: "rpm-preremove-erase-mail", event: "rpm-preremove", args: []string{"0"},
+			files: []string{"spool/locks/drain-0.lock", "spool/queue/x.eml"}, remain: []string{"spool/locks/drain-0.lock", "spool/queue/x.eml"},
+			want: []string{"systemctl disable " + timer, "alternatives --remove mta /usr/sbin/slendmail"}},
+		{name: "rpm-preremove-upgrade-locks", event: "rpm-preremove", args: []string{"1"},
+			files: []string{"spool/locks/drain-0.lock"}, remain: []string{"spool/locks/drain-0.lock"}},
+		{name: "apk-preremove-locks", event: "apk-preremove", args: []string{"0.1.0"},
+			files: []string{"spool/locks/drain-0.lock", "spool/locks/drain-1000.lock"}},
+		{name: "apk-preremove-mail", event: "apk-preremove", args: []string{"0.1.0"},
+			files: []string{"spool/locks/drain-0.lock", "spool/failed/x.eml"}, remain: []string{"spool/locks/drain-0.lock", "spool/failed/x.eml"}},
+		{name: "deb-postremove-remove-mail", event: "deb-postremove", args: []string{"remove"}, spool: true,
+			files: []string{"spool/hold/x.eml"}, remain: []string{"spool/hold/x.eml"}},
+		{name: "deb-postremove-purge-mail", event: "deb-postremove", args: []string{"purge"}, spool: true,
+			files: []string{"spool/queue/x.eml"}, remain: []string{"spool/queue/x.eml"},
+			want: []string{"deb-systemd-helper purge " + timer, "dpkg-statoverride --quiet --remove /usr/sbin/slendmail"}},
+		{name: "deb-postremove-remove-tmp", event: "deb-postremove", args: []string{"remove"},
+			files: []string{"spool/tmp/x"}, remain: []string{"spool/tmp/x"}},
+		{name: "rpm-postremove-erase-mail", event: "rpm-postremove", args: []string{"0"}, spool: true,
+			files: []string{"spool/failed/x.eml"}, remain: []string{"spool/failed/x.eml"}},
+		{name: "rpm-postremove-erase-tmp", event: "rpm-postremove", args: []string{"0"},
+			files: []string{"spool/tmp/x"}, remain: []string{"spool/tmp/x"}},
+		{name: "apk-postremove-mail", event: "apk-postremove", args: []string{"0.1.0"}, spool: true,
+			files: []string{"spool/hold/x.eml"}, remain: []string{"spool/hold/x.eml"}, want: []string{"touch {crontabs}/cron.update"}},
+		{name: "apk-postremove-tmp", event: "apk-postremove", args: []string{"0.1.0"},
+			files: []string{"spool/tmp/x"}, remain: []string{"spool/tmp/x"}, want: []string{"touch {crontabs}/cron.update"}},
 		{name: "preinstall-groupadd-failing", event: "rpm-preinstall", args: []string{"1"}, fails: true,
 			exits: map[string]map[string]int{"getent": {"": 2}, "groupadd": {"": 1}},
 			want:  []string{"getent group slendmail", "groupadd -r slendmail"}},
@@ -566,9 +622,18 @@ func TestPackageScripts(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
+				for _, name := range tc.files {
+					file := filepath.Join(dir, name)
+					if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(file, nil, 0o644); err != nil {
+						t.Fatal(err)
+					}
+				}
 				writeStubs(t, tc, dir)
 				cmd := exec.Command(argv[0], append(append(argv[1:], "-s"), tc.args...)...)
-				cmd.Env = []string{"PATH=" + filepath.Join(dir, "bin")}
+				cmd.Env = append([]string{"PATH=" + filepath.Join(dir, "bin")}, tc.env...)
 				cmd.Stdin = strings.NewReader(prepareScript(t, string(data), dir))
 				var stdout, stderr bytes.Buffer
 				cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -601,6 +666,12 @@ func TestPackageScripts(t *testing.T) {
 				}
 				if named := strings.Contains(stdout.String(), filepath.Join(dir, "spool")); named != tc.spool {
 					t.Errorf("stdout %q names the spool: %v, want %v", stdout.String(), named, tc.spool)
+				}
+				for _, name := range tc.files {
+					_, err := os.Lstat(filepath.Join(dir, name))
+					if exists, want := err == nil, slices.Contains(tc.remain, name); exists != want {
+						t.Errorf("%s exists after the script: %v, want %v (%v)", name, exists, want, err)
+					}
 				}
 			})
 		}

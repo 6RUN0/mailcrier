@@ -1,2 +1,2 @@
 MAILTO=""
-*/5 * * * * slendmail [ -d /run/systemd/system ] || /usr/sbin/slendmail -q
+*/5 * * * * slendmail if [ -x /usr/sbin/slendmail ] && [ ! -d /run/systemd/system ]; then /usr/sbin/slendmail -q; fi
