@@ -6,9 +6,9 @@ code in this repository.
 ## Commands
 
 ```sh
-make check        # all CI checks of a push; govulncheck only warns here
-make lint         # other targets: tidy test fuzz build licenses vuln
-                  # check-refs check-commits snapshot
+make check        # the CI job make check; govulncheck only warns here
+make lint         # lint-go lint-yaml lint-actions; other targets: tidy test
+                  # fuzz build licenses vuln check-refs check-commits snapshot
 make fuzz FUZZTIME=10m   # longer fuzzing; check runs each target 10s
 make fuzz FUZZPARALLEL=8  # fuzzing processes per target, default 4
 make setgid-e2e   # needs docker: TestSetgid* in a root container
@@ -36,7 +36,8 @@ mandoc -T lint -W warning docs/mailcrier.8   # man page; not in make check
   skips; each one is named in the `allow` list of the tools entry in
   `.github/dependabot.yml`, and `TestDependabotCoversTools` fails when a tool
   module is missing there.
-- `check-refs` and `check-commits` take `BASE` (default `origin/develop`):
+- `check-refs` and `check-commits` take `BASE` (default `origin/develop`,
+  `HEAD` when that ref is missing):
   commits in `BASE..HEAD`, files changed since `BASE`, untracked included.
 - zizmor runs `--offline` locally; CI sets `ZIZMOR_FLAGS=` and `GH_TOKEN`
   for the online audits (impostor commits, known vulnerable actions).
@@ -58,7 +59,7 @@ mandoc -T lint -W warning docs/mailcrier.8   # man page; not in make check
   docker-default AppArmor profile of Ubuntu denies mount whatever the
   capabilities); `SMOKE_SYSTEMD_FLAGS=--privileged` is the fallback for a
   host where that is not enough.
-- A manual run of the new binary reads `/etc/mailcrier.conf`, or the file
+- A manual run of the binary reads `/etc/mailcrier.conf`, or the file
   in `MAILCRIER_CONFIG` or `--config` (honoured when not setgid-elevated).
 
 CI: `.github/workflows/ci.yml` runs `make check`, `make snapshot`,
@@ -82,15 +83,16 @@ proposing a new version.
 
 The program lives in `cmd/mailcrier` (entry point) and `internal/`; the
 root package holds only repository-wide tests, so `go build .` there fails
-with "no non-test Go files".
+with "build constraints exclude all Go files".
 
 - `internal/app.Run(ctx, Deps, args, stdin) int` handles one invocation;
   `Deps` carries the logger factory, config `fs.FS` rooted at `/`, HTTP
-  client, host name, argv[0] (`Program`), stdout, stderr, uid/gid/egid,
-  environment, the error of a failed re-exec, a uid-to-login lookup and
-  the default spool directory (`SpoolDir`, empty in tests unless set); the
-  unexported `deliver` field lets tests replace delivery, `spoolSaved` and
-  `entryLocked` let a helper process kill or stop itself at a spool state.
+  client, host name, argv[0] (`Program`), stdout, stderr, `Credentials`
+  (uid, gid, egid, service uid), environment, the error of a failed
+  re-exec, a uid-to-login lookup and the default spool directory
+  (`SpoolDir`, empty in tests unless set); the unexported `deliver` field
+  lets tests replace delivery, `spoolSaved` and `entryLocked` let a
+  helper process kill or stop itself at a spool state.
   Everything time-dependent in the spool (ids, backoff, TTL, budgets, age
   of `tmp/` files) reads `Deps.Now`; only the context deadlines use the
   real clock. `app.SystemDeps`
@@ -102,10 +104,11 @@ with "no non-test Go files".
   elevated process re-executes itself with `sanitizeEnv(environ)` unless
   the environment is already sanitized. Nothing may move ahead of `Harden`.
   After it `main` sets `Deps.CatchSignals` to `app.CancelOnSignal`, which
-  `Run` applies only once the message is read (or at once for `-q`; mailq
-  and `--status` keep the default action): SIGINT, SIGTERM and SIGHUP then cancel the call and
-  a hook is killed with its group; before that the default action
-  discards a message being typed. Signals ignored at start stay ignored.
+  `Run` applies only once the message is read (or at once for `-q` and
+  `--probe`; mailq, `--status` and `--check-config` keep the default
+  action): SIGINT, SIGTERM and SIGHUP then cancel the call and a hook is
+  killed with its group; before that the default action discards a
+  message being typed. Signals ignored at start stay ignored.
   `sanitizeEnv` must stay idempotent (`FuzzSanitize`), or the re-exec loops.
   `MAILCRIER_CONFIG` dropped by the re-exec is reported after it through
   the argv marker `--ignored-env-config`, which `sendmail.Parse` accepts
@@ -131,8 +134,9 @@ with "no non-test Go files".
   cut to a quarter of the limit in the target's unit and marked `...`,
   then binary searches over the attachment list, the raw body and the
   subject, measured after escaping; when nothing fits, Telegram HTML is
-  cut hard by `text.CutTelegramHTML`, JSON and MarkdownV2 give
-  `ErrLimitTooSmall`; strictness comes from the format a template is
+  cut hard by `text.CutTelegramHTML`, any other lenient format at a
+  character boundary, and the JSON formats and MarkdownV2 (`strictFormats`)
+  give `ErrLimitTooSmall`; strictness comes from the format a template is
   parsed for, not from who wrote it; `FitLines` adds `max_lines`). Golden
   output of every template for every caller fixture is in
   `internal/render/testdata/golden`. `Parse` takes a template from the
@@ -195,7 +199,8 @@ with "no non-test Go files".
   wrapper records the status and transport error of the last request,
   because the library reports them only as text that quotes the URL.
   Tests of either build carry the matching tag; `make test`, `build` and
-  `lint-go` run both builds.
+  `lint-go` run both builds. Files tagged `setgid_e2e` or `smoke` are not
+  in `make test`; `lint-go` type-checks them under their tags.
   `TestLiveTelegram` sends to the real Bot API only with
   `MAILCRIER_TELEGRAM_ENV` naming a file with `TELEGRAM_BOT_TOKEN` and
   `TELEGRAM_CHAT_ID`.
@@ -262,8 +267,12 @@ with "no non-test Go files".
   `--status`, `--check-config` and `--probe`; `Run` keeps its own sequence
   for a message, which holds it on an error. `admitServiceMode`
   (`check.go`) gives 77 to an elevated caller other than the service user
-  and 64 to an ignored `--config` or `MAILCRIER_CONFIG` before anything is
-  loaded. `--check-config` (`check.go`) prints its findings to stderr and
+  and 64 to an ignored `--config` or `MAILCRIER_CONFIG` and to arguments
+  of `--check-config`, before anything is loaded. With a valid file whose
+  `dir` is not `Deps.SpoolDir`, `-q` also releases the `hold/` of
+  `Deps.SpoolDir` (`queue.otherHold`), where a message held under a
+  rejected file went; with a rejected file `-q` only expires entries and
+  exits 78. `--check-config` (`check.go`) prints its findings to stderr and
   renders `sample.go`'s message through `delivery.Deliver` with
   `dryRunSender`; `--probe` (`probe.go`) sends it with `DeliverEach`,
   without spool, routes or suppression, and exits by `probeExitCode`
@@ -290,7 +299,9 @@ with "no non-test Go files".
 - `testdata/test-cases.tsv` is the test case registry: `id`, `priority`
   (`critical|high|low`), `status` (`todo|done`), `behaviour`, `source`. A
   subtest for a case is `t.Run("<ID>/<slug>", ...)` with the ID in a string
-  literal; `TestIDsCovered` fails when a `critical` and `done` case has none.
+  literal; `TestIDsCovered` fails when a `critical` and `done` case has none,
+  and on a subtest naming an ID the registry lacks; IDs look like
+  `T-<ADJ|MTA|CALL|ESC|LIM|TPL|PKG>-<nn>`.
 - Comments, docs and commit messages carry no references to plan stages or
   review and decision IDs; `scripts/check-refs` enforces it.
 - Golden files: `internal/golden`, one txtar per fixture, `-update` rewrites.
@@ -301,11 +312,16 @@ with "no non-test Go files".
   carry case IDs calls `t.Run("<ID>/<slug>", row.check)` per row, because
   `TestIDsCovered` reads only literals in the `Run` call.
 - `TestReadmeExamplesLoad` loads the TOML blocks of the README section
-  "Configuration" with `config.Load`.
+  "Configuration" with `config.Load`. `TestReadmeTemplatesParse` parses
+  every README TOML block that sets a template; `TestReadmeCheckConfigOutput`
+  runs `--check-config` on the example under "Checking the configuration"
+  and compares stderr with the text block after it, so a changed finding
+  text needs the README edited.
 - `TestFormerNameGone` fails when a tracked path or file carries the former
   name of the program in any case; the only exception is the fork line
-  under the README title, once. It needs a git work tree: skipped without
-  one, failed without one when `CI` is set.
+  under the README title, once. It needs its own git work tree, whose top
+  is the module directory: skipped outside one (a source archive, also one
+  unpacked inside another repository), failed there when `CI` is set.
 - Multi-process spool tests (`internal/app/spool_process_test.go`) start
   the test binary itself as `-test.run=^TestSpoolHelper$` with
   `MAILCRIER_SPOOL_HELPER` set; the helper reports on fd 3 and waits on fd
@@ -313,7 +329,9 @@ with "no non-test Go files".
   never on sleeps. Run them repeatedly with
   `go test -race -count=5 -run 'TestSpool' ./internal/app`. Tests with
   real uids and the setgid bit are in `setgid_e2e_test.go`
-  (`make setgid-e2e`).
+  (`make setgid-e2e`). `internal/spool/move_crash_test.go` kills a helper
+  at a named step of `Create` and `Move` the same way
+  (`MAILCRIER_MOVE_HELPER_*`).
 - `packaging/` holds the systemd unit and timer and the cron files of the
   queue run (`TestQueueRunnerFiles` pins their key lines), the
   configuration file of the packages and their maintainer scripts in
@@ -355,7 +373,8 @@ with "no non-test Go files".
 - `packaging/mailcrier.conf` is the conffile of the packages: any change to
   it in a release makes dpkg ask every administrator who edited the file,
   and rpm and apk write `.rpmnew` and `.apk-new` beside an edited one.
-- Every target's `New` copies the client with `backend.WithoutRedirects`:
+- `New` of every HTTP-based target copies the client with
+  `backend.WithoutRedirects`:
   net/http would turn a redirected POST into a bodiless GET and report
   success. A 3xx is a permanent failure.
 - Pull requests go to `develop` only: `main` takes code by fast-forward,
