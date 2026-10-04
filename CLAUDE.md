@@ -23,7 +23,12 @@ go test ./internal/backend/webhook -update   # rewrite golden files
 go test ./internal/app -run TestCallers -update   # caller golden files
 go test ./internal/render -run TestBuiltinGolden -update   # template golden
 mandoc -T lint -W warning docs/mailcrier.8   # man page; not in make check
+make release-gate TAG=v0.1.0   # gate of release.yml; check-release needs
+                               # GH_TOKEN and GITHUB_REPOSITORY
+make release TAG=v0.1.0        # publishes; refuses without GITHUB_ACTIONS=true
 ```
+
+The release procedure is `docs/releasing.md`.
 
 - Tools are pinned where Dependabot updates them: golangci-lint and
   govulncheck in `tools/go.mod`, actionlint in `tools/actionlint/go.mod`,
@@ -67,9 +72,19 @@ CI: `.github/workflows/ci.yml` runs `make check`, `make snapshot`,
 snapshot job, `make smoke-<distro>` per distribution on push to `develop`
 and `main`, on PR to `develop`, and a blocking `make vuln` daily; CodeQL
 runs on the same push and PR events (`TestCIBranches`) and weekly.
+`.github/workflows/release.yml` runs on a pushed `v*` tag only: `make
+release-gate` (the tag names HEAD, HEAD is in `main`, `main` has no commit
+`develop` lacks, and `scripts/check-release` finds the newest
+push run of `ci.yml` on `develop` for that commit completed with every job
+of `RELEASE_JOBS` successful), `make vuln`, then `make release` (goreleaser
+publishes the release at once, a tag with `-rc.N` or another pre-release
+suffix as a prerelease, notes from the built-in changelog since the last
+final tag before the tagged commit, without Dependabot commits) and
+`actions/attest-build-provenance` over `dist/checksums.txt`.
 `develop` is the development branch, `main` the default branch that only
 fast-forwards to a commit of `develop`: before the first release also to
-one that changes the CI infrastructure, after it only to a released one.
+one that changes the CI infrastructure, after it only to a commit being
+released.
 Every entry of `.github/dependabot.yml` sets `target-branch:
 develop` (`TestDependabotTargetsDevelop`): without it version updates
 open against `main`.
@@ -382,6 +397,22 @@ with "build constraints exclude all Go files".
 - GitHub runs `schedule` workflows only from the default branch `main`, at
   its last commit and with its version of the workflow, so a scheduled job
   changed on `develop` runs only after `main` fast-forwards to it.
+- Releases are published only by `make release` in `release.yml`; it
+  refuses to run without `GITHUB_ACTIONS=true`. A job of `ci.yml` renamed or
+  added changes `RELEASE_JOBS` in the `Makefile` in the same commit
+  (`TestReleaseWorkflow`), or the gate waits for a job that never runs.
+- The changelog of goreleaser filters on the commit subject only, not the
+  author: subjects `build(deps)`, `ci(deps)`, `test(deps)` (the prefixes
+  Dependabot gets from `.github/dependabot.yml`) and `Bump ...` are left out
+  of the release notes, a hand-written commit with such a subject as well.
+- Without a final tag before the tagged commit the notes start at
+  `CHANGELOG_START` (`12340d0`, the first commit of the rewrite): the 61
+  upstream commits before it include two in Conventional Commits form.
+- A release whose gate failed because the CI of its commit was not yet green
+  is repeated with "Re-run failed jobs" of `release.yml` once it is. The tag
+  ruleset forbids deleting a `v*` tag and updating it other than by
+  fast-forward; a pushed tag is never moved at all: a mistake is fixed by
+  the next version number.
 - Dependabot security updates are off in the repository settings. Turned
   on, they open against the default branch `main` whatever `target-branch`
   says and without the `commit-message` prefix, which `check-commits`

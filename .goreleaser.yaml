@@ -322,7 +322,41 @@ snapshot:
   version_template: "{{ incpatch .Version }}-snapshot"
 
 changelog:
-  disable: true
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - '^(build|ci|test)\(deps(-dev)?\)!?:'
+      - '^Bump '
+  groups:
+    - title: Features
+      regexp: '^feat(\([^)]*\))?!?:'
+      order: 0
+    - title: Fixes
+      regexp: '^fix(\([^)]*\))?!?:'
+      order: 1
+    - title: Performance
+      regexp: '^perf(\([^)]*\))?!?:'
+      order: 2
+    - title: Documentation
+      regexp: '^docs(\([^)]*\))?!?:'
+      order: 3
+    - title: Refactoring
+      regexp: '^refactor(\([^)]*\))?!?:'
+      order: 4
+    - title: Tests
+      regexp: '^test(\([^)]*\))?!?:'
+      order: 5
+    - title: Build
+      regexp: '^build(\([^)]*\))?!?:'
+      order: 6
+    - title: CI
+      regexp: '^ci(\([^)]*\))?!?:'
+      order: 7
+    - title: Other
+      order: 8
 
 release:
-  disable: true
+  draft: false
+  prerelease: auto
+  replace_existing_artifacts: true

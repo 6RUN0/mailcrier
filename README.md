@@ -41,10 +41,14 @@ The manual page is `docs/mailcrier.8`.
 Each release on <https://github.com/6RUN0/mailcrier/releases> has deb, rpm
 and apk packages of the full build for amd64, arm64 and armv7, without
 signatures (`apk add --allow-untrusted`), and `checksums.txt` with the
-SHA-256 of every file:
+SHA-256 of every file. Every file listed there also has a build provenance
+attestation of the release workflow, which the GitHub CLI checks:
 
 ```sh
 sha256sum --ignore-missing -c checksums.txt
+gh attestation verify --repo 6RUN0/mailcrier \
+  --signer-workflow 6RUN0/mailcrier/.github/workflows/release.yml \
+  ./mailcrier_<version>_linux_amd64.deb
 apt install ./mailcrier_<version>_linux_amd64.deb
 dnf install ./mailcrier_<version>_linux_amd64.rpm
 apk add --allow-untrusted ./mailcrier_<version>_linux_amd64.apk
