@@ -55,7 +55,9 @@ The release procedure is `docs/releasing.md`.
   than HEAD. Its first run fetches the amd64 packages of the release
   `SMOKE_PREVIOUS` with the network of the host into `.e2e/previous`
   (`make smoke-previous`, checked against `SMOKE_PREVIOUS_SUMS`), which
-  `TestSmokeUpgrade` installs before those of `dist/`. The Rocky 10 image
+  `TestSmokeUpgrade` installs before those of `dist/`; on deb and apk it is
+  skipped while `unorderablePrevious` names the version of that release,
+  which dpkg or apk cannot order below a snapshot. The Rocky 10 image
   needs an x86-64-v3 host. Each test function of `packaging/smoke` (tag
   `smoke`, built static) runs as root in its own container without network;
   it starts cron and atd itself, waits on receiver requests and FIFOs, never
@@ -427,6 +429,9 @@ with "build constraints exclude all Go files".
   and its final tag version from the final one (`TestSnapshotTagOrder`).
   `TestSmokeLifecycle` checks the installed apk version with
   `apk version -c`.
+- `TestSmokePrevious` fails `make check` on every commit after a release
+  tag until `SMOKE_PREVIOUS` names it, and after a failed release until the
+  tag is in `unpublishedTags` (`docs/releasing.md`, steps 4 and 5).
 - Dependabot security updates are off in the repository settings. Turned
   on, they open against the default branch `main` whatever `target-branch`
   says and without the `commit-message` prefix, which `check-commits`

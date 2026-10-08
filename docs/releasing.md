@@ -100,7 +100,8 @@ the release before step 1, since a new record is a commit on `develop`.
    after the tagged one; the tagged commit itself stays green. The same
    commit drops the entries of `unorderablePrevious` in
    `packaging/smoke/upgrade_test.go` that name the versions of the old pin;
-   an entry for a version dpkg or apk can order fails `TestSmokeUpgrade`.
+   an entry for another version, or for one dpkg or apk can order, fails
+   `TestSmokeUpgrade`.
 
    The release `SMOKE_PREVIOUS` names is never deleted, and its files are
    never replaced by a rerun: every smoke job fetches them and checks them

@@ -83,7 +83,8 @@ func makeVariable(t *testing.T, name string) string {
 // start from a stale release, or when its checksum pin is malformed. A tag
 // on HEAD itself does not count: the tagged commit cannot carry the pin to
 // its own release, and a rerun of its CI must stay green for the release
-// gate. Outside its own git work tree it is skipped, unless CI is set.
+// gate. Outside its own git work tree, in a shallow clone and in one
+// without tags it is skipped, unless CI is set.
 func TestSmokePrevious(t *testing.T) {
 	if sums := makeVariable(t, "SMOKE_PREVIOUS_SUMS"); !regexp.MustCompile(`^[0-9a-f]{64}$`).MatchString(sums) {
 		t.Errorf("SMOKE_PREVIOUS_SUMS %q is not a sha256 in hex", sums)
@@ -97,6 +98,21 @@ func TestSmokePrevious(t *testing.T) {
 			t.Fatalf("%v, CI must check SMOKE_PREVIOUS against the tags", err)
 		}
 		t.Skipf("%v, no tags to check SMOKE_PREVIOUS against", err)
+	}
+	shallow, err := exec.Command("git", "rev-parse", "--is-shallow-repository").Output()
+	if err != nil {
+		t.Fatalf("git rev-parse --is-shallow-repository: %v", err)
+	}
+	tags, err := exec.Command("git", "tag", "--list", "v*").Output()
+	if err != nil {
+		t.Fatalf("git tag --list: %v", err)
+	}
+	if strings.TrimSpace(string(shallow)) == "true" || len(tags) == 0 {
+		const reason = "a shallow clone or one without its tags (git clone --no-tags)"
+		if os.Getenv("CI") != "" {
+			t.Fatalf("%s: CI must check SMOKE_PREVIOUS against the tags, checkout needs fetch-depth: 0", reason)
+		}
+		t.Skipf("%s: fetch the history and tags to check SMOKE_PREVIOUS", reason)
 	}
 	out, err := exec.Command("git", "tag", "--merged", "HEAD", "--no-contains", "HEAD", "--list", "v*").Output()
 	if err != nil {

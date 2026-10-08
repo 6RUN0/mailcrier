@@ -17,11 +17,12 @@ import (
 	"time"
 )
 
-// unorderablePrevious are versions of a previous release that dpkg or apk
-// cannot order before the snapshot of HEAD: dpkg sorts 0.1.0~rc.2 above
-// 0.1.0~rc<time>, apk refuses 0.1.0_rc.2. The commit that bumps
-// SMOKE_PREVIOUS past them drops them, docs/releasing.md says so.
-var unorderablePrevious = []string{"0.1.0~rc.2", "0.1.0_rc.2"}
+// unorderablePrevious maps a package format to the version of the previous
+// release its package manager cannot order before the snapshot of HEAD:
+// dpkg sorts 0.1.0~rc.2 above 0.1.0~rc<time>, apk cannot parse 0.1.0_rc.2.
+// The commit that bumps SMOKE_PREVIOUS past them drops them,
+// docs/releasing.md says so.
+var unorderablePrevious = map[string]string{"deb": "0.1.0~rc.2", "apk": "0.1.0_rc.2"}
 
 // TestSmokeUpgrade installs the release SMOKE_PREVIOUS of the Makefile,
 // leaves messages in queue/, hold/ and failed/ with its binary and upgrades
@@ -160,7 +161,7 @@ func TestSmokeUpgrade(t *testing.T) {
 // previousPackage returns the package of the previous release in
 // previousDir. It skips the test when the package manager cannot order its
 // version before the one of HEAD and unorderablePrevious lists it, and
-// fails when the list is wrong either way. rpm orders both by itself and
+// fails when the list is wrong either way or names another version. rpm orders both by itself and
 // refuses a downgrade without --oldpackage.
 func previousPackage(t *testing.T, d distro) string {
 	t.Helper()
@@ -180,8 +181,11 @@ func previousPackage(t *testing.T, d distro) string {
 		isOrdered = run(t, nil, "", "apk", "version", "-c", oldVersion).code == 0 &&
 			strings.TrimSpace(run(t, nil, "", "apk", "version", "-t", oldVersion, newVersion).out) == "<"
 	}
-	isListed := slices.Contains(unorderablePrevious, oldVersion)
+	listed, hasEntry := unorderablePrevious[d.format]
+	isListed := hasEntry && listed == oldVersion
 	switch {
+	case hasEntry && !isListed:
+		t.Fatalf("unorderablePrevious lists %s, not the previous release %s: drop it", listed, oldVersion)
 	case isOrdered && isListed:
 		t.Fatalf("unorderablePrevious lists %s, which %s orders before %s: drop it", oldVersion, tool, newVersion)
 	case !isOrdered && !isListed:

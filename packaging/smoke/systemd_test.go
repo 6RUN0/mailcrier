@@ -44,9 +44,7 @@ func TestSmokeSystemd(t *testing.T) {
 		if got := systemctl(t, "is-active", timer); got != "active" {
 			t.Errorf("is-active %s = %q, want active", timer, got)
 		}
-		if got := systemctl(t, "show", "-p", "NextElapseUSecMonotonic", "--value", timer); got == "" {
-			t.Errorf("%s has no next elapse", timer)
-		}
+		checkTimerScheduled(t, timer, "after the install")
 	}) {
 		t.FailNow()
 	}
@@ -177,11 +175,7 @@ func TestSmokeSystemd(t *testing.T) {
 		if got := systemctl(t, "is-active", timer); got != "active" {
 			t.Errorf("is-active %s = %q after the upgrade, want active", timer, got)
 		}
-		// systemd prints infinity for a timer with nothing scheduled and 0
-		// for one with only a calendar trigger; the queue timer has none.
-		if got := systemctl(t, "show", "-p", "NextElapseUSecMonotonic", "--value", timer); got == "" || got == "0" || got == "infinity" {
-			t.Errorf("%s has no next elapse after the upgrade: %q", timer, got)
-		}
+		checkTimerScheduled(t, timer, "after the upgrade")
 		if got, _ := filepath.Glob(filepath.Join(spoolDir, "locks", "*.lock")); !slices.Equal(got, locks) {
 			t.Errorf("locks/ = %v after the upgrade, want %v", got, locks)
 		}
@@ -262,5 +256,16 @@ func waitCreated(t *testing.T, dir, name string, deadline time.Time) {
 			}
 			offset += syscall.SizeofInotifyEvent + int(event.Len)
 		}
+	}
+}
+
+// checkTimerScheduled fails when timer has no monotonic elapse scheduled.
+// systemd prints infinity for a timer with nothing scheduled and 0 for one
+// with only a calendar trigger; the queue timer has none.
+func checkTimerScheduled(t *testing.T, timer, when string) {
+	t.Helper()
+	out := run(t, nil, "", "systemctl", "show", "-p", "NextElapseUSecMonotonic", "--value", timer).out
+	if got := strings.TrimSpace(out); got == "" || got == "0" || got == "infinity" {
+		t.Errorf("%s has no next elapse %s: %q", timer, when, got)
 	}
 }
