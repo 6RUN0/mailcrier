@@ -91,8 +91,9 @@ CHANGELOG_START := 12340d0
 
 # Form of a release tag; release.yml runs on any v* tag. grep matches line
 # by line, so the case rejects a newline and any other stray character first.
-# The suffix is rcN without a dot: apk refuses the version 0.1.0_rc.2.
-RELEASE_TAG := v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?
+# The suffix is rcN without a dot: apk installs 0.1.0_rc.2 but cannot order
+# it. No leading zeros: rc01 and rc1 would give packages of one version.
+RELEASE_TAG := v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc[1-9][0-9]*)?
 is-release-tag = case "$$TAG" in *[!0-9A-Za-z.-]*|'') false;; esac && echo "$$TAG" | grep -Eqx '$(RELEASE_TAG)'
 
 # release-gate wants each of these jobs of the push run of ci.yml on develop

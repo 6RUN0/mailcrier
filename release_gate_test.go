@@ -132,6 +132,8 @@ func TestReleaseGuard(t *testing.T) {
 		{"empty", []string{"GITHUB_ACTIONS=true"}, "release needs TAG=vX.Y.Z[-rcN]"},
 		{"rc with a dot", []string{"GITHUB_ACTIONS=true", "TAG=v1.0.0-rc.1"}, "release needs TAG=vX.Y.Z[-rcN]"},
 		{"other suffix", []string{"GITHUB_ACTIONS=true", "TAG=v1.0.0-beta1"}, "release needs TAG=vX.Y.Z[-rcN]"},
+		{"rc with a leading zero", []string{"GITHUB_ACTIONS=true", "TAG=v1.0.0-rc01"}, "release needs TAG=vX.Y.Z[-rcN]"},
+		{"version with a leading zero", []string{"GITHUB_ACTIONS=true", "TAG=v01.0.0"}, "release needs TAG=vX.Y.Z[-rcN]"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -143,7 +145,7 @@ func TestReleaseGuard(t *testing.T) {
 			}
 		})
 	}
-	for _, tag := range []string{"v1.0.0", "v1.0.0-rc1"} {
+	for _, tag := range []string{"v1.0.0", "v1.0.0-rc1", "v0.10.0-rc10"} {
 		cmd := exec.Command("make", "release-guard")
 		cmd.Env = releaseEnv("GITHUB_ACTIONS=true", "TAG="+tag)
 		if out, err := cmd.CombinedOutput(); err != nil {

@@ -318,6 +318,9 @@ nfpms:
 checksum:
   name_template: checksums.txt
 
+git:
+  prerelease_suffix: "-"
+
 snapshot:
   version_template: "{{ incpatch .Version }}-rc{{ .CommitTimestamp }}"
 

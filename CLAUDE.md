@@ -423,8 +423,10 @@ with "build constraints exclude all Go files".
   `-rc1`, never `-rc.1` (apk version `0.1.0_rc.1`, which it installs but
   cannot order), and `make snapshot` versions packages
   `<next>-rc<commit time>`: newer than every rc of that version, older
-  than the release itself. `TestSmokeLifecycle` checks the installed apk
-  version with `apk version -c`.
+  than the release itself; `git.prerelease_suffix` makes a commit with an rc
+  and its final tag version from the final one (`TestSnapshotTagOrder`).
+  `TestSmokeLifecycle` checks the installed apk version with
+  `apk version -c`.
 - Dependabot security updates are off in the repository settings. Turned
   on, they open against the default branch `main` whatever `target-branch`
   says and without the `commit-message` prefix, which `check-commits`

@@ -6,10 +6,12 @@ again (`make release-gate`), runs `make vuln`, and publishes the release at
 once: deb, rpm and apk packages, the binaries, `checksums.txt` and a build
 provenance attestation of every file in it. A tag `-rcN` becomes a
 prerelease; the number has no dot before it, because the apk version of
-`-rc.1` would be `_rc.1`, which apk does not accept, and `release-gate`
-refuses any other suffix. `main` takes every release by fast-forward,
-an rc included, because the gate wants the tagged commit in `main`; after a
-failed release `main` stays on its commit until the next release.
+`-rc.1` would be `_rc.1`, which apk installs but cannot order against
+another version, and no number has a leading zero, because `rc01` and `rc1`
+would give packages of the same version; `release-gate` refuses any other
+form. `main` takes every release by fast-forward, an rc included, because
+the gate wants the tagged commit in `main`; after a failed release `main`
+stays on its commit until the next release.
 
 The release notes list the commits since the last final tag before the
 tagged commit, so an rc and the final release on its commit get the same

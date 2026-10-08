@@ -93,3 +93,41 @@ func TestChangelogStart(t *testing.T) {
 		}
 	}
 }
+
+// TestSnapshotTagOrder pins git.prerelease_suffix of .goreleaser.yaml: a
+// snapshot takes the first tag of HEAD in git version order, and without the
+// suffix git sorts v0.1.0-rc1 above v0.1.0 on a commit that carries both, so
+// the snapshot would version 0.1.0-rc<time>, below the published 0.1.0.
+func TestSnapshotTagOrder(t *testing.T) {
+	data, err := os.ReadFile(".goreleaser.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config struct {
+		Git struct {
+			PrereleaseSuffix string `yaml:"prerelease_suffix"`
+		} `yaml:"git"`
+	}
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		t.Fatal(err)
+	}
+	if config.Git.PrereleaseSuffix != "-" {
+		t.Fatalf("git.prerelease_suffix = %q, want -", config.Git.PrereleaseSuffix)
+	}
+	dir := t.TempDir()
+	runIn(t, dir, "git", "init", "-q")
+	runIn(t, dir, "git", "commit", "-q", "--allow-empty", "-m", "release")
+	runIn(t, dir, "git", "tag", "v0.1.0-rc1")
+	runIn(t, dir, "git", "tag", "v0.1.0")
+	cmd := exec.Command("git", "-c", "versionsort.suffix="+config.Git.PrereleaseSuffix,
+		"tag", "--points-at", "HEAD", "--sort", "-version:refname")
+	cmd.Dir = dir
+	cmd.Env = releaseEnv()
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first, _, _ := strings.Cut(string(out), "\n"); first != "v0.1.0" {
+		t.Errorf("first tag of HEAD = %q, want v0.1.0 above its rc:\n%s", first, out)
+	}
+}
