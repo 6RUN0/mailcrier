@@ -344,6 +344,10 @@ var methods = []string{"GET", "POST", "PUT", "PATCH"}
 // carry: a key it would ignore rejects the file instead.
 var bodyKeys = []string{"preset", "template", "template_file", "max_text", "max_lines"}
 
+// droppedHeaders are the canonical header names net/http leaves out when it
+// writes a request from Request.Header; set there they would have no effect.
+var droppedHeaders = []string{"Host", "Content-Length", "Transfer-Encoding", "Trailer"}
+
 var (
 	presets        = []string{PresetMattermost, PresetSlackWebhook, PresetGenericJSON}
 	onLongPolicies = []string{OnLongFile, OnLongTruncate, OnLongBlockquote}
@@ -766,6 +770,8 @@ func validateTarget(name string, target Target, keys keyIndex) *Error {
 			msg = fmt.Sprintf("header name %q is invalid", header)
 		case !httpguts.ValidHeaderFieldValue(target.Headers[header]):
 			msg = fmt.Sprintf("value of header %q is invalid", header)
+		case slices.Contains(droppedHeaders, http.CanonicalHeaderKey(header)):
+			msg = fmt.Sprintf("header %q is set by the HTTP client, not by the configuration", header)
 		default:
 			continue
 		}

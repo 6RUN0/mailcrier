@@ -212,6 +212,8 @@ or
 or of its
 .Ic template ;
 extra headers override the Content-Type.
+Host, Content-Length, Transfer-Encoding and Trailer are set by the HTTP
+client and rejected as headers.
 A GET carries no body and takes none of
 .Ic preset ,
 .Ic template ,

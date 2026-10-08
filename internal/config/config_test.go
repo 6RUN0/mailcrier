@@ -148,6 +148,16 @@ func TestLoadRejects(t *testing.T) {
 			want: `:7:1: target "hook": value of header "Authorization" is invalid`,
 		},
 		{
+			name: "http-header-host",
+			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\n\n[target.hook.headers]\nhost = \"other.example.org\"\n",
+			want: `:7:1: target "hook": header "host" is set by the HTTP client, not by the configuration`,
+		},
+		{
+			name: "http-header-content-length",
+			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\n\n[target.hook.headers]\nContent-Length = \"10\"\n",
+			want: `:7:1: target "hook": header "Content-Length" is set by the HTTP client, not by the configuration`,
+		},
+		{
 			name: "http-header-value-nul",
 			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\n\n[target.hook.headers]\nX-Token = \"SECRET\\u0000\"\n",
 			want: `:7:1: target "hook": value of header "X-Token" is invalid`,

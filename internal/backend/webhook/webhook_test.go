@@ -220,6 +220,45 @@ func TestSendPostsToServer(t *testing.T) {
 	}
 }
 
+// TestSendDropsClientHeaders pins the net/http behaviour behind
+// droppedHeaders of internal/config, which rejects these names: the client
+// writes them from the request fields and ignores them in Request.Header,
+// while User-Agent from there is sent.
+func TestSendDropsClientHeaders(t *testing.T) {
+	const document = `{"subject": "s"}`
+	var got *http.Request
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	headers := map[string]string{
+		"Host":              "other.example.org",
+		"Content-Length":    "1",
+		"Transfer-Encoding": "chunked",
+		"Trailer":           "X-Late",
+		"User-Agent":        "configured",
+	}
+	sender := New(Options{URL: server.URL, Client: server.Client()})
+	payload := backend.Payload{Text: document, Request: &backend.Request{Headers: headers}}
+	if err := sender.Send(context.Background(), payload); err != nil {
+		t.Fatalf("Send() error = %v", err)
+	}
+	if want := strings.TrimPrefix(server.URL, "http://"); got.Host != want {
+		t.Errorf("Host = %q, want %q from the URL", got.Host, want)
+	}
+	if got.ContentLength != int64(len(document)) {
+		t.Errorf("Content-Length = %d, want %d of the body", got.ContentLength, len(document))
+	}
+	if len(got.TransferEncoding) != 0 || got.Trailer != nil {
+		t.Errorf("Transfer-Encoding = %q, Trailer = %v, want neither", got.TransferEncoding, got.Trailer)
+	}
+	if ua := got.Header.Get("User-Agent"); ua != "configured" {
+		t.Errorf("User-Agent = %q, want the configured one", ua)
+	}
+}
+
 func TestSendClassifiesTransportErrorWithoutURL(t *testing.T) {
 	server := httptest.NewServer(http.NotFoundHandler())
 	endpoint := server.URL + "/hook/SECRET"

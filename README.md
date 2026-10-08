@@ -384,7 +384,9 @@ msg = "{{ .Subject | truncate 200 }}"
   `{"subject": ..., "body": ..., "hostname": ...}`.
   `[target.<name>.headers]` adds request headers after the Content-Type,
   so a `Content-Type` there replaces it; a header name that is not an
-  HTTP token or a value with a line break or NUL exits 78.
+  HTTP token, a value with a line break or NUL, and `Host`,
+  `Content-Length`, `Transfer-Encoding` or `Trailer`, which the HTTP
+  client sets itself and would drop, exit 78.
   `path` is appended to the path of `url`, and `[target.<name>.query]`
   adds its values to the query of `url`, encoded, after the query `url`
   has. The values of `headers` and `query` and `path` are templates (see
