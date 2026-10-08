@@ -2,9 +2,14 @@ FROM debian:trixie@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d28
 
 # cron and at recommend an MTA; without --no-install-recommends exim4 comes
 # along, and the Conflicts of the package keeps it from installing offline.
+# The apt lists stay for apt-get -s of TestSmokeMTA, the systemd stage drops
+# them; postfix is fetched, not installed: the test installs it and then the
+# package that replaces it.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends cron at strace util-linux \
-    && rm -rf /var/lib/apt/lists/* \
+    && apt-get install -y --download-only --no-install-recommends postfix \
+    && mkdir /opt/postfix \
+    && mv /var/cache/apt/archives/*.deb /opt/postfix \
     && useradd -m alice \
     && useradd -m queuer
 

@@ -61,13 +61,15 @@ The release procedure is `docs/releasing.md`.
   it starts cron and atd itself, waits on receiver requests and FIFOs, never
   on time, and `TestSmokeRuntime` lasts up to 7 minutes because only the
   `*/5` cron job of the package delivers its queued message. Distributions
-  are keyed by `ID` and the major `VERSION_ID` of `/etc/os-release`.
-  `TestSmokeSystemd` runs through `docker exec` in the `systemd` stage
-  (Debian, Rocky) with systemd as PID 1, which needs `--cap-add SYS_ADMIN`
-  and `--security-opt apparmor=unconfined` to remount its cgroup tree
-  writable (the docker-default AppArmor profile of Ubuntu denies mount
-  whatever the capabilities); `SMOKE_SYSTEMD_FLAGS=--privileged` is the
-  fallback for a host where that is not enough.
+  are keyed by `ID` and the major `VERSION_ID` of `/etc/os-release`. The
+  `plain` stage of the Debian image keeps the apt lists and holds the
+  postfix packages in `/opt/postfix` for `TestSmokeMTA`; its `systemd`
+  stage drops the lists. `TestSmokeSystemd` runs through `docker exec` in
+  the `systemd` stage (Debian, Rocky) with systemd as PID 1, which needs
+  `--cap-add SYS_ADMIN` and `--security-opt apparmor=unconfined` to remount
+  its cgroup tree writable (the docker-default AppArmor profile of Ubuntu
+  denies mount whatever the capabilities); `SMOKE_SYSTEMD_FLAGS=--privileged`
+  is the fallback for a host where that is not enough.
 - A manual run of the binary reads `/etc/mailcrier.conf`, or the file
   in `MAILCRIER_CONFIG` or `--config` (honoured when not setgid-elevated).
 

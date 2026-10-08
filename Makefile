@@ -63,7 +63,7 @@ UNITS := mailcrier-queue.service mailcrier-queue.timer
 # distribution, the images in packaging/smoke/<distro>, and runs each test
 # function of packaging/smoke in a fresh one; dist/ must come from HEAD.
 SMOKE_DISTROS := debian rocky9 rocky10 alpine
-SMOKE_TESTS := TestSmokeSetgid TestSmokeRuntime TestSmokeLifecycle TestSmokeUpgrade
+SMOKE_TESTS := TestSmokeSetgid TestSmokeRuntime TestSmokeLifecycle TestSmokeUpgrade TestSmokeMTA
 
 # The upgrade tests install the packages of this release first, on /previous;
 # smoke-previous fetches them on the host, the containers have no network.
