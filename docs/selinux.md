@@ -146,6 +146,7 @@ run shows.
 
 ## Result
 
-Not run yet. For each run: the Rocky version, the output of `sestatus` and
-the output of steps 1, 5, 9 and 10. No host names, addresses or paths
+Not run yet. For each run: the Rocky version, the output of `rpm -q
+mailcrier` and the commit the rpm was built from, the output of `sestatus`
+and the output of steps 1, 5, 9 and 10. No host names, addresses or paths
 outside the virtual machine.

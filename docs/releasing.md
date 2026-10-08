@@ -24,7 +24,13 @@ next version number.
 
 ## Procedure
 
-From a clone with push access, `gh` logged in to the repository.
+From a clone with push access, `gh` logged in to the repository. A final
+version, one without a suffix, first needs a run on Rocky 9 and Rocky 10
+recorded under "Result" of [selinux.md](selinux.md) for an rpm built from
+a commit whose `packaging`, `cmd` and `internal` match the one to release
+(`git diff --quiet <commit of the run> origin/develop -- packaging cmd
+internal` exits 0); no job checks that, and a record that is missing or older stops
+the release before step 1, since a new record is a commit on `develop`.
 
 1. Fast-forward `main` to the head of `develop`, once the last push run of
    `ci.yml` for that commit is completed and green:
@@ -48,10 +54,6 @@ From a clone with push access, `gh` logged in to the repository.
    git ls-remote --exit-code --tags origin refs/tags/vX.Y.Z
    gh release view vX.Y.Z
    ```
-
-   A final version, one without a suffix, also needs a run on Rocky 9 and
-   Rocky 10 recorded under "Result" of [selinux.md](selinux.md); no job
-   checks that.
 
 3. Tag the commit and push the tag:
 
