@@ -45,6 +45,10 @@ From a clone with push access, `gh` logged in to the repository.
    gh release view vX.Y.Z
    ```
 
+   A final version, one without a suffix, also needs a run on Rocky 9 and
+   Rocky 10 recorded under "Result" of [selinux.md](selinux.md); no job
+   checks that.
+
 3. Tag the commit and push the tag:
 
    ```sh
