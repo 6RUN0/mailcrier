@@ -37,6 +37,8 @@ func TestRead(t *testing.T) {
 	t.Run("lone-cr-kept", readCase{"Content-Transfer-Encoding: quoted-printable\n\na=0Db=0D=0A\n", false, "", "", "a\rb\n\n"}.check)
 	t.Run("T-MTA-08/headers-only", readCase{"To: root\nSubject: Output from your job 7\n", false, "Output from your job 7", "", ""}.check)
 	t.Run("T-MTA-08/headers-only-no-final-newline", readCase{"Subject: s", false, "s", "", ""}.check)
+	t.Run("T-MTA-06/eof-ends-input-without-i", readCase{"Subject: s\n\nline 1\nline 2\nlast", false, "s", "", "line 1\nline 2\nlast"}.check)
+	t.Run("T-MTA-06/eof-ends-input-with-i", readCase{"Subject: s\n\nline 1\nline 2\nlast", true, "s", "", "line 1\nline 2\nlast"}.check)
 	t.Run("T-MTA-09/last-line-without-newline", readCase{"Subject: s\n\nline 1\nlast", false, "s", "", "line 1\nlast"}.check)
 	t.Run("T-ADJ-55/no-space-after-colon", readCase{"Subject:joined\nAgain:joined\n\nbody\n", false, "joined", "", "body\n"}.check)
 	t.Run("T-ADJ-55/no-headers", readCase{"no header here\n\nbody\n", false, "", "", "no header here\n\nbody\n"}.check)

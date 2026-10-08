@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -245,6 +246,23 @@ func TestRunEmptyBody(t *testing.T) {
 	t.Run("T-MTA-07/empty-stdin-with-argument-recipient", runEmptyBodyCase{[]string{"root"}, ""}.check)
 	t.Run("T-CALL-21/headers-only", runEmptyBodyCase{[]string{"-i", "alice"}, "Subject: Output from your job 7\nTo: alice\n\n"}.check)
 	t.Run("T-ADJ-36/whitespace-only", runEmptyBodyCase{[]string{"root"}, "   \n\t\n   "}.check)
+	// Recipients and subject show that the header block ending at EOF was
+	// read as headers, not dropped or taken as the body.
+	headersOnly := func(input string) func(*testing.T) {
+		return func(t *testing.T) {
+			runEmptyBodyCase{[]string{"-t"}, input}.check(t)
+			rec := &recorder{}
+			inv := &invocation{config: twoTargets, args: []string{"-t"}, stdin: strings.NewReader(input), deliver: rec.deliver}
+			if code := inv.run(t); code != 0 {
+				t.Fatalf("Run() = %d, want 0", code)
+			}
+			if !slices.Equal(rec.env.Recipients, []string{"root"}) || len(rec.data) != 2 || rec.data[0].Subject != "zed event" {
+				t.Errorf("recipients %q, data %+v; want root and the subject \"zed event\"", rec.env.Recipients, rec.data)
+			}
+		}
+	}
+	t.Run("T-CALL-22/headers-without-separator", headersOnly("To: root\nSubject: zed event\n"))
+	t.Run("T-CALL-22/headers-without-final-newline", headersOnly("To: root\nSubject: zed event"))
 }
 
 type runEmptyBodyCase struct {
@@ -304,6 +322,64 @@ func TestRunDefaultSender(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRunMissingFrom pins where a message without From gets one: the
+// template data and the hook environment take -f and -F, else the process
+// user at the host name, while the message itself stays without From.
+func TestRunMissingFrom(t *testing.T) {
+	t.Run("T-MTA-22/f-and-full-name", func(t *testing.T) {
+		rec := &recorder{}
+		inv := &invocation{config: twoTargets, args: []string{"-f", "cron@example.org", "-F", "Cron Daemon", "root"}, stdin: strings.NewReader("Subject: t\n\nb\n"), deliver: rec.deliver}
+		if code := inv.run(t); code != 0 {
+			t.Fatalf("Run() = %d, want 0; output:\n%s", code, inv.output())
+		}
+		if len(rec.data) != 2 || rec.data[0].From.String() != "Cron Daemon <cron@example.org>" || rec.data[0].Headers.Has("From") {
+			t.Errorf("data = %+v, want From \"Cron Daemon <cron@example.org>\" and no From header", rec.data)
+		}
+	})
+	t.Run("T-MTA-22/process-user-and-host", func(t *testing.T) {
+		rec := &recorder{}
+		inv := &invocation{config: twoTargets, args: []string{"root"}, creds: plainUser, environ: []string{"USER=bob"}, stdin: strings.NewReader("Subject: t\n\nb\n"), deliver: rec.deliver}
+		if code := inv.run(t); code != 0 {
+			t.Fatalf("Run() = %d, want 0; output:\n%s", code, inv.output())
+		}
+		if len(rec.data) != 2 || rec.data[0].From.Addr != "bob@host1.example.org" || rec.data[0].Headers.Has("From") {
+			t.Errorf("data = %+v, want From bob@host1.example.org and no From header", rec.data)
+		}
+	})
+	t.Run("T-MTA-22/hook-env-from-message-unchanged", func(t *testing.T) {
+		path := writeHookScript(t, "printf %s \"$MAILCRIER_FROM\" > \"$0.from\"\ncat > \"$0.stdin\"\n")
+		const input = "Subject: t\n\nb\n"
+		inv := &invocation{config: "[target.run]\ntype = \"exec\"\nargv = [\"" + path + "\"]\n", args: []string{"-f", "cron@example.org", "root"}, stdin: strings.NewReader(input)}
+		if code := inv.run(t); code != 0 {
+			t.Fatalf("Run() = %d, want 0; output:\n%s", code, inv.output())
+		}
+		from, err := os.ReadFile(path + ".from")
+		if err != nil {
+			t.Fatalf("hook did not run: %v; output:\n%s", err, inv.output())
+		}
+		stdin, err := os.ReadFile(path + ".stdin")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(from) != "cron@example.org" || string(stdin) != input {
+			t.Errorf("MAILCRIER_FROM = %q, stdin = %q; want cron@example.org and the message as given", from, stdin)
+		}
+	})
+	t.Run("T-MTA-23/from-kept-f-sets-sender", func(t *testing.T) {
+		rec := &recorder{}
+		inv := &invocation{config: twoTargets, args: []string{"-f", "cron@example.org", "root"}, stdin: strings.NewReader("From: Bob <bob@example.com>\nSubject: t\n\nb\n"), deliver: rec.deliver}
+		if code := inv.run(t); code != 0 {
+			t.Fatalf("Run() = %d, want 0; output:\n%s", code, inv.output())
+		}
+		if rec.env.Sender != "cron@example.org" {
+			t.Errorf("sender = %q, want cron@example.org", rec.env.Sender)
+		}
+		if len(rec.data) != 2 || rec.data[0].From.String() != "Bob <bob@example.com>" || rec.data[0].Headers.Get("From") != "Bob <bob@example.com>" {
+			t.Errorf("data = %+v, want From and the From header \"Bob <bob@example.com>\"", rec.data)
+		}
+	})
 }
 
 // TestRunLogsOptionWarnings pins that an unknown flag is logged by name,

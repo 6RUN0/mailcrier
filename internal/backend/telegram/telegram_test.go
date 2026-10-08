@@ -575,6 +575,16 @@ func TestDeliverTelegramLongText(t *testing.T) {
 			t.Errorf("text ends %q", api.texts[0][max(0, len(api.texts[0])-80):])
 		}
 	})
+	t.Run("T-ADJ-60/cut-before-send-not-rejected", func(t *testing.T) {
+		api := newBotAPI(t)
+		result := deliverTo(t, api.sender(Options{}), render.Data{Subject: "s", Hostname: "h", Body: strings.Repeat(atLimit, 3)}, nil)
+		if result.Status != delivery.OK || !result.IsTruncated || result.TextRejected != nil || len(api.rejected) != 0 || len(api.texts) != 1 {
+			t.Fatalf("result = %+v, %d texts, rejected %q", result, len(api.texts), api.rejected)
+		}
+		if n := text.MeasureTelegramHTML(api.texts[0]); n > maxText {
+			t.Errorf("text of %d characters sent, limit %d", n, maxText)
+		}
+	})
 	t.Run("T-CALL-26/2-mb-log-as-file", func(t *testing.T) {
 		api := newBotAPI(t)
 		body := strings.Repeat("Sep 27 03:00:01 host CRON[1234]: (root) CMD (run-parts /etc/cron.daily)\n", 2<<20/72)

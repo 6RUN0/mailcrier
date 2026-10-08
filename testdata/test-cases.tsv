@@ -38,7 +38,7 @@ T-ADJ-36	high	done	Whitespace-only input is delivered with an empty-body marker 
 T-ADJ-37	critical	done	A folded Subject with repeated spaces collapses into one trimmed line	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_parser.py#L317-L340
 T-ADJ-38	high	done	multipart/mixed with an attachment takes the body from the text/plain part and reports the attachment	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_parser.py#L377
 T-ADJ-39	high	done	A multipart message with only an attachment yields an empty body without error	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_parser.py#L426-L440
-T-ADJ-40	high	todo	HTML to text drops script, style, iframe, object, embed, svg, math and noscript with their content, drops javascript: links but keeps their text, keeps safe formatting tags	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_parser.py#L103-L305
+T-ADJ-40	high	done	HTML to text drops script, style, iframe, object, embed, svg, math and noscript with their content, drops javascript: links but keeps their text, and keeps the text of formatting tags without the tags	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_parser.py#L103-L305
 T-ADJ-41	critical	done	<, > and & in the plain body, sender and subject are escaped before sending with the HTML parse mode	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_parser.py#L408
 T-ADJ-42	high	done	Truncation: text at the limit is kept, one more character truncates at the last space within 100 characters or hard, adds a truncation note and respects the Telegram ceiling including the wrapper	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_parser.py#L455-L561
 T-ADJ-43	low	todo	Empty sender, subject and body get placeholder texts	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_parser.py#L498-L506
@@ -54,18 +54,18 @@ T-ADJ-52	critical	done	Subject header matched in any case, a default subject whe
 T-ADJ-53	high	done	A queue run continues after one entry fails to send	https://github.com/lucasew/telegram-sendmail/blob/a09038a8b57f/cmd/telegram-sendmail/serve_test.go#L121
 T-ADJ-54	high	done	Package tests: sendmail, mailq, newaliases links point to mailcrier; postinstall never runs mailcrier or touches the configuration and starts only the queue timer; prerm and postrm do nothing on upgrade; the goreleaser package section is checked by a test	https://github.com/lucasew/telegram-sendmail/blob/a09038a8b57f/cmd/telegram-sendmail/packaging_test.go#L63-L171
 T-ADJ-55	critical	done	A header without a space after the colon is parsed; input without headers becomes the body	https://github.com/marionauta/imsendmail/blob/ac7f0f0e2c87/src/root.zig#L125-L202
-T-ADJ-56	high	todo	MarkdownV2 escaping covers the full special set including the backslash	https://github.com/marionauta/imsendmail/blob/ac7f0f0e2c87/src/root.zig#L257-L278
+T-ADJ-56	high	done	MarkdownV2 escaping covers the full special set including the backslash	https://github.com/marionauta/imsendmail/blob/ac7f0f0e2c87/src/root.zig#L257-L278
 T-ADJ-57	low	done	Recipient 1234@telegram maps to chat 1234, @name@telegram to @name, @telegram is a plain address with a warning, other domains are plain addresses	https://github.com/marionauta/imsendmail/blob/ac7f0f0e2c87/src/root.zig#L317-L336
 T-ADJ-58	high	done	A template producing an empty string falls back to the built-in template with a warning	https://github.com/nadiamoe/sendmail-telegram/blob/b76fa85b4572/sendmail-telegram.go#L115-L117
-T-ADJ-59	high	todo	Discord: an empty message is an error, a multipart request with files is one request, a failed first batch is reported	https://github.com/nicholas-fedor/shoutrrr/blob/c19db02256c2/pkg/services/chat/discord/discord_service_test.go#L72-L136
-T-ADJ-60	high	todo	Telegram: text over the limit is handled before sending rather than rejected by the API	https://github.com/nicholas-fedor/shoutrrr/blob/c19db02256c2/pkg/services/chat/telegram/telegram_test.go#L47-L64
+T-ADJ-59	high	done	Discord: the text and up to 10 files go in one webhook request; an empty body is sent as the empty-body marker, and a failed request fails the target as a whole, never as a partial delivery	https://github.com/nicholas-fedor/shoutrrr/blob/c19db02256c2/pkg/services/chat/discord/discord_service_test.go#L72-L136
+T-ADJ-60	high	done	Telegram: text over the limit is handled before sending rather than rejected by the API	https://github.com/nicholas-fedor/shoutrrr/blob/c19db02256c2/pkg/services/chat/telegram/telegram_test.go#L47-L64
 T-ADJ-61	high	done	HTML to text drops script, style, iframe, object, embed, svg, math, noscript and title with their content, also after a self-closing tag, drops javascript: links but keeps their text, and keeps the text of formatting tags	https://github.com/theodiv/telegram-sendmail/blob/c552c3b19fe8/tests/test_parser.py#L103-L305
 T-MTA-01	critical	done	Without -i or -oi a line with a single dot ends the input and the rest is dropped	https://ftp.sendmail.org/sendmail.8.18.2.tar.gz#sendmail/collect.c:542-544
 T-MTA-02	high	done	A dot line ending in CRLF also ends the input	https://ftp.sendmail.org/sendmail.8.18.2.tar.gz#sendmail/collect.c:545-548
 T-MTA-03	critical	done	With -i or -oi a single dot line is ordinary body text and input runs to EOF	https://ftp.sendmail.org/sendmail.8.18.2.tar.gz#sendmail/sendmail.8:229-234
 T-MTA-04	high	done	Without -i a leading dot is removed: ..foo becomes .foo	https://ftp.sendmail.org/sendmail.8.18.2.tar.gz#sendmail/collect.c:550-561
 T-MTA-05	high	done	Without -i a line .foo keeps its dot	https://ftp.sendmail.org/sendmail.8.18.2.tar.gz#sendmail/collect.c:550-561
-T-MTA-06	high	todo	Callers that rely on EOF instead of the dot convention still get their whole message	https://github.com/bruceg/nullmailer/blob/79a8a45c4bd2/src/sendmail.cc#L65
+T-MTA-06	high	done	Callers that rely on EOF instead of the dot convention still get their whole message	https://github.com/bruceg/nullmailer/blob/79a8a45c4bd2/src/sendmail.cc#L65
 T-MTA-07	critical	done	Empty stdin with an argv recipient is accepted and delivered	https://github.com/mirror/busybox/blob/371fe9f71d44/mailutils/sendmail.c#L525-L529
 T-MTA-08	critical	done	A message of headers only, without blank line and body, is accepted	https://github.com/OpenSMTPD/OpenSMTPD/blob/f073a73fe159/usr.sbin/smtpd/enqueue.c#L606-L611
 T-MTA-09	high	done	A last line without a trailing newline is accepted	https://github.com/corecode/dma/blob/f4e1d913e6f3/mail.c#L383-L396
@@ -81,8 +81,8 @@ T-MTA-18	critical	done	No -t and no argv recipient: delivered by catch-all routi
 T-MTA-19	critical	done	-t with no recipient headers follows the same no-recipient policy	https://github.com/corecode/dma/blob/f4e1d913e6f3/dma.c#L653-L654
 T-MTA-20	high	done	A missing Date header is replaced by the receive time in the message model; an existing one is kept	https://github.com/corecode/dma/blob/f4e1d913e6f3/mail.c#L445-L448
 T-MTA-21	low	todo	A missing Message-ID is generated; an existing one is kept	https://github.com/corecode/dma/blob/f4e1d913e6f3/mail.c#L449-L456
-T-MTA-22	high	todo	A missing From is built from -f/-r and -F, otherwise from the process user and host name	https://github.com/marlam/msmtp/blob/755df9f0d3ac/tests/test-header-handling.sh#L57-L67
-T-MTA-23	high	todo	An existing From header is not replaced by -f, which sets only the envelope sender	https://github.com/bruceg/nullmailer/blob/79a8a45c4bd2/test/tests/inject/from#L14-L18
+T-MTA-22	high	done	A missing From is filled in the template data and MAILCRIER_FROM from -f/-r and -F, otherwise from the process user and host name; the message itself gets no From header	https://github.com/marlam/msmtp/blob/755df9f0d3ac/tests/test-header-handling.sh#L57-L67
+T-MTA-23	high	done	An existing From header is not replaced by -f, which sets only the envelope sender	https://github.com/bruceg/nullmailer/blob/79a8a45c4bd2/test/tests/inject/from#L14-L18
 T-MTA-24	critical	done	-f addr, -faddr and -r addr are equivalent; -f '' and -f '<>' give an empty sender	https://github.com/vdukhovni/postfix/blob/8e965decf941/postfix/src/sendmail/sendmail.c#L1386-L1388
 T-MTA-25	critical	done	Glued and separate option values are equivalent: -FCronDaemon, -oem, -odi, -oi, -B8BITMIME, -N never	https://github.com/vdukhovni/postfix/blob/8e965decf941/postfix/src/sendmail/sendmail.c#L1172
 T-MTA-26	critical	done	-o options other than -oi and -O opt=val are ignored	https://github.com/vdukhovni/postfix/blob/8e965decf941/postfix/src/sendmail/sendmail.c#L1395-L1410
@@ -125,14 +125,14 @@ T-CALL-18	high	done	Content-Transfer-Encoding binary and a quoted charset parame
 T-CALL-19	high	done	A text/html body is converted to text and keeps its links	https://salsa.debian.org/debian/apt-listchanges/-/blob/75cc40f/apt_listchanges/frontends.py#L700-L710
 T-CALL-20	high	done	X-Cron-Env headers stay out of the default text but are available to templates	https://github.com/cronie-crond/cronie/blob/59a3d15/src/do_command.c#L539-L540
 T-CALL-21	critical	done	An empty body is delivered with an empty-body marker	https://salsa.debian.org/debian/at/-/blob/282d01d/atd.c#L570
-T-CALL-22	high	todo	A message of headers only without a separator line is not lost	https://github.com/openzfs/zfs/blob/1f380a4/cmd/zed/zed.d/zed-functions.sh#L283-L291
+T-CALL-22	high	done	A message of headers only without a separator line is not lost	https://github.com/openzfs/zfs/blob/1f380a4/cmd/zed/zed.d/zed-functions.sh#L283-L291
 T-CALL-23	low	todo	Completely empty stdin without subject does not produce an empty notification; the chosen exit code is pinned	https://github.com/smartmontools/smartmontools/blob/9f83095/smartmontools/smartd_warning.sh.in#L235
 T-CALL-24	low	todo	Called as mail or mailx, -s sets the subject and the body has no headers	https://github.com/smartmontools/smartmontools/blob/9f83095/smartmontools/smartd_warning.sh.in#L221
 T-CALL-25	low	todo	A subject with trailing whitespace is trimmed for display	https://0xacab.org/liberate/backupninja/-/blob/b4ec0299/src/backupninja.in#L668-688
 T-CALL-26	high	done	A large body such as a 2 MB log goes out as a file above the target threshold	https://github.com/logrotate/logrotate/blob/1aba376/logrotate.c#L1060-L1150
 T-CALL-27	high	done	A body with invalid UTF-8 and control characters does not break JSON or markup of any target	https://github.com/fail2ban/fail2ban/blob/7212404/config/action.d/sendmail-whois-lines.conf#L24-L37
-T-CALL-28	high	todo	Closed stdout and stderr do not crash the process and logging goes to syslog	https://salsa.debian.org/debian/at/-/blob/282d01d/atd.c#L549-L557
-T-CALL-29	high	todo	argv[0] only matters for the mailq, newaliases and mail modes	https://github.com/sudo-project/sudo/blob/2802bb3/lib/eventlog/eventlog.c#L371
+T-CALL-28	high	done	Closed stdout and stderr do not crash the process and logging goes to syslog	https://salsa.debian.org/debian/at/-/blob/282d01d/atd.c#L549-L557
+T-CALL-29	high	done	argv[0] only matters for the mailq and newaliases modes; any other name, mail included, delivers as sendmail	https://github.com/sudo-project/sudo/blob/2802bb3/lib/eventlog/eventlog.c#L371
 T-CALL-30	critical	done	From "(Cron Daemon)" <root> and From root (Cron Daemon) parse into a name and a domain-less address	https://github.com/cronie-crond/cronie/blob/59a3d15/src/do_command.c#L492
 T-CALL-31	high	done	A glued -fX from a shell pipeline and separate arguments from execvp give the same model	https://github.com/cronie-crond/cronie/blob/59a3d15/src/popen.c#L99-L140
 T-CALL-32	critical	done	Every caller fixture (eml plus argv) produces its golden model: exit code, payloads and envelope	https://github.com/cronie-crond/cronie/blob/59a3d15/src/do_command.c
@@ -150,7 +150,7 @@ T-ESC-11	high	done	CR and LF in an ntfy title become spaces so the request stays
 T-LIM-01	critical	done	Telegram: 4096 characters go as is; 4097 go truncated plus a file	https://core.telegram.org/bots/api#sendmessage
 T-LIM-02	critical	done	Telegram: the limit counts visible characters after entities, so 4096 Cyrillic characters pass	https://github.com/nicholas-fedor/shoutrrr/blob/c19db02256c2/pkg/services/chat/telegram/telegram.go#L27
 T-LIM-03	high	done	Telegram: the text limit counts characters, one per character outside the BMP, as the live Bot API does; the unit is pinned by a test	https://core.telegram.org/bots/api#messageentity
-T-LIM-04	high	todo	Telegram HTML length: &lt; counts as one, an unknown &foo; as five, numeric entities as one	https://github.com/prometheus/alertmanager/blob/6a79679/notify/telegram/telegram.go#L180-L240
+T-LIM-04	high	done	Telegram HTML length: &lt; counts as one, an unknown &foo; as five, numeric entities as one	https://github.com/prometheus/alertmanager/blob/6a79679/notify/telegram/telegram.go#L180-L240
 T-LIM-05	critical	done	Telegram truncation never splits a tag or an entity and the result passes the tag validator	https://github.com/caronc/apprise/blob/68f0eaf/apprise/plugins/base.py#L1276-L1296
 T-LIM-06	high	done	A document caption is at most 1024; longer text goes as sendMessage followed by sendDocument without caption	https://core.telegram.org/bots/api#senddocument
 T-LIM-07	high	done	An attachment over 50 MB is not sent to Telegram and the text notes the skipped file and its size	https://core.telegram.org/bots/api#senddocument

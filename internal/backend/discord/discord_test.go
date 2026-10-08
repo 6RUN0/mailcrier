@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -216,4 +217,64 @@ func TestDeliverDiscordLongText(t *testing.T) {
 			t.Errorf("files %d, message.txt of %d bytes, want the full body", len(files), len(full))
 		}
 	})
+}
+
+// TestDeliverDiscordOneRequest pins that a Discord target makes exactly one
+// webhook request per message: an empty body goes as the marker, the files
+// ride along in the same request, and its failure fails the target whole.
+func TestDeliverDiscordOneRequest(t *testing.T) {
+	t.Run("T-ADJ-59/empty-body-sends-marker", discordRequestCase{status: http.StatusOK, files: 0, wantStatus: delivery.OK}.check)
+	t.Run("T-ADJ-59/files-in-one-request", discordRequestCase{status: http.StatusOK, files: 3, wantStatus: delivery.OK}.check)
+	t.Run("T-ADJ-59/failed-request-reported", discordRequestCase{status: http.StatusInternalServerError, files: 3, wantStatus: delivery.Temp}.check)
+}
+
+type discordRequestCase struct {
+	status     int
+	files      int
+	wantStatus delivery.Status
+}
+
+func (tc discordRequestCase) check(t *testing.T) {
+	var mu sync.Mutex
+	var requests int
+	var content string
+	var sent map[string]string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		msg, files := decodeRequest(t, r)
+		mu.Lock()
+		requests++
+		content, _ = msg["content"].(string)
+		sent = files
+		mu.Unlock()
+		w.WriteHeader(tc.status)
+	}))
+	defer server.Close()
+	tmpl, err := render.Builtin(text.FormatDiscord)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := render.Data{Subject: "s", Hostname: "h", Strings: render.DefaultStrings()}
+	var files []message.Attachment
+	for i := range tc.files {
+		name := fmt.Sprintf("f%d.log", i)
+		files = append(files, message.Attachment{Name: name, ContentType: "text/plain", Data: []byte("x")})
+		d.Attachments = append(d.Attachments, render.Attachment{Name: name, ContentType: "text/plain", Size: 1})
+	}
+	sender := New(Options{URL: server.URL + "/api/webhooks/1/T", Client: server.Client()})
+	result := delivery.Deliver(context.Background(), []delivery.Target{{ID: "dc", Sender: sender, Template: tmpl}}, d, files)[0]
+	mu.Lock()
+	defer mu.Unlock()
+	if requests != 1 || len(sent) != tc.files || !strings.Contains(content, d.Strings.EmptyBody) {
+		t.Errorf("%d requests, %d files, content %q; want 1 request with %d files and the empty-body marker", requests, len(sent), content, tc.files)
+	}
+	if result.Status != tc.wantStatus {
+		t.Errorf("result = %+v, want status %v", result, tc.wantStatus)
+	}
+	if tc.wantStatus == delivery.OK {
+		return
+	}
+	var deliveryErr *backend.Error
+	if !errors.As(result.Err, &deliveryErr) || deliveryErr.Status != tc.status || deliveryErr.IsPartial || result.TextRejected != nil {
+		t.Errorf("result = %+v, want a whole failure with status %d", result, tc.status)
+	}
 }

@@ -347,6 +347,12 @@ func TestHTMLToText(t *testing.T) {
 			}
 		})
 	}
+	t.Run("T-ADJ-40/dangerous-dropped-formatting-as-text", func(t *testing.T) {
+		in := `<p>a<script>alert(1)</script><b>bold</b> <a href="javascript:alert(1)">click</a> <i>it</i><svg><text>s</text></svg><object>o</object><embed src=x><math>m</math><noscript>n</noscript><style>p{}</style><iframe>i</iframe>z</p>`
+		if got, want := htmlToText(in), "abold click itz\n"; got != want {
+			t.Errorf("htmlToText() = %q, want %q", got, want)
+		}
+	})
 }
 
 // rawTextTags are forms of the start tag of a raw text element that

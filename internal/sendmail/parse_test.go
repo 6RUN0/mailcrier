@@ -201,8 +201,9 @@ func TestParseModes(t *testing.T) {
 	t.Run("probe", parseCase{args: []string{"--probe"}, want: Invocation{Mode: Probe}}.check)
 	t.Run("check-config", parseCase{args: []string{"--check-config"}, want: Invocation{Mode: CheckConfig}}.check)
 	t.Run("status", parseCase{args: []string{"--status"}, want: Invocation{Mode: Status}}.check)
-	t.Run("sendmail-name", parseCase{argv0: "sendmail", want: Invocation{}}.check)
-	t.Run("mail-name-delivers", parseCase{argv0: "/usr/bin/mail", args: []string{"root"}, want: Invocation{Recipients: []string{"root"}}}.check)
+	t.Run("T-CALL-29/sendmail-name-delivers", parseCase{argv0: "sendmail", want: Invocation{}}.check)
+	t.Run("T-CALL-29/mail-name-delivers", parseCase{argv0: "/usr/bin/mail", args: []string{"root"}, want: Invocation{Recipients: []string{"root"}}}.check)
+	t.Run("T-CALL-29/other-name-delivers", parseCase{argv0: "/usr/sbin/mailcrier", args: []string{"root"}, want: Invocation{Recipients: []string{"root"}}}.check)
 }
 
 // TestParseOptionValuesAreNotOptions pins that the value of a flag is

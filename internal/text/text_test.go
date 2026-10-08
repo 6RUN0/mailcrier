@@ -20,6 +20,19 @@ func TestEscapeTelegramMarkdownV2(t *testing.T) {
 			t.Errorf("got %q", got)
 		}
 	})
+	t.Run("T-ADJ-56/full-set-with-backslash", func(t *testing.T) {
+		// The set is spelled out here, not taken from the package, so a
+		// narrowed set fails the test.
+		const special = "_*[]()~`>#+-=|{}.!\\"
+		var want strings.Builder
+		for _, c := range special {
+			want.WriteString(`\` + string(c))
+		}
+		got := EscapeTelegramMarkdownV2(special)
+		if got != want.String() || len(got) != 2*len(special) {
+			t.Errorf("EscapeTelegramMarkdownV2(%q) = %q, want %q", special, got, want.String())
+		}
+	})
 	t.Run("plain-text-and-non-ascii-unchanged", func(t *testing.T) {
 		if got := EscapeTelegramMarkdownV2("abc привет 123 @ $"); got != "abc привет 123 @ $" {
 			t.Errorf("got %q", got)
@@ -119,11 +132,18 @@ func TestMeasure(t *testing.T) {
 		{"<pre>привет</pre>", 6},
 		{"&#128512;", 1},
 	}
-	for _, tc := range cases {
-		if got := MeasureTelegramHTML(tc.text); got != tc.want {
-			t.Errorf("MeasureTelegramHTML(%q) = %d, want %d", tc.text, got, tc.want)
+	t.Run("T-LIM-04/entities-as-telegram-counts", func(t *testing.T) {
+		for _, tc := range cases {
+			if got := MeasureTelegramHTML(tc.text); got != tc.want {
+				t.Errorf("MeasureTelegramHTML(%q) = %d, want %d", tc.text, got, tc.want)
+			}
 		}
-	}
+		for in, want := range map[string]int{"&lt;": 1, "&foo;": 5, "&#65;": 1, "&#x41;": 1} {
+			if got := MeasureTelegramHTML(in); got != want {
+				t.Errorf("MeasureTelegramHTML(%q) = %d, want %d", in, got, want)
+			}
+		}
+	})
 	if got := UTF16Len("a😀я"); got != 4 {
 		t.Errorf("UTF16Len = %d, want 4", got)
 	}
