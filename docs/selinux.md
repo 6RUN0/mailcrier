@@ -4,149 +4,83 @@ The rpm package installs `/usr/sbin/mailcrier` setgid and is called from
 confined domains: user and system cron jobs, atd, smartd, the queue
 service. A container cannot show whether the policy of the distribution
 denies any of that, because the policy belongs to the kernel of the host.
-This procedure runs the same callers on a virtual machine with SELinux
-enforcing and collects the denials. The result goes into "Result" below,
+The check runs the same callers on a virtual machine with SELinux
+enforcing and collects the denials; its result goes into "Result" below,
 one run per Rocky major version.
 
-## Procedure
-
-As root on a Rocky 9 or Rocky 10 virtual machine (not a container), with
-the rpm of `dist/` copied to the current directory. Nothing of the machine
-is lost: postfix stays installed, `smartd.conf` is saved and put back, the
-dontaudit rules are switched back on; step 3 overwrites the configuration
-of the package, and step 11 deletes the `.rpmsave` copy `rpm -e` leaves.
-The daemons run as services, so they run in their own domains (`crond_t`,
-`atd_t`, `fsdaemon_t`), and `ps -eZ` records each domain: an empty
-`ausearch` proves nothing without them. The waits for the minute of cron
-and for a message are done by watching the log of the receiver.
+## Running it
 
 ```sh
-# 0. Environment; -DB turns the dontaudit rules off, so no denial hides
-getenforce                      # Enforcing
-sestatus
-semodule -DB
-# ausearch -ts takes the date in the format of the locale, as %x prints it;
-# run step 10 in the same locale
-start=$(date '+%x %H:%M:%S')
-
-# 1. Install, labels, domains of the services
-dnf install -y ./mailcrier_*_linux_amd64.rpm at cronie smartmontools s-nail python3
-systemctl enable --now crond atd
-ls -lZ /usr/sbin/mailcrier /usr/sbin/sendmail /etc/alternatives/mta \
-  /etc/mailcrier.conf /var/spool/mailcrier /var/spool/mailcrier/*
-matchpathcon /usr/sbin/mailcrier /var/spool/mailcrier
-systemctl is-enabled mailcrier-queue.timer; systemctl is-active mailcrier-queue.timer
-ps -eZ | grep -E ' (crond|atd)$'
-
-# 2. Receiver on 127.0.0.1:80 (http_port_t) with a log of the requests
-cat > /root/receiver.py <<'EOF'
-import http.server
-class H(http.server.BaseHTTPRequestHandler):
-    def handle_one(self):
-        n = int(self.headers.get('Content-Length') or 0)
-        body = self.rfile.read(n)
-        print(self.command, self.path, body[:200], flush=True)
-        self.send_response(200); self.end_headers(); self.wfile.write(b'{}')
-    do_POST = do_PUT = handle_one
-http.server.HTTPServer(('127.0.0.1', 80), H).serve_forever()
-EOF
-python3 /root/receiver.py > /root/receiver.log 2>&1 &
-receiver=$!
-
-# 3. Configuration: ntfy to the receiver; a hook, chosen by recipient,
-#    writes its domain and groups
-cat > /etc/mailcrier.conf <<'EOF'
-[target.local]
-type = "ntfy"
-url = "http://127.0.0.1/selinux"
-
-[target.hook]
-type = "exec"
-argv = ["/usr/local/bin/selinux-hook"]
-
-[[route]]
-recipient = "hook@example.org"
-targets = ["hook"]
-
-[[route]]
-targets = ["local"]
-EOF
-printf '#!/bin/sh\n{ id -Z; id -G; } >> /tmp/selinux-hook.log\n' > /usr/local/bin/selinux-hook
-chmod 0755 /usr/local/bin/selinux-hook
-mailcrier --check-config
-
-# 4. Call as root (unconfined_t)
-printf 'Subject: root call\n\nbody\n' | /usr/sbin/sendmail -i root
-
-# 5. Cron job of a user (cronjob_t); the message to the hook comes from a
-#    file, so neither the crontab line nor the subject of the cron mail
-#    names the address of the hook
-useradd -m smoketest
-printf 'To: hook@example.org\nSubject: cron hook\n\nx\n' > /home/smoketest/hook.eml
-chown smoketest: /home/smoketest/hook.eml
-printf '%s\n' '* * * * * echo user-cron-output' \
-  '* * * * * /usr/sbin/sendmail -t < /home/smoketest/hook.eml' \
-  | crontab -u smoketest -
-# wait for user-cron-output in /root/receiver.log and a line from the hook:
-grep -c user-cron-output /root/receiver.log; cat /tmp/selinux-hook.log
-crontab -r -u smoketest
-
-# 6. System cron job (system_cronjob_t)
-printf '* * * * * root echo system-cron-output\n' > /etc/cron.d/selinux-smoke
-# wait for system-cron-output in /root/receiver.log:
-grep -c system-cron-output /root/receiver.log
-rm /etc/cron.d/selinux-smoke
-
-# 7. at (atd_t, a job of a user)
-su - smoketest -c 'echo "echo at-output" | at now'
-# wait for at-output in /root/receiver.log before step 8, or the mail of
-# atd goes to the stopped receiver and into the queue:
-grep -c at-output /root/receiver.log
-
-# 8. Queue run by the service (unconfined_service_t)
-kill "$receiver"
-printf 'Subject: queued\n\nbody\n' | su - smoketest -c '/usr/sbin/sendmail -i root'
-mailq
-python3 /root/receiver.py >> /root/receiver.log 2>&1 &
-receiver=$!
-# 60 seconds or more after the call:
-systemctl start mailcrier-queue.service
-systemctl show -p Result mailcrier-queue.service
-grep -c queued /root/receiver.log; mailq
-
-# 9. Confined domain: smartd as a service (fsdaemon_t) mails through mail
-cp -p /etc/smartmontools/smartd.conf /etc/smartmontools/smartd.conf.orig
-echo 'DEVICESCAN -m root -M test' > /etc/smartmontools/smartd.conf
-systemctl restart smartd
-ps -eZ | grep ' smartd$'        # fsdaemon_t
-# wait for the mail of smartd in /root/receiver.log:
-grep -c -i smart /root/receiver.log
-# without a device with SMART (smartd does not start or sends nothing),
-# record the output of systemctl status smartd and mark "smartd domain
-# not checked"; a SATA or IDE disk of QEMU has SMART
-
-# 10. Denials
-ausearch -m avc,user_avc,selinux_err -ts $start
-ausearch -m avc -ts $start -c mailcrier
-
-# 11. Clean up
-mv /etc/smartmontools/smartd.conf.orig /etc/smartmontools/smartd.conf
-systemctl restart smartd
-semodule -B
-kill "$receiver"; rpm -e mailcrier; userdel -r smoketest
-rm -f /usr/local/bin/selinux-hook /tmp/selinux-hook.log /root/receiver.py \
-  /etc/mailcrier.conf.rpmsave
+make snapshot
+make -j2 selinux-rocky9 selinux-rocky10
 ```
 
-Expected: step 10 prints `<no matches>` for both searches. A denial holds
-the first release until it is decided how to answer it: a policy module of
-our own, a `semanage fcontext` rule, or a documented workaround; whether
-the binary is labelled `bin_t` or `sendmail_exec_t` is part of what the
-run shows.
+It needs docker and a readable and writable `/dev/kvm` on an x86-64-v3
+host (Rocky 10), and network: the first run fetches the cloud images of
+Rocky into `.e2e/selinux` (about 600 MB each, checked against the sums in
+the `Makefile`), and the virtual machine installs its packages from the
+mirrors of Rocky. Each target boots the image under qemu in the container
+of `testdata/selinux`, with a throwaway overlay disk, an IDE disk with
+SMART for smartd and 2 GB of memory, logs in as root over ssh, runs
+[`check.sh`](../testdata/selinux/check.sh) on the rpm of `dist/` and powers
+the machine off; a run takes 10 to 15 minutes. `TestSELinux`
+(`selinux_test.go`, tag `selinux`) then reads
+`.e2e/selinux/<distro>/check.log`. A failure to boot or to reach sshd is
+reported by `run.sh` with the end of `console.log`; the overlay disk
+`disk.qcow2` stays beside it until the next run.
+
+Without docker or KVM, `check.sh` runs by hand as root on a Rocky virtual
+machine (not a container), from a login session, with
+[`receiver.py`](../testdata/selinux/receiver.py) beside it:
+
+```sh
+sh check.sh ./mailcrier_<version>_linux_amd64.rpm 2>&1 | tee check.log
+go test -tags selinux -run '^TestSELinux$' . -args -selinux-log check.log
+```
+
+Nothing of the machine is lost: the exit trap removes the package, the
+user, the hook and the cron entries, puts `smartd.conf` back and the
+dontaudit rules on again, also after a failed step; the packages it
+installs (at, cronie, smartmontools, s-nail, python3) and the updated
+`selinux-policy` stay. Step 3 overwrites the configuration of the package,
+step 1 restarts crond and atd (a crond started before `/usr/sbin/sendmail`
+existed logs the output of jobs instead of mailing it), and step 9 lifts
+`ConditionVirtualization=no` of the smartd unit through a drop-in in
+`/run`. On a machine without a disk with SMART, smartd sends nothing, and
+the test fails on it: record the output of step 9 and mark "smartd domain
+not checked".
+
+## What it checks
+
+`check.sh` updates `selinux-policy` first, so the run checks the policy an
+administrator gets on that day, and records its version. It turns the
+dontaudit rules off (`semodule -DB`), so no denial hides, installs the rpm
+after the start time, so its scriptlets are inside the search, and calls
+mailcrier as root (`unconfined_t`), from a user and a system cron job, from
+at, from the queue service after a failed delivery, and through mail from
+smartd (`fsdaemon_t`), each delivering to a local receiver. The test fails
+when:
+
+- the script did not run in `unconfined_t`, SELinux is not enforcing, or
+  crond, atd or smartd run outside `crond_t`, `atd_t` and `fsdaemon_t`;
+- a caller did not deliver within its wait, or a call exited non-zero;
+- the hook ran with the group `mailcrier`;
+- no `MAC_POLICY_LOAD` record since the start was found, so an empty
+  search would prove nothing;
+- a denial names mailcrier, its paths or a caller of the check (comm
+  `sendmail`, `exe` after the re-exec, `mail`, `s-nail`, `selinux-hook`).
+
+A denial of any other process is printed by the test, not failed: with the
+dontaudit rules off dnf, sshd and systemd give their own. A denial of
+mailcrier holds the first release until it is decided how to answer it: a
+policy module of our own, a `semanage fcontext` rule, or a documented
+workaround; whether the binary is labelled `bin_t` or `sendmail_exec_t` is
+part of what the run shows.
 
 ## Result
 
 Not run yet. For each run: the Rocky version, the output of `rpm -q
-mailcrier` and the commit the rpm was built from, the output of `sestatus`
-and the output of steps 1, 5, 9 and 10. No host names, addresses or paths
-outside the virtual machine.
+mailcrier` and the commit the rpm was built from, the lines `policy`,
+`cron_userdomain_transition` and `hook context` of `check.log`, the output
+of steps 1 and 10, and the denials of other processes the test printed. No
+host names, addresses or paths outside the virtual machine.

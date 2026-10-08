@@ -17,6 +17,8 @@ make smoke        # needs docker and dist/ of HEAD (make snapshot): packages
                   # the first run fetches SMOKE_PREVIOUS over the network
 make smoke-alpine # one of debian rocky9 rocky10 alpine
 make -j4 -O smoke # all distributions in parallel, 5-7 min with built images
+make -j2 selinux-rocky9 selinux-rocky10  # needs docker, /dev/kvm, network
+                  # and dist/ of HEAD: docs/selinux.md, 10-15 min, 2 VMs x 2 GB
 go build -o mailcrier ./cmd/mailcrier   # the binary; the name is gitignored
 MAILCRIER_TELEGRAM_ENV=/path/to/telegram.env \
   go test -run TestLiveTelegram ./internal/backend/telegram   # real Bot API
@@ -222,8 +224,9 @@ with "build constraints exclude all Go files".
   wrapper records the status and transport error of the last request,
   because the library reports them only as text that quotes the URL.
   Tests of either build carry the matching tag; `make test`, `build` and
-  `lint-go` run both builds. Files tagged `setgid_e2e` or `smoke` are not
-  in `make test`; `lint-go` type-checks them under their tags.
+  `lint-go` run both builds. Files tagged `setgid_e2e`, `smoke` or
+  `selinux` are not in `make test`; `lint-go` type-checks them under their
+  tags.
   `TestLiveTelegram` sends to the real Bot API only with
   `MAILCRIER_TELEGRAM_ENV` naming a file with `TELEGRAM_BOT_TOKEN` and
   `TELEGRAM_CHAT_ID`.
@@ -429,6 +432,17 @@ with "build constraints exclude all Go files".
   and its final tag version from the final one (`TestSnapshotTagOrder`).
   `TestSmokeLifecycle` checks the installed apk version with
   `apk version -c`.
+- `make selinux-<distro>` boots the Rocky cloud image of
+  `SELINUX_URL_<distro>` under qemu in the container of `testdata/selinux`
+  and runs `check.sh` there over ssh as root, because cloud-init runs its
+  commands in `cloud_init_t`, not in the `unconfined_t` of an
+  administrator; `TestSELinux` (`selinux_test.go`) reads the
+  `check.log` it leaves in `.e2e/selinux/<distro>`, and
+  `TestCheckSELinuxRun` pins that reading on `testdata/selinux/clean.log`
+  in `make test`. The stand lives under `testdata/`, so a change of it
+  leaves the selinux record of `docs/releasing.md` valid. Dependabot does
+  not update the images; a new minor release of Rocky moves them off
+  dl.rockylinux.org, and the `Makefile` takes the new URL and sum by hand.
 - `TestSmokePrevious` fails `make check` on every commit after a release
   tag until `SMOKE_PREVIOUS` names it, and after a failed release until the
   tag is in `unpublishedTags` (`docs/releasing.md`, steps 4 and 5).

@@ -87,6 +87,20 @@ SMOKE_VOLUMES := -v $(CURDIR)/dist:/pkgs:ro -v $(E2E_DIR):/e2e:ro -v $(CURDIR)/t
 SMOKE_SYSTEMD_DISTROS := debian rocky9 rocky10
 SMOKE_SYSTEMD_FLAGS ?=
 
+# selinux-<distro> runs testdata/selinux/check.sh on a Rocky cloud image
+# under qemu with /dev/kvm, in the container of testdata/selinux, and
+# selinux_test.go on its output (docs/selinux.md). Dependabot does not see
+# the images: a new minor release of Rocky moves them off
+# dl.rockylinux.org, and the URL and the sum from the CHECKSUM file beside
+# the image are updated here by hand.
+SELINUX_DISTROS := rocky9 rocky10
+SELINUX_DIR := $(E2E_DIR)/selinux
+SELINUX_IMAGE := mailcrier-selinux
+SELINUX_URL_rocky9 := https://dl.rockylinux.org/pub/rocky/9.8/images/x86_64/Rocky-9-GenericCloud-Base-9.8-20260525.0.x86_64.qcow2
+SELINUX_SUM_rocky9 := 92c206cc6f790c61583247eefe87890f8828420662c17cacf247cec78ab4eec8
+SELINUX_URL_rocky10 := https://dl.rockylinux.org/pub/rocky/10.2/images/x86_64/Rocky-10-GenericCloud-Base-10.2-20260525.0.x86_64.qcow2
+SELINUX_SUM_rocky10 := 9fc9e9ff16888bb68ac39b0392e25c9c92684d50c85f1cce6ab549363bbc4b48
+
 CHANGELOG_START := 12340d0
 
 # Form of a release tag; release.yml runs on any v* tag. grep matches line
@@ -102,7 +116,8 @@ is-release-tag = case "$$TAG" in *[!0-9A-Za-z.-]*|'') false;; esac && echo "$$TA
 RELEASE_JOBS := make check,make snapshot,make smoke-debian,make smoke-rocky9,make smoke-rocky10,make smoke-alpine,make setgid-e2e,make units-verify
 
 .PHONY: check lint lint-go lint-yaml lint-actions tidy test fuzz build licenses vuln check-refs check-commits snapshot release-prepare release-gate release release-guard setgid-e2e units-verify \
-	smoke smoke-dist smoke-previous $(addprefix smoke-,$(SMOKE_DISTROS)) FORCE
+	smoke smoke-dist smoke-previous $(addprefix smoke-,$(SMOKE_DISTROS)) \
+	selinux-images $(addprefix selinux-,$(SELINUX_DISTROS)) $(addprefix selinux-image-,$(SELINUX_DISTROS)) FORCE
 
 check: lint tidy test fuzz build licenses check-refs check-commits
 	-$(MAKE) vuln
@@ -111,7 +126,7 @@ lint: lint-go lint-yaml lint-actions
 
 lint-go:
 	$(TOOL) golangci-lint run ./...
-	$(TOOL) golangci-lint run --build-tags setgid_e2e,noshoutrrr,smoke ./...
+	$(TOOL) golangci-lint run --build-tags setgid_e2e,noshoutrrr,smoke,selinux ./...
 
 lint-yaml:
 	$(YAMLLINT) --strict .
@@ -272,6 +287,34 @@ smoke-previous:
 		for file in $(SMOKE_PREVIOUS_FILES); do \
 			awk -v file="$$file" '$$2 == file' checksums.txt | sha256sum -c --quiet - || exit 1; \
 		done
+
+# The run leaves its output in $(SELINUX_DIR)/<distro>, and the test reads
+# it also after a failed run, to name the step. The container runs as root
+# for /dev/kvm and ssh; run.sh hands its files to OWNER.
+$(addprefix selinux-,$(SELINUX_DISTROS)): selinux-%: smoke-dist selinux-image-%
+	docker build -t $(SELINUX_IMAGE) testdata/selinux
+	mkdir -p $(SELINUX_DIR)/$*
+	status=0; \
+	docker run --rm --device /dev/kvm -e OWNER=$$(id -u):$$(id -g) \
+		-v $(SELINUX_DIR)/$(notdir $(SELINUX_URL_$*)):/images/base.qcow2:ro \
+		-v $(CURDIR)/dist:/pkgs:ro -v $(CURDIR)/testdata/selinux:/stand:ro -v $(SELINUX_DIR)/$*:/work \
+		$(SELINUX_IMAGE) sh /stand/run.sh || status=1; \
+	$(GO) test -tags selinux -count=1 -run '^TestSELinux$$' . -args -selinux-log $(SELINUX_DIR)/$*/check.log || status=1; \
+	exit $$status
+
+selinux-images: $(addprefix selinux-image-,$(SELINUX_DISTROS))
+
+# Fetched like smoke-previous: moved in place only once the sum matches,
+# checked again on every run.
+$(addprefix selinux-image-,$(SELINUX_DISTROS)): selinux-image-%:
+	mkdir -p $(SELINUX_DIR)/partial
+	cd $(SELINUX_DIR) && file=$(notdir $(SELINUX_URL_$*)) && \
+		if [ ! -f "$$file" ]; then \
+			curl -fsSL --proto '=https' --retry 3 -o "partial/$$file" '$(SELINUX_URL_$*)' && \
+			echo "$(SELINUX_SUM_$*)  partial/$$file" | sha256sum -c --quiet - && \
+			mv "partial/$$file" "$$file"; \
+		fi && \
+		echo "$(SELINUX_SUM_$*)  $$file" | sha256sum -c --quiet -
 
 # FORCE rebuilds the test binaries on every run: go's cache keeps that
 # cheap, and a stale binary would test old code.

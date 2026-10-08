@@ -25,8 +25,9 @@ next version number.
 ## Procedure
 
 From a clone with push access, `gh` logged in to the repository. A final
-version, one without a suffix, first needs a run on Rocky 9 and Rocky 10
-recorded under "Result" of [selinux.md](selinux.md) for an rpm built from
+version, one without a suffix, first needs a passing run of `make
+selinux-rocky9 selinux-rocky10` recorded under "Result" of
+[selinux.md](selinux.md) from its `check.log`, for an rpm built from
 a commit whose `packaging`, `cmd` and `internal` match the one to release
 (`git diff --quiet <commit of the run> origin/develop -- packaging cmd
 internal` exits 0); no job checks that, and a record that is missing or

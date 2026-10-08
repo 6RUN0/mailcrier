@@ -81,6 +81,7 @@ updates:
     directories:
       - "/testdata/setgid-e2e"
       - "/testdata/units-verify"
+      - "/testdata/selinux"
       - "/packaging/smoke/debian"
       - "/packaging/smoke/rocky9"
       - "/packaging/smoke/rocky10"

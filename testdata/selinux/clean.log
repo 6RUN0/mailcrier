@@ -1,0 +1,44 @@
+== step 0 ==
+== context unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023 ==
+== enforce Enforcing ==
+== auditd active ==
+== policy selinux-policy-targeted-38.1.75-2.el9_8.1.noarch ==
+== cron_userdomain_transition on ==
+== step 1 ==
+== package mailcrier-0.1.0~rc1791475648-1.x86_64 ==
+== timer enabled active ==
+== domain crond system_u:system_r:crond_t:s0-s0:c0.c1023 ==
+== domain atd system_u:system_r:crond_t:s0-s0:c0.c1023 ==
+== mailcrier gid 993 ==
+== step 2 ==
+== step 3 ==
+== step 4 ==
+== call root: exit 0 ==
+== wait root: ok ==
+== step 5 ==
+== wait user-cron: ok ==
+== wait hook: ok ==
+unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023
+1000
+== hook context unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023 ==
+== hook groups 1000 ==
+== step 6 ==
+== wait system-cron: ok ==
+== step 7 ==
+== wait at: ok ==
+== step 8 ==
+== call queued: exit 0 ==
+== wait queued: ok ==
+== queue service success ==
+== step 9 ==
+== smart available ==
+== domain smartd system_u:system_r:fsdaemon_t:s0 ==
+== wait smartd: ok ==
+== step 10 ==
+== policy load found ==
+== denials ==
+<no matches>
+== denials of mailcrier ==
+<no matches>
+== end ==
+== step 11 ==
