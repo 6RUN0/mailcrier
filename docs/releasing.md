@@ -1,11 +1,13 @@
 # Releasing
 
-A release is a pushed tag `vX.Y.Z` or `vX.Y.Z-rc.N` on a commit of
+A release is a pushed tag `vX.Y.Z` or `vX.Y.Z-rcN` on a commit of
 `develop` whose push run of `ci.yml` passed. `release.yml` checks that
 again (`make release-gate`), runs `make vuln`, and publishes the release at
 once: deb, rpm and apk packages, the binaries, `checksums.txt` and a build
-provenance attestation of every file in it. A tag with a suffix such as
-`-rc.1` becomes a prerelease. `main` takes every release by fast-forward,
+provenance attestation of every file in it. A tag `-rcN` becomes a
+prerelease; the number has no dot before it, because the apk version of
+`-rc.1` would be `_rc.1`, which apk does not accept, and `release-gate`
+refuses any other suffix. `main` takes every release by fast-forward,
 an rc included, because the gate wants the tagged commit in `main`; after a
 failed release `main` stays on its commit until the next release.
 
@@ -75,4 +77,4 @@ From a clone with push access, `gh` logged in to the repository.
      release, and such a rerun fails: the next version number then.
    - The code or the configuration has to change: a new commit on
      `develop`, its CI green, then steps 1 to 3 with the next number
-     (`-rc.N+1`, or the next patch version). The failed tag stays.
+     (`-rcN+1`, or the next patch version). The failed tag stays.

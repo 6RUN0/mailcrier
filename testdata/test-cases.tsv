@@ -203,3 +203,4 @@ T-PKG-14	high	done	The cron job of the package does nothing without the binary: 
 T-PKG-15	high	done	On Alpine with ssmtp installed apk refuses to overwrite /usr/sbin/sendmail, which stays with ssmtp	https://wiki.alpinelinux.org/wiki/Alpine_Package_Keeper
 T-PKG-16	high	done	With postfix the mta alternative goes to mailcrier and back on removal; after postfix is removed mailcrier stays active, and its removal leaves no /usr/sbin/sendmail	https://github.com/fedora-sysv/chkconfig/blob/master/alternatives.8
 T-PKG-17	high	done	The setgid tests run against the binary, user, group and spool of the installed package	https://github.com/6RUN0/mailcrier/blob/develop/README.md#install
+T-PKG-18	high	done	The version of the installed apk package is one apk accepts, so it orders the package against another version on upgrade	https://wiki.alpinelinux.org/wiki/APKBUILD_Reference#pkgver

@@ -77,8 +77,8 @@ release-gate` (the tag names HEAD, HEAD is in `main`, `main` has no commit
 `develop` lacks, and `scripts/check-release` finds the newest
 push run of `ci.yml` on `develop` for that commit completed with every job
 of `RELEASE_JOBS` successful), `make vuln`, then `make release` (goreleaser
-publishes the release at once, a tag with `-rc.N` or another pre-release
-suffix as a prerelease, notes from the built-in changelog since the last
+publishes the release at once, a tag `-rcN` (`RELEASE_TAG` allows no
+other suffix) as a prerelease, notes from the built-in changelog since the last
 final tag before the tagged commit, without Dependabot commits) and
 `actions/attest-build-provenance` over `dist/checksums.txt`.
 `develop` is the development branch, `main` the default branch that only
@@ -413,6 +413,12 @@ with "build constraints exclude all Go files".
   ruleset forbids deleting a `v*` tag and updating it other than by
   fast-forward; a pushed tag is never moved at all: a mistake is fixed by
   the next version number.
+- apk accepts a pre-release suffix only as letters and a number, so a tag is
+  `-rc1`, never `-rc.1` (apk version `0.1.0_rc.1`, which it installs but
+  cannot order), and `make snapshot` versions packages
+  `<next>-rc<commit time>`: newer than every rc of that version, older
+  than the release itself. `TestSmokeLifecycle` checks the installed apk
+  version with `apk version -c`.
 - Dependabot security updates are off in the repository settings. Turned
   on, they open against the default branch `main` whatever `target-branch`
   says and without the `commit-message` prefix, which `check-commits`

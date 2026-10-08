@@ -319,7 +319,7 @@ checksum:
   name_template: checksums.txt
 
 snapshot:
-  version_template: "{{ incpatch .Version }}-snapshot"
+  version_template: "{{ incpatch .Version }}-rc{{ .CommitTimestamp }}"
 
 changelog:
   use: git

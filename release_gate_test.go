@@ -115,7 +115,8 @@ func TestReleaseGate(t *testing.T) {
 
 // TestReleaseGuard pins the refusals of make release before goreleaser:
 // outside GitHub Actions, and for a TAG that is not a version, a newline
-// included, since grep alone would accept a valid first line.
+// included, since grep alone would accept a valid first line, or that has a
+// suffix other than rcN, which apk would not accept as a version.
 func TestReleaseGuard(t *testing.T) {
 	if _, err := exec.LookPath("make"); err != nil {
 		t.Skip("make not installed")
@@ -126,9 +127,11 @@ func TestReleaseGuard(t *testing.T) {
 		want string
 	}{
 		{"outside actions", []string{"TAG=v1.0.0"}, "release publishes to GitHub; run it from release.yml"},
-		{"shell syntax", []string{"GITHUB_ACTIONS=true", "TAG=v1;x"}, "release needs TAG=vX.Y.Z[-pre]"},
-		{"newline", []string{"GITHUB_ACTIONS=true", "TAG=v1.0.0\nv2"}, "release needs TAG=vX.Y.Z[-pre]"},
-		{"empty", []string{"GITHUB_ACTIONS=true"}, "release needs TAG=vX.Y.Z[-pre]"},
+		{"shell syntax", []string{"GITHUB_ACTIONS=true", "TAG=v1;x"}, "release needs TAG=vX.Y.Z[-rcN]"},
+		{"newline", []string{"GITHUB_ACTIONS=true", "TAG=v1.0.0\nv2"}, "release needs TAG=vX.Y.Z[-rcN]"},
+		{"empty", []string{"GITHUB_ACTIONS=true"}, "release needs TAG=vX.Y.Z[-rcN]"},
+		{"rc with a dot", []string{"GITHUB_ACTIONS=true", "TAG=v1.0.0-rc.1"}, "release needs TAG=vX.Y.Z[-rcN]"},
+		{"other suffix", []string{"GITHUB_ACTIONS=true", "TAG=v1.0.0-beta1"}, "release needs TAG=vX.Y.Z[-rcN]"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -140,9 +143,11 @@ func TestReleaseGuard(t *testing.T) {
 			}
 		})
 	}
-	cmd := exec.Command("make", "release-guard")
-	cmd.Env = releaseEnv("GITHUB_ACTIONS=true", "TAG=v1.0.0-rc.1")
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("make release-guard with a valid tag: %v\n%s", err, out)
+	for _, tag := range []string{"v1.0.0", "v1.0.0-rc1"} {
+		cmd := exec.Command("make", "release-guard")
+		cmd.Env = releaseEnv("GITHUB_ACTIONS=true", "TAG="+tag)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("make release-guard TAG=%s: %v\n%s", tag, err, out)
+		}
 	}
 }

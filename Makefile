@@ -79,7 +79,8 @@ CHANGELOG_START := 12340d0
 
 # Form of a release tag; release.yml runs on any v* tag. grep matches line
 # by line, so the case rejects a newline and any other stray character first.
-RELEASE_TAG := v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?
+# The suffix is rcN without a dot: apk refuses the version 0.1.0_rc.2.
+RELEASE_TAG := v[0-9]+\.[0-9]+\.[0-9]+(-rc[0-9]+)?
 is-release-tag = case "$$TAG" in *[!0-9A-Za-z.-]*|'') false;; esac && echo "$$TAG" | grep -Eqx '$(RELEASE_TAG)'
 
 # release-gate wants each of these jobs of the push run of ci.yml on develop
@@ -147,7 +148,7 @@ release-prepare:
 # of develop (so a commit in main is in develop too), and whose push run of ci.yml on develop passed. "In main", not
 # "the head of main": a rerun after the next fast-forward still passes.
 release-gate:
-	@$(is-release-tag) || { echo "release-gate needs TAG=vX.Y.Z[-pre]" >&2; exit 2; }
+	@$(is-release-tag) || { echo "release-gate needs TAG=vX.Y.Z[-rcN]" >&2; exit 2; }
 	@[ "$$(git rev-parse -q --verify "refs/tags/$$TAG^{commit}")" = "$$(git rev-parse HEAD)" ] || \
 		{ echo "tag $$TAG does not point at HEAD" >&2; exit 1; }
 	@git rev-parse -q --verify origin/main >/dev/null && git rev-parse -q --verify origin/develop >/dev/null || \
@@ -175,7 +176,7 @@ release: release-guard release-prepare
 
 release-guard:
 	@[ "$$GITHUB_ACTIONS" = true ] || { echo "release publishes to GitHub; run it from release.yml" >&2; exit 2; }
-	@$(is-release-tag) || { echo "release needs TAG=vX.Y.Z[-pre]" >&2; exit 2; }
+	@$(is-release-tag) || { echo "release needs TAG=vX.Y.Z[-rcN]" >&2; exit 2; }
 
 setgid-e2e:
 	mkdir -p $(E2E_DIR)

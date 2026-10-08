@@ -27,6 +27,16 @@ func TestSmokeLifecycle(t *testing.T) {
 	if !t.Run("T-PKG-01/install", func(t *testing.T) { install(t, d) }) {
 		t.FailNow()
 	}
+	// apk installs a package whose version it cannot parse, and then
+	// cannot order it against another version on upgrade.
+	if d.format == "apk" {
+		t.Run("T-PKG-18/version-valid", func(t *testing.T) {
+			version := installedAPKVersion(t, "mailcrier")
+			if r := run(t, nil, "", "apk", "version", "-c", version); r.code != 0 {
+				t.Errorf("apk version -c %s exited %d:\n%s", version, r.code, r.out)
+			}
+		})
+	}
 
 	// send runs a call of cred with a message whose subject is marker and
 	// checks its exit status.
@@ -358,4 +368,27 @@ func makeDue(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+}
+
+// installedAPKVersion returns the version of the installed package name
+// from the database of apk, a "P:" line followed in its record by "V:".
+func installedAPKVersion(t *testing.T, name string) string {
+	t.Helper()
+	data, err := os.ReadFile("/lib/apk/db/installed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for record := range strings.SplitSeq(string(data), "\n\n") {
+		lines := strings.Split(record, "\n")
+		if !slices.Contains(lines, "P:"+name) {
+			continue
+		}
+		for _, line := range lines {
+			if version, ok := strings.CutPrefix(line, "V:"); ok {
+				return version
+			}
+		}
+	}
+	t.Fatalf("/lib/apk/db/installed has no version of %s", name)
+	return ""
 }
