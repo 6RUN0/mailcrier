@@ -23,3 +23,5 @@
 !/scripts/
 !/testdata/
 !/tools/
+
+__pycache__/
