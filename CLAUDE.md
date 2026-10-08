@@ -14,6 +14,7 @@ make fuzz FUZZPARALLEL=8  # fuzzing processes per target, default 4
 make setgid-e2e   # needs docker: TestSetgid* in a root container
 make units-verify # needs docker: systemd-analyze verify of packaging/systemd
 make smoke        # needs docker and dist/ of HEAD (make snapshot): packages
+                  # the first run fetches SMOKE_PREVIOUS over the network
 make smoke-alpine # one of debian rocky9 rocky10 alpine
 make -j4 -O smoke # all distributions in parallel, 5-7 min with built images
 go build -o mailcrier ./cmd/mailcrier   # the binary; the name is gitignored
@@ -51,19 +52,22 @@ The release procedure is `docs/releasing.md`.
   paths, the bodies quote upstream release notes. Dependabot is recognized
   by its noreply author email, not by the author name.
 - `make smoke` refuses a `dist/` whose `metadata.json` names another commit
-  than HEAD. The Rocky 10 image needs an x86-64-v3 host. Each test function
-  of `packaging/smoke` (tag `smoke`, built static) runs as root in its own
-  container without network; it starts cron and atd itself, waits on
-  receiver requests and FIFOs, never on time, and `TestSmokeRuntime` lasts
-  up to 7 minutes because only the `*/5` cron job of the package delivers
-  its queued message. Distributions are keyed by `ID` and the major
-  `VERSION_ID` of `/etc/os-release`. `TestSmokeSystemd` runs through
-  `docker exec` in the `systemd` stage (Debian, Rocky) with systemd as PID
-  1, which needs `--cap-add SYS_ADMIN` and `--security-opt
-  apparmor=unconfined` to remount its cgroup tree writable (the
-  docker-default AppArmor profile of Ubuntu denies mount whatever the
-  capabilities); `SMOKE_SYSTEMD_FLAGS=--privileged` is the fallback for a
-  host where that is not enough.
+  than HEAD. Its first run fetches the amd64 packages of the release
+  `SMOKE_PREVIOUS` with the network of the host into `.e2e/previous`
+  (`make smoke-previous`, checked against `SMOKE_PREVIOUS_SUMS`), which
+  `TestSmokeUpgrade` installs before those of `dist/`. The Rocky 10 image
+  needs an x86-64-v3 host. Each test function of `packaging/smoke` (tag
+  `smoke`, built static) runs as root in its own container without network;
+  it starts cron and atd itself, waits on receiver requests and FIFOs, never
+  on time, and `TestSmokeRuntime` lasts up to 7 minutes because only the
+  `*/5` cron job of the package delivers its queued message. Distributions
+  are keyed by `ID` and the major `VERSION_ID` of `/etc/os-release`.
+  `TestSmokeSystemd` runs through `docker exec` in the `systemd` stage
+  (Debian, Rocky) with systemd as PID 1, which needs `--cap-add SYS_ADMIN`
+  and `--security-opt apparmor=unconfined` to remount its cgroup tree
+  writable (the docker-default AppArmor profile of Ubuntu denies mount
+  whatever the capabilities); `SMOKE_SYSTEMD_FLAGS=--privileged` is the
+  fallback for a host where that is not enough.
 - A manual run of the binary reads `/etc/mailcrier.conf`, or the file
   in `MAILCRIER_CONFIG` or `--config` (honoured when not setgid-elevated).
 

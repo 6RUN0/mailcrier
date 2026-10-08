@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -18,8 +19,9 @@ const timer = "mailcrier-queue.timer"
 // TestSmokeSystemd runs in a container whose PID 1 is systemd: the install
 // enables and starts the queue timer, the cron line of the package stands
 // back, the queue service delivers as mailcrier under its sandbox options,
-// a reinstall keeps the timer running and the removal stops and disables
-// it. It does not wait for the timer to fire: that is the work of systemd.
+// a reinstall keeps the timer running, the removal stops and disables it,
+// and an upgrade from the previous release keeps it running. It does not
+// wait for the timer to fire: that is the work of systemd.
 func TestSmokeSystemd(t *testing.T) {
 	d := currentDistro(t)
 	waitSystemd(t)
@@ -109,7 +111,7 @@ func TestSmokeSystemd(t *testing.T) {
 		}
 	})
 
-	t.Run("T-PKG-08/removal-stops-timer", func(t *testing.T) {
+	if !t.Run("T-PKG-08/removal-stops-timer", func(t *testing.T) {
 		out := mustRun(t, "", d.remove...)
 		t.Logf("remove:\n%s", out)
 		if got := systemctl(t, "is-active", timer); got != "inactive" {
@@ -129,6 +131,64 @@ func TestSmokeSystemd(t *testing.T) {
 		nested, _ := filepath.Glob("/var/lib/systemd/deb-systemd-helper-enabled/*/" + timer)
 		if found := append(state, nested...); len(found) != 0 {
 			t.Errorf("deb-systemd-helper keeps %v after dpkg -P", found)
+		}
+	}) {
+		t.FailNow()
+	}
+
+	// An upgrade with an empty spool and a queue run lock: the removal
+	// scripts of the previous release delete the locks only on removal.
+	t.Run("T-PKG-19/upgrade-keeps-timer", func(t *testing.T) {
+		previous := previousPackage(t, d)
+		out := mustRun(t, "", append(slices.Clone(d.install), previous)...)
+		t.Logf("install of %s:\n%s", previous, out)
+		if got := systemctl(t, "is-enabled", timer); got != "enabled" {
+			t.Errorf("is-enabled %s = %q with the previous release, want enabled", timer, got)
+		}
+		if got := systemctl(t, "is-active", timer); got != "active" {
+			t.Errorf("is-active %s = %q with the previous release, want active", timer, got)
+		}
+		const marker = "smoke-systemd-upgrade-17f0"
+		delivered := recv.expect(marker)
+		writeConfig(t, working)
+		if r := run(t, queuer, "Subject: "+marker+"\n\nbody\n", "/usr/sbin/sendmail", "-i", "ops@example.org"); r.code != 0 {
+			t.Fatalf("call exited %d:\n%s", r.code, r.out)
+		}
+		waitEvent(t, delivered, time.Now().Add(10*time.Second), "the message of queuer", report)
+		locks, _ := filepath.Glob(filepath.Join(spoolDir, "locks", "*.lock"))
+		if len(locks) == 0 || len(allSpoolMessages(t)) != 0 {
+			t.Fatalf("want a queue run lock and no message\n%s", report())
+		}
+
+		pkg := d.packageFile(t, pkgsDir)
+		oldVersion, newVersion := packageVersion(t, d, previous), packageVersion(t, d, pkg)
+		if got := installedVersion(t, d); got != oldVersion {
+			t.Fatalf("installed version %s before the upgrade, want %s", got, oldVersion)
+		}
+		out = upgrade(t, d, pkg, oldVersion, newVersion)
+		t.Logf("upgrade:\n%s", out)
+		checkInstallerOutput(t, out)
+		if got := installedVersion(t, d); got != newVersion {
+			t.Errorf("installed version %s after the upgrade, want %s", got, newVersion)
+		}
+		if got := systemctl(t, "is-enabled", timer); got != "enabled" {
+			t.Errorf("is-enabled %s = %q after the upgrade, want enabled", timer, got)
+		}
+		if got := systemctl(t, "is-active", timer); got != "active" {
+			t.Errorf("is-active %s = %q after the upgrade, want active", timer, got)
+		}
+		// systemd prints infinity for a timer with nothing scheduled and 0
+		// for one with only a calendar trigger; the queue timer has none.
+		if got := systemctl(t, "show", "-p", "NextElapseUSecMonotonic", "--value", timer); got == "" || got == "0" || got == "infinity" {
+			t.Errorf("%s has no next elapse after the upgrade: %q", timer, got)
+		}
+		if got, _ := filepath.Glob(filepath.Join(spoolDir, "locks", "*.lock")); !slices.Equal(got, locks) {
+			t.Errorf("locks/ = %v after the upgrade, want %v", got, locks)
+		}
+		for _, area := range spoolAreas {
+			if _, err := os.Stat(filepath.Join(spoolDir, area)); err != nil {
+				t.Errorf("spool area after the upgrade: %v", err)
+			}
 		}
 	})
 }

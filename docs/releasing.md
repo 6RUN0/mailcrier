@@ -77,4 +77,29 @@ From a clone with push access, `gh` logged in to the repository.
      release, and such a rerun fails: the next version number then.
    - The code or the configuration has to change: a new commit on
      `develop`, its CI green, then steps 1 to 3 with the next number
-     (`-rcN+1`, or the next patch version). The failed tag stays.
+     (`-rcN+1`, or the next patch version). The failed tag stays, and
+     that new commit adds it to `unpublishedTags` of
+     `smoke_previous_test.go`: otherwise `TestSmokePrevious` fails
+     `make check` on every commit after the tag.
+
+5. Once the release is published, point the upgrade smoke tests at it in a
+   commit on `develop`: `SMOKE_PREVIOUS` of the `Makefile` names the newest
+   final release, and before the first one the newest rc;
+   `SMOKE_PREVIOUS_SUMS` is the sha256 of its `checksums.txt`:
+
+   ```sh
+   base=https://github.com/6RUN0/mailcrier/releases/download
+   curl -fsSL "$base/vX.Y.Z/checksums.txt" | sha256sum
+   ```
+
+   Until that commit `TestSmokePrevious` fails `make check` on every commit
+   after the tagged one; the tagged commit itself stays green. The same
+   commit drops the entries of `unorderablePrevious` in
+   `packaging/smoke/upgrade_test.go` that name the versions of the old pin;
+   an entry for a version dpkg or apk can order fails `TestSmokeUpgrade`.
+
+   The release `SMOKE_PREVIOUS` names is never deleted, and its files are
+   never replaced by a rerun: every smoke job fetches them and checks them
+   against `SMOKE_PREVIOUS_SUMS`, so a missing or changed file fails all of
+   them. A pinned release that has to be built again gets its new sum in the
+   same push.

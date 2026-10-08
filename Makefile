@@ -63,8 +63,20 @@ UNITS := mailcrier-queue.service mailcrier-queue.timer
 # distribution, the images in packaging/smoke/<distro>, and runs each test
 # function of packaging/smoke in a fresh one; dist/ must come from HEAD.
 SMOKE_DISTROS := debian rocky9 rocky10 alpine
-SMOKE_TESTS := TestSmokeSetgid TestSmokeRuntime TestSmokeLifecycle
-SMOKE_VOLUMES := -v $(CURDIR)/dist:/pkgs:ro -v $(E2E_DIR):/e2e:ro -v $(CURDIR)/testdata/callers:/callers:ro
+SMOKE_TESTS := TestSmokeSetgid TestSmokeRuntime TestSmokeLifecycle TestSmokeUpgrade
+
+# The upgrade tests install the packages of this release first, on /previous;
+# smoke-previous fetches them on the host, the containers have no network.
+# TestSmokePrevious keeps it the newest release, docs/releasing.md bumps it.
+SMOKE_PREVIOUS := v0.1.0-rc.2
+# sha256 of checksums.txt of that release
+SMOKE_PREVIOUS_SUMS := ce582d3c68a6ebf862b8d1673368d96e54d7128aeb75adf022cd3ccaba686339
+SMOKE_PREVIOUS_DIR := $(E2E_DIR)/previous/$(SMOKE_PREVIOUS)-$(SMOKE_PREVIOUS_SUMS)
+SMOKE_PREVIOUS_URL := https://github.com/6RUN0/mailcrier/releases/download/$(SMOKE_PREVIOUS)
+SMOKE_PREVIOUS_FILES := $(foreach format,deb rpm apk,mailcrier_$(SMOKE_PREVIOUS:v%=%)_linux_amd64.$(format))
+
+SMOKE_VOLUMES := -v $(CURDIR)/dist:/pkgs:ro -v $(E2E_DIR):/e2e:ro -v $(CURDIR)/testdata/callers:/callers:ro \
+	-v $(SMOKE_PREVIOUS_DIR):/previous:ro
 
 # TestSmokeSystemd runs where the packages ship the queue timer, in the
 # systemd stage of the image with systemd as PID 1. SYS_ADMIN lets the
@@ -89,7 +101,7 @@ is-release-tag = case "$$TAG" in *[!0-9A-Za-z.-]*|'') false;; esac && echo "$$TA
 RELEASE_JOBS := make check,make snapshot,make smoke-debian,make smoke-rocky9,make smoke-rocky10,make smoke-alpine,make setgid-e2e,make units-verify
 
 .PHONY: check lint lint-go lint-yaml lint-actions tidy test fuzz build licenses vuln check-refs check-commits snapshot release-prepare release-gate release release-guard setgid-e2e units-verify \
-	smoke smoke-dist $(addprefix smoke-,$(SMOKE_DISTROS)) FORCE
+	smoke smoke-dist smoke-previous $(addprefix smoke-,$(SMOKE_DISTROS)) FORCE
 
 check: lint tidy test fuzz build licenses check-refs check-commits
 	-$(MAKE) vuln
@@ -200,7 +212,7 @@ smoke: $(addprefix smoke-,$(SMOKE_DISTROS))
 
 # Each test function runs even when an earlier one failed: they share no
 # state, and every failure is worth seeing.
-$(addprefix smoke-,$(SMOKE_DISTROS)): smoke-%: smoke-dist $(E2E_DIR)/smoke.test $(E2E_DIR)/app.test
+$(addprefix smoke-,$(SMOKE_DISTROS)): smoke-%: smoke-dist smoke-previous $(E2E_DIR)/smoke.test $(E2E_DIR)/app.test
 	docker build --target plain -t mailcrier-smoke-$* packaging/smoke/$*
 	$(if $(filter $*,$(SMOKE_SYSTEMD_DISTROS)),docker build --target systemd -t mailcrier-smoke-$*-systemd packaging/smoke/$*)
 	status=0; for test in $(SMOKE_TESTS); do \
@@ -239,6 +251,26 @@ smoke-dist:
 	@commit=$$(sed -n 's/.*"commit":"\([0-9a-f]*\)".*/\1/p' dist/metadata.json 2>/dev/null); \
 	[ "$$commit" = "$$(git rev-parse HEAD)" ] || { echo "dist/ is from $${commit:-an unknown commit}, run make snapshot" >&2; exit 1; }
 	@[ -z "$$(git status --porcelain)" ] || echo "warning: uncommitted changes are not in dist/" >&2
+
+# A file is fetched only when missing and moved in place only once its sum
+# matches, so an interrupted download leaves nothing in place and a rerun
+# needs no network; every run checks all of them again.
+smoke-previous:
+	mkdir -p $(SMOKE_PREVIOUS_DIR)/partial
+	cd $(SMOKE_PREVIOUS_DIR) && for file in checksums.txt $(SMOKE_PREVIOUS_FILES); do \
+		[ -f "$$file" ] && continue; \
+		curl -fsSL --proto '=https' --retry 3 -o "partial/$$file" "$(SMOKE_PREVIOUS_URL)/$$file" || exit 1; \
+		if [ "$$file" = checksums.txt ]; then \
+			echo '$(SMOKE_PREVIOUS_SUMS)  partial/checksums.txt' | sha256sum -c --quiet - || exit 1; \
+		else \
+			awk -v file="$$file" '$$2 == file { print $$1 "  partial/" file }' checksums.txt | sha256sum -c --quiet - || exit 1; \
+		fi; \
+		mv "partial/$$file" "$$file"; \
+	done
+	cd $(SMOKE_PREVIOUS_DIR) && echo '$(SMOKE_PREVIOUS_SUMS)  checksums.txt' | sha256sum -c --quiet - && \
+		for file in $(SMOKE_PREVIOUS_FILES); do \
+			awk -v file="$$file" '$$2 == file' checksums.txt | sha256sum -c --quiet - || exit 1; \
+		done
 
 # FORCE rebuilds the test binaries on every run: go's cache keeps that
 # cheap, and a stale binary would test old code.

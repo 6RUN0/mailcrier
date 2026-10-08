@@ -87,6 +87,24 @@ func TestSmokeLifecycle(t *testing.T) {
 		if got := allSpoolMessages(t); len(got) != 0 {
 			t.Errorf("spool holds %v after the queue run", got)
 		}
+
+		// The upgrade branches of the removal scripts must keep the locks of
+		// an empty spool, which only a removal deletes.
+		locks, _ := filepath.Glob(filepath.Join(spoolDir, "locks", "*.lock"))
+		if len(locks) == 0 {
+			t.Fatalf("no queue run lock after the queue run\n%s", report())
+		}
+		out = reinstall(t, d)
+		t.Logf("reinstall with an empty spool:\n%s", out)
+		checkInstallerOutput(t, out)
+		if got, _ := filepath.Glob(filepath.Join(spoolDir, "locks", "*.lock")); !slices.Equal(got, locks) {
+			t.Errorf("locks/ = %v after the reinstall, want %v", got, locks)
+		}
+		for _, area := range spoolAreas {
+			if _, err := os.Stat(filepath.Join(spoolDir, area)); err != nil {
+				t.Errorf("spool area after the reinstall: %v", err)
+			}
+		}
 	}) {
 		t.FailNow()
 	}
@@ -278,9 +296,8 @@ func TestSmokeLifecycle(t *testing.T) {
 	}
 }
 
-// reinstall installs the same version of the package over itself. apk
-// runs the upgrade scripts only for a package from a repository, so the
-// file goes into a local one under the name apk expects.
+// reinstall installs the same version of the package over itself; apk
+// takes it from a local repository, see localAPKRepository.
 func reinstall(t *testing.T, d distro) string {
 	t.Helper()
 	pkg := d.packageFile(t, pkgsDir)
@@ -290,7 +307,19 @@ func reinstall(t *testing.T, d distro) string {
 	case "rpm":
 		return mustRun(t, "", "rpm", "-Uvh", "--replacepkgs", pkg)
 	}
-	name, _, _ := strings.Cut(mustRun(t, "", "apk", "list", "-I", "mailcrier"), " ")
+	repo := localAPKRepository(t, pkg, apkPackageVersion(t, pkg))
+	out := mustRun(t, "", "apk", "fix", "--reinstall", "--allow-untrusted", "--no-network", "--repository", repo, "mailcrier")
+	if !strings.Contains(out, "post-upgrade") {
+		t.Errorf("apk fix --reinstall ran no post-upgrade:\n%s", out)
+	}
+	return out
+}
+
+// localAPKRepository returns a repository that holds pkg of version under
+// the name apk expects. apk runs the upgrade scripts only for a package
+// from a repository.
+func localAPKRepository(t *testing.T, pkg, version string) string {
+	t.Helper()
 	repo := t.TempDir()
 	arch := filepath.Join(repo, "x86_64")
 	if err := os.Mkdir(arch, 0o755); err != nil {
@@ -300,15 +329,12 @@ func reinstall(t *testing.T, d distro) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(arch, name+".apk"), data, 0o644); err != nil {
+	file := filepath.Join(arch, "mailcrier-"+version+".apk")
+	if err := os.WriteFile(file, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	mustRun(t, "", "apk", "index", "-q", "--allow-untrusted", "-o", filepath.Join(arch, "APKINDEX.tar.gz"), filepath.Join(arch, name+".apk"))
-	out := mustRun(t, "", "apk", "fix", "--reinstall", "--allow-untrusted", "--no-network", "--repository", repo, "mailcrier")
-	if !strings.Contains(out, "post-upgrade") {
-		t.Errorf("apk fix --reinstall ran no post-upgrade:\n%s", out)
-	}
-	return out
+	mustRun(t, "", "apk", "index", "-q", "--allow-untrusted", "-o", filepath.Join(arch, "APKINDEX.tar.gz"), file)
+	return repo
 }
 
 // checkUpgraded checks what a package installed over another version or
@@ -358,9 +384,31 @@ func checkRemovalOutput(t *testing.T, out string) {
 }
 
 // makeDue moves the next attempt of every target of the entries in
-// queue/ into the past, which a queue run has no option for. It edits the
-// sidecar of spool format version 1 and stops on any other.
+// queue/ into the past, which a queue run has no option for.
 func makeDue(t *testing.T) {
+	t.Helper()
+	rewriteQueue(t, func(entry map[string]any) {
+		targets, _ := entry["targets"].(map[string]any)
+		for _, state := range targets {
+			if state, ok := state.(map[string]any); ok {
+				state["next_at"] = time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano)
+			}
+		}
+	})
+}
+
+// makeExpired moves the creation of the entries in queue/ back past the
+// default queue_ttl of 7 days, so the next queue run fails them.
+func makeExpired(t *testing.T) {
+	t.Helper()
+	rewriteQueue(t, func(entry map[string]any) {
+		entry["created_at"] = time.Now().Add(-8 * 24 * time.Hour).UTC().Format(time.RFC3339Nano)
+	})
+}
+
+// rewriteQueue applies change to the sidecar of every entry in queue/. It
+// knows spool format version 1 and stops on any other.
+func rewriteQueue(t *testing.T, change func(entry map[string]any)) {
 	t.Helper()
 	sidecars, err := filepath.Glob(filepath.Join(spoolDir, "queue", "*.json"))
 	if err != nil {
@@ -380,12 +428,7 @@ func makeDue(t *testing.T) {
 		if entry["version"] != json.Number("1") {
 			t.Fatalf("%s: spool format version %v, the test knows 1", sidecar, entry["version"])
 		}
-		targets, _ := entry["targets"].(map[string]any)
-		for _, state := range targets {
-			if state, ok := state.(map[string]any); ok {
-				state["next_at"] = time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano)
-			}
-		}
+		change(entry)
 		data, err = json.Marshal(entry)
 		if err != nil {
 			t.Fatal(err)

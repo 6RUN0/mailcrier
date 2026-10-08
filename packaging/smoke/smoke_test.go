@@ -38,8 +38,10 @@ const (
 	config    = "/etc/mailcrier.conf"
 	spoolDir  = "/var/spool/mailcrier"
 	spoolNote = "mailcrier: /var/spool/mailcrier is left in place, it holds messages"
-	// pkgsDir holds the packages of HEAD.
-	pkgsDir = "/pkgs"
+	// pkgsDir holds the packages of HEAD, previousDir those of the release
+	// SMOKE_PREVIOUS of the Makefile.
+	pkgsDir     = "/pkgs"
+	previousDir = "/previous"
 	// hookRecipient is the address the route of the exec target matches.
 	hookRecipient = "hook@example.org"
 )
@@ -69,7 +71,8 @@ const (
 type distro struct {
 	name   string
 	format string
-	// pattern matches the name of the amd64 package in pkgsDir.
+	// pattern matches the name of the amd64 package in pkgsDir or
+	// previousDir.
 	pattern string
 	install []string
 	remove  []string
