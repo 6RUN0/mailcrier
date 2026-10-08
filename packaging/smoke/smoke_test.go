@@ -38,6 +38,8 @@ const (
 	config    = "/etc/mailcrier.conf"
 	spoolDir  = "/var/spool/mailcrier"
 	spoolNote = "mailcrier: /var/spool/mailcrier is left in place, it holds messages"
+	// pkgsDir holds the packages of HEAD.
+	pkgsDir = "/pkgs"
 	// hookRecipient is the address the route of the exec target matches.
 	hookRecipient = "hook@example.org"
 )
@@ -67,7 +69,7 @@ const (
 type distro struct {
 	name   string
 	format string
-	// pattern matches the amd64 package in /pkgs.
+	// pattern matches the name of the amd64 package in pkgsDir.
 	pattern string
 	install []string
 	remove  []string
@@ -86,24 +88,24 @@ type distro struct {
 // /etc/os-release, so that a minor update of an image keeps its entry.
 var distros = map[string]distro{
 	"debian/13": {
-		format: "deb", pattern: "/pkgs/mailcrier_*_linux_amd64.deb",
+		format: "deb", pattern: "mailcrier_*_linux_amd64.deb",
 		install: []string{"dpkg", "-i"}, remove: []string{"dpkg", "-r", "mailcrier"},
 		cron: []string{"cron", "-f", "-L", "15"}, cronFile: "/etc/cron.d/mailcrier",
 	},
 	"rocky/9": {
-		format: "rpm", pattern: "/pkgs/mailcrier_*_linux_amd64.rpm",
+		format: "rpm", pattern: "mailcrier_*_linux_amd64.rpm",
 		install: []string{"rpm", "-i"}, remove: []string{"rpm", "-e", "mailcrier"},
 		cron: []string{"crond", "-n", "-x", "proc"}, cronFile: "/etc/cron.d/mailcrier",
 		mta: "/usr/sbin/sendmail.postfix", postfix: []string{"postfix"},
 	},
 	"rocky/10": {
-		format: "rpm", pattern: "/pkgs/mailcrier_*_linux_amd64.rpm",
+		format: "rpm", pattern: "mailcrier_*_linux_amd64.rpm",
 		install: []string{"rpm", "-i"}, remove: []string{"rpm", "-e", "mailcrier"},
 		cron: []string{"crond", "-n", "-x", "proc"}, cronFile: "/etc/cron.d/mailcrier",
 		mta: "/usr/sbin/sendmail.postfix", postfix: []string{"postfix", "postfix-lmdb"},
 	},
 	"alpine/3": {
-		format: "apk", pattern: "/pkgs/mailcrier_*_linux_amd64.apk",
+		format: "apk", pattern: "mailcrier_*_linux_amd64.apk",
 		install: []string{"apk", "add", "--allow-untrusted", "--no-network"}, remove: []string{"apk", "del", "--no-network", "mailcrier"},
 		cron: []string{"crond", "-f", "-d", "0"}, cronFile: "/etc/crontabs/mailcrier",
 		mta: "/bin/busybox",
@@ -132,12 +134,13 @@ func currentDistro(t *testing.T) distro {
 	return d
 }
 
-// packageFile returns the one package of the distribution in /pkgs.
-func (d distro) packageFile(t *testing.T) string {
+// packageFile returns the one package of the distribution in dir.
+func (d distro) packageFile(t *testing.T, dir string) string {
 	t.Helper()
-	matches, err := filepath.Glob(d.pattern)
+	pattern := filepath.Join(dir, d.pattern)
+	matches, err := filepath.Glob(pattern)
 	if err != nil || len(matches) != 1 {
-		t.Fatalf("%s = %v, %v, want one package", d.pattern, matches, err)
+		t.Fatalf("%s = %v, %v, want one package", pattern, matches, err)
 	}
 	return matches[0]
 }
@@ -227,7 +230,7 @@ func serviceGID(t *testing.T) int {
 // output and the binary.
 func install(t *testing.T, d distro) {
 	t.Helper()
-	out := mustRun(t, "", append(slices.Clone(d.install), d.packageFile(t))...)
+	out := mustRun(t, "", append(slices.Clone(d.install), d.packageFile(t, pkgsDir))...)
 	t.Logf("install:\n%s", out)
 	checkInstallerOutput(t, out)
 	checkMode(t, binary, 0, serviceGID(t), 0o755|os.ModeSetgid)

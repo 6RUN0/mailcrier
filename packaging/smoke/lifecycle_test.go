@@ -74,16 +74,7 @@ func TestSmokeLifecycle(t *testing.T) {
 		out := reinstall(t, d)
 		t.Logf("reinstall:\n%s", out)
 		checkInstallerOutput(t, out)
-		checkMode(t, binary, 0, serviceGID(t), 0o755|os.ModeSetgid)
-		after, err := os.Stat(config)
-		if content, _ := os.ReadFile(config); err != nil || string(content) != heldConfig || after.Mode() != before.Mode() || !after.ModTime().Equal(before.ModTime()) {
-			t.Errorf("configuration changed by the reinstall: %q %v %v, %v", content, after.Mode(), after.ModTime(), err)
-		}
-		if d.format == "deb" {
-			if overrides := mustRun(t, "", "dpkg-statoverride", "--list", binary); overrides != "root mailcrier 2755 "+binary+"\n" {
-				t.Errorf("dpkg-statoverride --list %s =\n%s\nwant one entry root mailcrier 2755", binary, overrides)
-			}
-		}
+		checkUpgraded(t, d, heldConfig, before)
 		if len(spoolMessages(t, "queue")) != 1 || len(spoolMessages(t, "hold")) != 1 {
 			t.Fatalf("the reinstall changed the spool\n%s", report())
 		}
@@ -218,7 +209,7 @@ func TestSmokeLifecycle(t *testing.T) {
 
 	if !t.Run("T-PKG-07/remove-empty-spool", func(t *testing.T) {
 		alicePresent := recv.expect("smoke-empty-alice-4a19")
-		out := mustRun(t, "", append(slices.Clone(d.install), d.packageFile(t))...)
+		out := mustRun(t, "", append(slices.Clone(d.install), d.packageFile(t, pkgsDir))...)
 		t.Logf("install:\n%s", out)
 		writeConfig(t, working)
 		queueRun(t)
@@ -268,7 +259,7 @@ func TestSmokeLifecycle(t *testing.T) {
 				t.Fatalf("/opt/ssmtp = %v, %v", ssmtp, err)
 			}
 			mustRun(t, "", append([]string{"apk", "add", "--allow-untrusted", "--no-network"}, ssmtp...)...)
-			r := run(t, nil, "", append(slices.Clone(d.install), d.packageFile(t))...)
+			r := run(t, nil, "", append(slices.Clone(d.install), d.packageFile(t, pkgsDir))...)
 			t.Logf("apk add with ssmtp exited %d:\n%s", r.code, r.out)
 			if r.code == 0 {
 				t.Error("apk add with ssmtp installed exited 0")
@@ -292,7 +283,7 @@ func TestSmokeLifecycle(t *testing.T) {
 // file goes into a local one under the name apk expects.
 func reinstall(t *testing.T, d distro) string {
 	t.Helper()
-	pkg := d.packageFile(t)
+	pkg := d.packageFile(t, pkgsDir)
 	switch d.format {
 	case "deb":
 		return mustRun(t, "", "dpkg", "-i", pkg)
@@ -318,6 +309,41 @@ func reinstall(t *testing.T, d distro) string {
 		t.Errorf("apk fix --reinstall ran no post-upgrade:\n%s", out)
 	}
 	return out
+}
+
+// checkUpgraded checks what a package installed over another version or
+// over itself keeps: the setgid binary, the configuration wantConfig with
+// the mode and mtime of before and no copy of a new one beside it from
+// dpkg or rpm, one statoverride entry on Debian, the user, the group and
+// the directories of the package with their modes.
+func checkUpgraded(t *testing.T, d distro, wantConfig string, before os.FileInfo) {
+	t.Helper()
+	gid := serviceGID(t)
+	checkMode(t, binary, 0, gid, 0o755|os.ModeSetgid)
+	after, err := os.Stat(config)
+	if content, _ := os.ReadFile(config); err != nil || string(content) != wantConfig || after.Mode() != before.Mode() || !after.ModTime().Equal(before.ModTime()) {
+		t.Errorf("configuration changed by the install: %q %v %v, %v", content, after.Mode(), after.ModTime(), err)
+	}
+	// apk writes .apk-new beside any edited configuration, whether the
+	// package changed it or not; dpkg and rpm only for a changed one.
+	for _, suffix := range []string{".dpkg-dist", ".dpkg-new", ".rpmnew"} {
+		if _, err := os.Lstat(config + suffix); err == nil {
+			t.Errorf("%s%s exists after the install", config, suffix)
+		}
+	}
+	if d.format == "deb" {
+		if overrides := mustRun(t, "", "dpkg-statoverride", "--list", binary); overrides != "root mailcrier 2755 "+binary+"\n" {
+			t.Errorf("dpkg-statoverride --list %s =\n%s\nwant one entry root mailcrier 2755", binary, overrides)
+		}
+	}
+	if r := run(t, nil, "", "getent", "passwd", "mailcrier"); r.code != 0 {
+		t.Errorf("user mailcrier is gone after the install")
+	}
+	checkMode(t, "/etc/mailcrier.d", 0, gid, os.ModeDir|0o750)
+	checkMode(t, spoolDir, 0, gid, os.ModeDir|0o750)
+	for _, area := range spoolAreas {
+		checkMode(t, filepath.Join(spoolDir, area), 0, gid, os.ModeDir|os.ModeSetgid|0o770)
+	}
 }
 
 // checkRemovalOutput fails when a removal of an empty spool reports
