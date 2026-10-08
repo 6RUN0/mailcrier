@@ -27,18 +27,20 @@ import (
 const webhookURL = "https://discord.com/api/webhooks/123/T0KEN-abcdefghijklmnop"
 
 // decodeRequest returns the JSON message of req and the names and
-// contents of its files, from either body form.
+// contents of its files, from either body form. It reports a malformed body
+// with t.Error, because FailNow is not allowed in a server handler.
 func decodeRequest(t *testing.T, req *http.Request) (map[string]any, map[string]string) {
 	t.Helper()
-	mediaType, params, err := mime.ParseMediaType(req.Header.Get("Content-Type"))
-	if err != nil {
-		t.Fatal(err)
-	}
 	var msg map[string]any
 	files := map[string]string{}
+	mediaType, params, err := mime.ParseMediaType(req.Header.Get("Content-Type"))
+	if err != nil {
+		t.Error(err)
+		return msg, files
+	}
 	if mediaType == "application/json" {
 		if err := json.NewDecoder(req.Body).Decode(&msg); err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 		return msg, files
 	}
@@ -49,12 +51,14 @@ func decodeRequest(t *testing.T, req *http.Request) (map[string]any, map[string]
 			return msg, files
 		}
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
+			return msg, files
 		}
 		data, _ := io.ReadAll(part)
 		if part.FormName() == "payload_json" {
 			if err := json.Unmarshal(data, &msg); err != nil {
-				t.Fatal(err)
+				t.Error(err)
+				return msg, files
 			}
 			continue
 		}
@@ -224,7 +228,7 @@ func TestDeliverDiscordLongText(t *testing.T) {
 // ride along in the same request, and its failure fails the target whole.
 func TestDeliverDiscordOneRequest(t *testing.T) {
 	t.Run("T-ADJ-59/empty-body-sends-marker", discordRequestCase{status: http.StatusOK, files: 0, wantStatus: delivery.OK}.check)
-	t.Run("T-ADJ-59/files-in-one-request", discordRequestCase{status: http.StatusOK, files: 3, wantStatus: delivery.OK}.check)
+	t.Run("T-ADJ-59/files-in-one-request", discordRequestCase{status: http.StatusOK, files: maxFiles, wantStatus: delivery.OK}.check)
 	t.Run("T-ADJ-59/failed-request-reported", discordRequestCase{status: http.StatusInternalServerError, files: 3, wantStatus: delivery.Temp}.check)
 }
 

@@ -81,7 +81,7 @@ T-MTA-18	critical	done	No -t and no argv recipient: delivered by catch-all routi
 T-MTA-19	critical	done	-t with no recipient headers follows the same no-recipient policy	https://github.com/corecode/dma/blob/f4e1d913e6f3/dma.c#L653-L654
 T-MTA-20	high	done	A missing Date header is replaced by the receive time in the message model; an existing one is kept	https://github.com/corecode/dma/blob/f4e1d913e6f3/mail.c#L445-L448
 T-MTA-21	low	todo	A missing Message-ID is generated; an existing one is kept	https://github.com/corecode/dma/blob/f4e1d913e6f3/mail.c#L449-L456
-T-MTA-22	high	done	A missing From is filled in the template data and MAILCRIER_FROM from -f/-r and -F, otherwise from the process user and host name; the message itself gets no From header	https://github.com/marlam/msmtp/blob/755df9f0d3ac/tests/test-header-handling.sh#L57-L67
+T-MTA-22	high	done	A missing From is filled in the template data from -f/-r and -F and in MAILCRIER_FROM from the address alone, otherwise from EMAIL when not elevated or the login name at the host name; the message itself gets no From header	https://github.com/marlam/msmtp/blob/755df9f0d3ac/tests/test-header-handling.sh#L57-L67
 T-MTA-23	high	done	An existing From header is not replaced by -f, which sets only the envelope sender	https://github.com/bruceg/nullmailer/blob/79a8a45c4bd2/test/tests/inject/from#L14-L18
 T-MTA-24	critical	done	-f addr, -faddr and -r addr are equivalent; -f '' and -f '<>' give an empty sender	https://github.com/vdukhovni/postfix/blob/8e965decf941/postfix/src/sendmail/sendmail.c#L1386-L1388
 T-MTA-25	critical	done	Glued and separate option values are equivalent: -FCronDaemon, -oem, -odi, -oi, -B8BITMIME, -N never	https://github.com/vdukhovni/postfix/blob/8e965decf941/postfix/src/sendmail/sendmail.c#L1172
@@ -127,7 +127,7 @@ T-CALL-20	high	done	X-Cron-Env headers stay out of the default text but are avai
 T-CALL-21	critical	done	An empty body is delivered with an empty-body marker	https://salsa.debian.org/debian/at/-/blob/282d01d/atd.c#L570
 T-CALL-22	high	done	A message of headers only without a separator line is not lost	https://github.com/openzfs/zfs/blob/1f380a4/cmd/zed/zed.d/zed-functions.sh#L283-L291
 T-CALL-23	low	todo	Completely empty stdin without subject does not produce an empty notification; the chosen exit code is pinned	https://github.com/smartmontools/smartmontools/blob/9f83095/smartmontools/smartd_warning.sh.in#L235
-T-CALL-24	low	todo	Called as mail or mailx, -s sets the subject and the body has no headers	https://github.com/smartmontools/smartmontools/blob/9f83095/smartmontools/smartd_warning.sh.in#L221
+T-CALL-24	low	todo	mail -s of the mailx of the distribution reaches mailcrier through /usr/sbin/sendmail with the subject set; mailcrier has no mail mode of its own	https://github.com/smartmontools/smartmontools/blob/9f83095/smartmontools/smartd_warning.sh.in#L221
 T-CALL-25	low	todo	A subject with trailing whitespace is trimmed for display	https://0xacab.org/liberate/backupninja/-/blob/b4ec0299/src/backupninja.in#L668-688
 T-CALL-26	high	done	A large body such as a 2 MB log goes out as a file above the target threshold	https://github.com/logrotate/logrotate/blob/1aba376/logrotate.c#L1060-L1150
 T-CALL-27	high	done	A body with invalid UTF-8 and control characters does not break JSON or markup of any target	https://github.com/fail2ban/fail2ban/blob/7212404/config/action.d/sendmail-whois-lines.conf#L24-L37
