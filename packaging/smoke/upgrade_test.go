@@ -161,8 +161,8 @@ func TestSmokeUpgrade(t *testing.T) {
 // previousPackage returns the package of the previous release in
 // previousDir. It skips the test when the package manager cannot order its
 // version before the one of HEAD and unorderablePrevious lists it, and
-// fails when the list is wrong either way or names another version. rpm orders both by itself and
-// refuses a downgrade without --oldpackage.
+// fails when the list is wrong either way or names another version. rpm
+// orders both by itself and refuses a downgrade without --oldpackage.
 func previousPackage(t *testing.T, d distro) string {
 	t.Helper()
 	previous := d.packageFile(t, previousDir)
