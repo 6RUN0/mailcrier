@@ -348,6 +348,10 @@ var bodyKeys = []string{"preset", "template", "template_file", "max_text", "max_
 // writes a request from Request.Header; set there they would have no effect.
 var droppedHeaders = []string{"Host", "Content-Length", "Transfer-Encoding", "Trailer"}
 
+// hopHeaders are the hop-by-hop header names the HTTP/2 transport of net/http
+// drops, or refuses the request for, so they would act only over HTTP/1.1.
+var hopHeaders = []string{"Connection", "Keep-Alive", "Proxy-Connection", "Upgrade"}
+
 var (
 	presets        = []string{PresetMattermost, PresetSlackWebhook, PresetGenericJSON}
 	onLongPolicies = []string{OnLongFile, OnLongTruncate, OnLongBlockquote}
@@ -772,6 +776,8 @@ func validateTarget(name string, target Target, keys keyIndex) *Error {
 			msg = fmt.Sprintf("value of header %q is invalid", header)
 		case slices.Contains(droppedHeaders, http.CanonicalHeaderKey(header)):
 			msg = fmt.Sprintf("header %q is set by the HTTP client, not by the configuration", header)
+		case slices.Contains(hopHeaders, http.CanonicalHeaderKey(header)):
+			msg = fmt.Sprintf("header %q is hop-by-hop, which HTTP/2 does not carry", header)
 		default:
 			continue
 		}

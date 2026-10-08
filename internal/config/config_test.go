@@ -158,6 +158,36 @@ func TestLoadRejects(t *testing.T) {
 			want: `:7:1: target "hook": header "Content-Length" is set by the HTTP client, not by the configuration`,
 		},
 		{
+			name: "http-header-transfer-encoding",
+			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\n\n[target.hook.headers]\ntransfer-encoding = \"chunked\"\n",
+			want: `:7:1: target "hook": header "transfer-encoding" is set by the HTTP client, not by the configuration`,
+		},
+		{
+			name: "http-header-trailer",
+			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\n\n[target.hook.headers]\nTrailer = \"X-Late\"\n",
+			want: `:7:1: target "hook": header "Trailer" is set by the HTTP client, not by the configuration`,
+		},
+		{
+			name: "http-header-upgrade",
+			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\n\n[target.hook.headers]\nupgrade = \"h2c\"\n",
+			want: `:7:1: target "hook": header "upgrade" is hop-by-hop, which HTTP/2 does not carry`,
+		},
+		{
+			name: "http-header-keep-alive",
+			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\n\n[target.hook.headers]\nKeep-Alive = \"timeout=5\"\n",
+			want: `:7:1: target "hook": header "Keep-Alive" is hop-by-hop, which HTTP/2 does not carry`,
+		},
+		{
+			name: "http-header-connection",
+			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\n\n[target.hook.headers]\nConnection = \"Upgrade\"\n",
+			want: `:7:1: target "hook": header "Connection" is hop-by-hop, which HTTP/2 does not carry`,
+		},
+		{
+			name: "http-header-proxy-connection",
+			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\n\n[target.hook.headers]\nProxy-Connection = \"keep-alive\"\n",
+			want: `:7:1: target "hook": header "Proxy-Connection" is hop-by-hop, which HTTP/2 does not carry`,
+		},
+		{
 			name: "http-header-value-nul",
 			doc:  "[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\n\n[target.hook.headers]\nX-Token = \"SECRET\\u0000\"\n",
 			want: `:7:1: target "hook": value of header "X-Token" is invalid`,

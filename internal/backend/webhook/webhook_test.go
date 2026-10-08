@@ -259,6 +259,40 @@ func TestSendDropsClientHeaders(t *testing.T) {
 	}
 }
 
+// TestSendHTTP2DropsHopHeaders pins the net/http behaviour behind hopHeaders
+// of internal/config: over HTTP/2 the transport drops Keep-Alive and
+// Proxy-Connection and refuses the request for an Upgrade it cannot send.
+func TestSendHTTP2DropsHopHeaders(t *testing.T) {
+	var got *http.Request
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r
+		w.WriteHeader(http.StatusOK)
+	}))
+	server.EnableHTTP2 = true
+	server.StartTLS()
+	defer server.Close()
+
+	dropped := map[string]string{"Keep-Alive": "timeout=5", "Proxy-Connection": "keep-alive"}
+	sender := New(Options{URL: server.URL, Client: server.Client()})
+	payload := backend.Payload{Text: `{}`, Request: &backend.Request{Headers: dropped}}
+	if err := sender.Send(context.Background(), payload); err != nil {
+		t.Fatalf("Send() error = %v", err)
+	}
+	if got.ProtoMajor != 2 {
+		t.Fatalf("protocol = %s, want HTTP/2", got.Proto)
+	}
+	for name := range dropped {
+		if value := got.Header.Get(name); value != "" {
+			t.Errorf("%s = %q, want it dropped", name, value)
+		}
+	}
+
+	refused := backend.Payload{Text: `{}`, Request: &backend.Request{Headers: map[string]string{"Upgrade": "h2c"}}}
+	if err := sender.Send(context.Background(), refused); err == nil {
+		t.Error("Send() with Upgrade succeeded, want the transport to refuse it")
+	}
+}
+
 func TestSendClassifiesTransportErrorWithoutURL(t *testing.T) {
 	server := httptest.NewServer(http.NotFoundHandler())
 	endpoint := server.URL + "/hook/SECRET"
