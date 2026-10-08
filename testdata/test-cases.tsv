@@ -131,7 +131,7 @@ T-CALL-24	low	todo	Called as mail or mailx, -s sets the subject and the body has
 T-CALL-25	low	todo	A subject with trailing whitespace is trimmed for display	https://0xacab.org/liberate/backupninja/-/blob/b4ec0299/src/backupninja.in#L668-688
 T-CALL-26	high	done	A large body such as a 2 MB log goes out as a file above the target threshold	https://github.com/logrotate/logrotate/blob/1aba376/logrotate.c#L1060-L1150
 T-CALL-27	high	done	A body with invalid UTF-8 and control characters does not break JSON or markup of any target	https://github.com/fail2ban/fail2ban/blob/7212404/config/action.d/sendmail-whois-lines.conf#L24-L37
-T-CALL-28	high	done	Closed stdout and stderr do not crash the process and logging goes to syslog	https://salsa.debian.org/debian/at/-/blob/282d01d/atd.c#L549-L557
+T-CALL-28	high	done	Closed stdout and stderr do not crash the process: the Go runtime reopens them on /dev/null before main	https://salsa.debian.org/debian/at/-/blob/282d01d/atd.c#L549-L557
 T-CALL-29	high	done	argv[0] only matters for the mailq and newaliases modes; any other name, mail included, delivers as sendmail	https://github.com/sudo-project/sudo/blob/2802bb3/lib/eventlog/eventlog.c#L371
 T-CALL-30	critical	done	From "(Cron Daemon)" <root> and From root (Cron Daemon) parse into a name and a domain-less address	https://github.com/cronie-crond/cronie/blob/59a3d15/src/do_command.c#L492
 T-CALL-31	high	done	A glued -fX from a shell pipeline and separate arguments from execvp give the same model	https://github.com/cronie-crond/cronie/blob/59a3d15/src/popen.c#L99-L140
