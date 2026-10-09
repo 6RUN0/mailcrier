@@ -1726,6 +1726,27 @@ func TestListHoldOfDefaultSpool(t *testing.T) {
 			t.Errorf("-q = %d, want 0 and one warning; output:\n%s", code, inv.output())
 		}
 	})
+	t.Run("default-hold-broken-queue-run-exits-74", func(t *testing.T) {
+		// For root a default hold/ it cannot list is a broken spool, where
+		// held messages would wait unseen.
+		c := newSpoolCase(t)
+		own := t.TempDir()
+		if _, err := spool.Open(c.dir); err != nil {
+			t.Fatal(err)
+		}
+		hold := filepath.Join(c.dir, spool.HoldDir)
+		if err := os.Remove(hold); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(hold, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		c.config = "[spool]\ndir = \"" + own + "\"\n\n" + twoTargets
+		code, inv := c.queueRun(rootCaller)
+		if code != 74 || !strings.Contains(inv.output(), `level=WARN msg="default spool not listed" err=`) {
+			t.Errorf("-q = %d, want 74 and a warning; output:\n%s", code, inv.output())
+		}
+	})
 	t.Run("rejected-targets-list-own-dir", func(t *testing.T) {
 		c := newSpoolCase(t)
 		own := t.TempDir()

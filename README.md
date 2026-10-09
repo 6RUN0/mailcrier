@@ -1017,10 +1017,12 @@ preset = "generic-json"
   `hold/` of the default directory keeps when the file names another
   `dir`, which `-q` moves into that queue; `bytes` and `tmp` stay those
   of the `dir`, and a default directory the caller cannot read gives the
-  warning `default spool not listed` and the rest of the output; `-q`
-  then leaves that directory alone, with the same warning and exit
-  status 0, as a user without the setgid bit beside the spool of the
-  packages cannot have held anything there. Under a
+  warning `default spool not listed` and the rest of the output. `-q` of
+  a user other than root and `mailcrier` without the permission to list
+  it leaves that directory alone, with the same warning and exit status
+  0, as a user without the setgid bit beside the spool of the packages
+  cannot have held anything there; any other failure to list it, or one
+  of root or `mailcrier`, exits 74. Under a
   rejected configuration they show the `dir` of the file when it parses
   and only its targets are rejected, since a call holds its message
   there, the default directory otherwise, and log `spool listed under a

@@ -600,7 +600,7 @@ func (q *queue) markNoRoute(log *slog.Logger, e *spool.Entry) bool {
 // spools may be on different file systems, so the entry is written here
 // first and removed there after: a crash in between repeats the delivery
 // rather than losing it. It returns the other spool, nil when it cannot
-// be opened or its hold/ listed.
+// be opened, or its hold/ listed by a caller without the right to.
 func (q *queue) releaseOtherHold(owner int) *spool.Spool {
 	other, err := spool.OpenExisting(q.otherHold)
 	if err != nil {
@@ -611,12 +611,17 @@ func (q *queue) releaseOtherHold(owner int) *spool.Spool {
 	}
 	ids, err := other.List(spool.HoldDir)
 	if err != nil {
-		// A caller that cannot list it, a user without the setgid bit
-		// beside the spool of the packages, cannot have held anything
-		// there either, and its other areas are not the caller's to
-		// clean: nil keeps clean off them, and -q off exit status 74.
 		q.log.Warn("default spool not listed", "err", err)
-		return nil
+		// A user other than root and the service that may not list it, a
+		// user without the setgid bit beside the spool of the packages,
+		// cannot have held anything there either, and its other areas are
+		// not that user's to clean: nil keeps clean off them, and -q off
+		// exit status 74. Any other failure is one of the spool.
+		if c := q.d.Credentials; errors.Is(err, fs.ErrPermission) && c.UID != 0 && c.UID != c.ServiceUID {
+			return nil
+		}
+		q.hasIOError = true
+		return other
 	}
 	for _, id := range ids {
 		if owner >= 0 {
