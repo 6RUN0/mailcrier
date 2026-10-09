@@ -363,9 +363,11 @@ func queueState(err error) delivery.Queue {
 type runLimits struct {
 	// owner restricts the run to the entries of one uid; -1 takes all.
 	owner int
-	// budget bounds the run; maxMessages bounds the entries it delivers,
-	// 0 for no bound.
+	// budget bounds the run, budgetKey names its key for the error of a
+	// target that runs out of it; maxMessages bounds the entries it
+	// delivers, 0 for no bound.
 	budget      time.Duration
+	budgetKey   string
 	maxMessages int
 }
 
@@ -374,7 +376,7 @@ type runLimits struct {
 // process are skipped: that process delivers them. A panic on one entry
 // fails that entry alone, see recoverEntry.
 func (q *queue) run(ctx context.Context, limits runLimits) error {
-	ctx, cancel := context.WithTimeout(ctx, limits.budget)
+	ctx, cancel := context.WithTimeoutCause(ctx, limits.budget, &backend.LimitError{Key: limits.budgetKey, Value: limits.budget})
 	defer cancel()
 	start := q.d.Now()
 	delivered := 0
@@ -710,7 +712,7 @@ func (q *queue) deliverEntry(ctx context.Context, rec *spool.Record) bool {
 	}
 	data := render.NewData(msg, e.Envelope, bcc)
 	data.Hostname, data.ReceivedAt, data.Strings = q.d.Hostname, e.ReceivedAt, q.notices
-	ctx, cancel := context.WithTimeout(hook.WithLog(ctx, log), q.deadline)
+	ctx, cancel := withDeadline(hook.WithLog(ctx, log), q.deadline)
 	defer cancel()
 	results, donePanic := q.send(ctx, due, e.Envelope, data, msg.Attachments, msg.Raw, rec)
 	for _, r := range results {
@@ -866,7 +868,7 @@ func (q *queue) runQueue(ctx context.Context) int {
 	if q.sp == nil {
 		return exitOK
 	}
-	limits := runLimits{owner: -1, budget: q.settings.RunBudget.Duration}
+	limits := runLimits{owner: -1, budget: q.settings.RunBudget.Duration, budgetKey: "run_budget"}
 	if !q.d.Credentials.isPrivilegedCaller() {
 		limits.owner = q.d.Credentials.UID
 		lock, err := q.sp.LockRun(q.d.Credentials.UID)
@@ -927,7 +929,7 @@ func (q *queue) drainOwn(ctx context.Context) {
 		return
 	}
 	defer func() { _ = lock.Close() }()
-	limits := runLimits{owner: q.d.Credentials.UID, budget: q.settings.DrainBudget.Duration, maxMessages: q.settings.DrainMaxMessages}
+	limits := runLimits{owner: q.d.Credentials.UID, budget: q.settings.DrainBudget.Duration, budgetKey: "drain_budget", maxMessages: q.settings.DrainMaxMessages}
 	if err := q.run(ctx, limits); err != nil {
 		q.log.Error("queue not listed", "err", err)
 	}

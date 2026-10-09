@@ -240,6 +240,9 @@ type response struct {
 func parseResponse(resp *http.Response) error {
 	var answer response
 	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(&answer); err != nil {
+		if readErr := backend.BodyError(resp, err); readErr != nil {
+			return readErr
+		}
 		class := backend.Classify(resp.StatusCode, resp.Header, nil)
 		if backend.IsSuccess(resp.StatusCode) {
 			class = backend.Temporary

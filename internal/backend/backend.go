@@ -176,3 +176,23 @@ type PanicError struct {
 func (e *PanicError) Error() string {
 	return fmt.Sprintf("panic: %v", e.Value)
 }
+
+// LimitError is the cause of a context that a configured bound ended,
+// set with context.WithTimeoutCause: its text names the key and the value,
+// "deadline 30s exceeded", which context.DeadlineExceeded does not. It is
+// context.DeadlineExceeded for errors.Is.
+type LimitError struct {
+	// Key is the configuration key of the bound, Value its value.
+	Key   string
+	Value time.Duration
+}
+
+// Error returns the key and the value of the bound.
+func (e *LimitError) Error() string {
+	return fmt.Sprintf("%s %s exceeded", e.Key, e.Value)
+}
+
+// Is reports whether target is context.DeadlineExceeded.
+func (e *LimitError) Is(target error) bool {
+	return target == context.DeadlineExceeded
+}

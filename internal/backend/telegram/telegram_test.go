@@ -117,26 +117,49 @@ func TestParseResponse(t *testing.T) {
 }
 
 // TestSendTransportErrors pins distinct error texts for a timeout and a
-// refused connection, both temporary and without the token.
+// refused connection, both temporary and without the token. A timeout
+// names the key and the value of the bound that ran out, also while the
+// answer of a 4xx is read, which then is temporary: the answer is unknown.
 func TestSendTransportErrors(t *testing.T) {
 	release := make(chan struct{})
 	hanging := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { <-release }))
 	defer hanging.Close()
+	cutAnswer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"ok": false, "descr`))
+		w.(http.Flusher).Flush()
+		<-release
+	}))
+	defer cutAnswer.Close()
 	defer close(release)
 	closed := httptest.NewServer(http.NotFoundHandler())
 	closed.Close()
+	// The deadline of the delivery runs out first only without the
+	// timeout of the client.
+	deadline := func(timeout time.Duration) (context.Context, context.CancelFunc) {
+		limit := 100 * time.Millisecond
+		if timeout > 0 {
+			limit = time.Minute
+		}
+		return context.WithTimeoutCause(context.Background(), limit, &backend.LimitError{Key: "deadline", Value: limit})
+	}
 	cases := []struct {
 		name     string
 		url      string
+		timeout  time.Duration
 		wantText string
 	}{
-		{"T-ADJ-45/timeout", hanging.URL, "Client.Timeout exceeded"},
-		{"T-ADJ-45/connection-refused", closed.URL, "connection refused"},
+		{"T-ADJ-45/timeout", hanging.URL, 100 * time.Millisecond, "temporary failure: Post: http_timeout 100ms exceeded"},
+		{"T-ADJ-45/deadline", hanging.URL, 0, "temporary failure: Post: deadline 100ms exceeded"},
+		{"T-ADJ-45/answer-cut-by-timeout", cutAnswer.URL, 100 * time.Millisecond, "temporary failure, status 400: answer not read: http_timeout 100ms exceeded"},
+		{"T-ADJ-45/connection-refused", closed.URL, 100 * time.Millisecond, "connection refused"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			sender := New(Options{Token: testToken, ChatID: "1", APIURL: tc.url, Client: &http.Client{Timeout: 100 * time.Millisecond}})
-			err := sender.Send(context.Background(), backend.Payload{Text: "x"})
+			sender := New(Options{Token: testToken, ChatID: "1", APIURL: tc.url, Client: &http.Client{Timeout: tc.timeout}})
+			ctx, cancel := deadline(tc.timeout)
+			defer cancel()
+			err := sender.Send(ctx, backend.Payload{Text: "x"})
 			var deliveryErr *backend.Error
 			if !errors.As(err, &deliveryErr) || deliveryErr.Class != backend.Temporary || !strings.Contains(err.Error(), tc.wantText) {
 				t.Errorf("Send() error = %v, want temporary with %q", err, tc.wantText)

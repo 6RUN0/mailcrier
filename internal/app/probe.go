@@ -52,7 +52,7 @@ func runProbe(ctx context.Context, d Deps, log *slog.Logger, newLogger func(tag 
 		log.Error("sample message not rendered", "err", err)
 		return exitSoftware
 	}
-	sendCtx, cancel := context.WithTimeout(ctx, cfg.General.Deadline.Duration)
+	sendCtx, cancel := withDeadline(ctx, cfg.General.Deadline.Duration)
 	defer cancel()
 	var results []delivery.Result
 	if d.deliver == nil {

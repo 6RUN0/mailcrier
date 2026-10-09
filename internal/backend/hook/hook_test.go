@@ -195,21 +195,32 @@ func TestSendExitStatusWinsOverTimeout(t *testing.T) {
 	}
 }
 
+// TestSendNotStarted pins that a hook that does not start fails for good,
+// and that a script whose interpreter is missing says so rather than
+// that the script is missing, as the kernel reports it.
 func TestSendNotStarted(t *testing.T) {
 	dir := t.TempDir()
 	notExecutable := filepath.Join(dir, "plain")
 	if err := os.WriteFile(notExecutable, []byte("#!/bin/sh\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	for name, argv := range map[string][]string{
-		"missing":        {filepath.Join(dir, "missing")},
-		"not-executable": {notExecutable},
-		"argument-nul":   {"/bin/sh", "a\x00b"},
+	badInterpreter := filepath.Join(dir, "badinterp")
+	if err := os.WriteFile(badInterpreter, []byte("#!/nonexistent/interp -x\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for name, tc := range map[string]struct {
+		argv []string
+		want string
+	}{
+		"missing":             {[]string{filepath.Join(dir, "missing")}, "permanent failure: hook not started: fork/exec " + filepath.Join(dir, "missing") + ": no such file or directory"},
+		"not-executable":      {[]string{notExecutable}, "permanent failure: hook not started: fork/exec " + notExecutable + ": permission denied"},
+		"argument-nul":        {[]string{"/bin/sh", "a\x00b"}, "permanent failure: hook not started: "},
+		"missing-interpreter": {[]string{badInterpreter}, "permanent failure: hook not started: interpreter /nonexistent/interp of " + badInterpreter + " not found"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			err := New(Options{Name: "run", Argv: argv}).Send(context.Background(), backend.Payload{Message: testMessage()})
-			if got := classOf(t, err); got != backend.Permanent {
-				t.Errorf("class = %v, want permanent (%v)", got, err)
+			err := New(Options{Name: "run", Argv: tc.argv}).Send(context.Background(), backend.Payload{Message: testMessage()})
+			if got := classOf(t, err); got != backend.Permanent || !strings.HasPrefix(err.Error(), tc.want) {
+				t.Errorf("error = %v (%v), want permanent %q", err, got, tc.want)
 			}
 		})
 	}
@@ -217,21 +228,22 @@ func TestSendNotStarted(t *testing.T) {
 
 // TestSendTimeout pins that a hook past the timeout of the target, or past
 // the deadline of the context when that comes first, is a temporary
-// failure.
+// failure that names the bound with its value.
 func TestSendTimeout(t *testing.T) {
 	path, _ := writeHook(t, "exec sleep 1000\n")
 	for name, tc := range map[string]struct {
 		timeout, deadline time.Duration
+		want              string
 	}{
-		"target-timeout":   {timeout: 50 * time.Millisecond, deadline: time.Hour},
-		"context-deadline": {timeout: time.Hour, deadline: 50 * time.Millisecond},
+		"target-timeout":   {timeout: 50 * time.Millisecond, deadline: time.Hour, want: "temporary failure: hook killed: timeout 50ms exceeded"},
+		"context-deadline": {timeout: time.Hour, deadline: 50 * time.Millisecond, want: "temporary failure: hook killed: deadline 50ms exceeded"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), tc.deadline)
+			ctx, cancel := context.WithTimeoutCause(context.Background(), tc.deadline, &backend.LimitError{Key: "deadline", Value: tc.deadline})
 			defer cancel()
 			err := New(Options{Name: "run", Argv: []string{path}, Timeout: tc.timeout}).Send(ctx, backend.Payload{Message: testMessage()})
-			if got := classOf(t, err); got != backend.Temporary {
-				t.Errorf("class = %v, want temporary (%v)", got, err)
+			if got := classOf(t, err); got != backend.Temporary || err.Error() != tc.want {
+				t.Errorf("error = %v (%v), want temporary %q", err, got, tc.want)
 			}
 		})
 	}

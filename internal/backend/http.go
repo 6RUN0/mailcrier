@@ -1,14 +1,17 @@
 package backend
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/textproto"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // WithoutRedirects returns a copy of client that does not follow
@@ -30,6 +33,66 @@ func TransportError(err error) *Error {
 	return &Error{Class: Classify(0, nil, err), Err: WithoutURL(err)}
 }
 
+// RequestError is TransportError for the call of client that sent req,
+// with the configured bound that ended it in place of the cause, such as
+// "Post: deadline 30s exceeded": the operator learns what to raise.
+func RequestError(client *http.Client, req *http.Request, err error) *Error {
+	e := TransportError(err)
+	if limit := limitOf(req.Context(), client.Timeout, err); limit != nil {
+		op := "request"
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			op = urlErr.Op
+		}
+		e.Err = fmt.Errorf("%s: %w", op, limit)
+	}
+	return e
+}
+
+// limitOf returns the bound that ended a request with err, nil when none
+// did: the cause of ctx, such as a *LimitError or a signal, when ctx ended
+// with one, else http_timeout when the timeout of the client did. net/http
+// tells its timeout only by the text "Client.Timeout", while reading the
+// body as "Client.Timeout or context cancellation": every context of a
+// delivery ends with a cause, so the latter is the timeout too. A dial
+// timeout of the transport has another text.
+func limitOf(ctx context.Context, timeout time.Duration, err error) error {
+	if ctx.Err() != nil {
+		if cause := context.Cause(ctx); cause != ctx.Err() {
+			return cause
+		}
+	}
+	if timeout > 0 && strings.Contains(err.Error(), "Client.Timeout") {
+		return &LimitError{Key: "http_timeout", Value: timeout}
+	}
+	return nil
+}
+
+// clientTimeoutKey is the context key of the timeout of the client, which
+// Do sets on the request for BodyError.
+type clientTimeoutKey struct{}
+
+// BodyError returns the error of reading the body of resp as a temporary
+// *Error when the reading failed, not the content: the context of the
+// request ended or the connection failed; the cause names the bound as in
+// RequestError. It returns nil for any other error, such as JSON that does
+// not parse, which the caller describes without quoting the body.
+func BodyError(resp *http.Response, err error) *Error {
+	var netErr net.Error
+	if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) && !errors.As(err, &netErr) {
+		return nil
+	}
+	cause := WithoutURL(err)
+	if resp.Request != nil {
+		ctx := resp.Request.Context()
+		timeout, _ := ctx.Value(clientTimeoutKey{}).(time.Duration)
+		if limit := limitOf(ctx, timeout, err); limit != nil {
+			cause = limit
+		}
+	}
+	return &Error{Class: Temporary, Status: resp.StatusCode, Err: fmt.Errorf("answer not read: %w", cause)}
+}
+
 // WithoutURL drops the request URL that net/http puts into its errors.
 func WithoutURL(err error) error {
 	var urlErr *url.Error
@@ -41,14 +104,40 @@ func WithoutURL(err error) error {
 
 // StatusError returns the *Error of a response outside 2xx, classified by
 // its status and Retry-After header. The body is not quoted: it may echo
-// the request, and the request carries the message.
+// the request, and the request carries the message. A redirect names its
+// Location, see locationText.
 func StatusError(resp *http.Response) *Error {
+	cause := errors.New(http.StatusText(resp.StatusCode))
+	if location := resp.Header.Get("Location"); resp.StatusCode >= 300 && resp.StatusCode < 400 && location != "" {
+		cause = fmt.Errorf("redirect to %s not followed", locationText(location))
+	}
 	return &Error{
 		Class:      Classify(resp.StatusCode, resp.Header, nil),
 		Status:     resp.StatusCode,
 		RetryAfter: RetryAfter(resp.Header),
-		Err:        errors.New(http.StatusText(resp.StatusCode)),
+		Err:        cause,
 	}
+}
+
+// maxLocationBytes bounds the Location quoted in the error of a redirect,
+// a header of the service.
+const maxLocationBytes = 256
+
+// locationText returns the Location of a redirect without user
+// information, query and fragment, cut to maxLocationBytes: a moved
+// webhook shows where it went. A token in the path is masked by the
+// redactor of the log like the URL of the target it repeats.
+func locationText(location string) string {
+	u, err := url.Parse(location)
+	if err != nil {
+		return "an invalid URL"
+	}
+	u.User, u.RawQuery, u.ForceQuery, u.Fragment, u.RawFragment = nil, "", false, "", ""
+	text := u.String()
+	if len(text) > maxLocationBytes {
+		text = strings.ToValidUTF8(text[:maxLocationBytes], "") + "..."
+	}
+	return text
 }
 
 // Do sends req with client and returns the outcome as an *Error: a
@@ -56,9 +145,10 @@ func StatusError(resp *http.Response) *Error {
 // nil parse, nil for 2xx and StatusError otherwise. The body is drained
 // after parse returns, so parse may read it.
 func Do(client *http.Client, req *http.Request, parse func(*http.Response) error) error {
+	req = req.WithContext(context.WithValue(req.Context(), clientTimeoutKey{}, client.Timeout))
 	resp, err := client.Do(req)
 	if err != nil {
-		return TransportError(err)
+		return RequestError(client, req, err)
 	}
 	defer Drain(resp.Body)
 	if parse != nil {

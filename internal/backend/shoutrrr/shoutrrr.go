@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"sync"
 
@@ -44,7 +45,7 @@ type outcome struct {
 	err          error
 	status       int
 	header       http.Header
-	transportErr error
+	transportErr *backend.Error
 	// panicErr is a panic of the library, nil without one.
 	panicErr *backend.PanicError
 }
@@ -74,9 +75,55 @@ func New(opts Options) (*Sender, error) {
 	case errors.Is(err, router.ErrUnknownService):
 		return nil, fmt.Errorf("unknown shoutrrr service %q", scheme)
 	case err != nil:
-		return nil, fmt.Errorf("URL rejected by shoutrrr service %q", scheme)
+		return nil, fmt.Errorf("URL rejected by shoutrrr service %q: %s", scheme, withoutURLParts(err, opts.URL))
 	}
 	return &Sender{service: service, recorder: recorder, busy: make(chan struct{}, 1)}, nil
+}
+
+// minURLPart is the shortest path segment or query value of the URL that
+// withoutURLParts masks: a shorter one is a word such as "id", whose
+// masking would garble the text. User name and password are masked at any
+// length.
+const minURLPart = 3
+
+// withoutURLParts returns the text of an error of the library with the
+// user name, password, path segments and query values of raw replaced by
+// ***: the library quotes the token it rejects, whatever its length, and
+// the redactor of the log masks a short one only as part of the whole URL.
+func withoutURLParts(err error, raw string) string {
+	text := backend.WithoutURL(err).Error()
+	parsed, parseErr := url.Parse(raw)
+	if parseErr != nil {
+		return "invalid URL"
+	}
+	parts := []string{raw}
+	for _, segment := range strings.Split(parsed.Path, "/") {
+		if len(segment) >= minURLPart {
+			parts = append(parts, segment)
+		}
+	}
+	for _, values := range parsed.Query() {
+		for _, value := range values {
+			if len(value) >= minURLPart {
+				parts = append(parts, value)
+			}
+		}
+	}
+	if user := parsed.User; user != nil {
+		parts = append(parts, user.String(), user.Username())
+		if password, ok := user.Password(); ok {
+			parts = append(parts, password)
+		}
+	}
+	// The longest first, so that a part inside another one does not leave
+	// the rest of it.
+	slices.SortFunc(parts, func(a, b string) int { return len(b) - len(a) })
+	for _, part := range parts {
+		if part != "" {
+			text = strings.ReplaceAll(text, part, "***")
+		}
+	}
+	return text
 }
 
 // Caps reports neither a text limit nor files: each service cuts or
@@ -138,7 +185,7 @@ func (s *Sender) Send(ctx context.Context, p backend.Payload) error {
 	case err == nil:
 		return nil
 	case transportErr != nil:
-		return backend.TransportError(transportErr)
+		return transportErr
 	case status >= 300:
 		return &backend.Error{
 			Class: backend.Classify(status, header, nil), Status: status, RetryAfter: backend.RetryAfter(header),
@@ -153,21 +200,24 @@ func (s *Sender) Send(ctx context.Context, p backend.Payload) error {
 
 // responseRecorder is the HTTP client of the services; it remembers the
 // outcome of the last request, status and header or transport error,
-// which shoutrrr reports only as text, with the URL in it.
+// which shoutrrr reports only as text, with the URL in it. The transport
+// error is kept as backend.RequestError makes it.
 type responseRecorder struct {
 	client       *http.Client
 	mu           sync.Mutex
 	status       int
 	header       http.Header
-	transportErr error
+	transportErr *backend.Error
 }
 
 func (r *responseRecorder) Do(req *http.Request) (*http.Response, error) {
 	resp, err := r.client.Do(req)
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.status, r.header, r.transportErr = 0, nil, err
-	if err == nil {
+	r.status, r.header, r.transportErr = 0, nil, nil
+	if err != nil {
+		r.transportErr = backend.RequestError(r.client, req, err)
+	} else {
 		r.status, r.header = resp.StatusCode, resp.Header.Clone()
 	}
 	return resp, err
@@ -179,7 +229,7 @@ func (r *responseRecorder) reset() {
 	r.status, r.header, r.transportErr = 0, nil, nil
 }
 
-func (r *responseRecorder) last() (int, http.Header, error) {
+func (r *responseRecorder) last() (int, http.Header, *backend.Error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.status, r.header, r.transportErr

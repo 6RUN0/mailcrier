@@ -228,6 +228,9 @@ func parseResponse(resp *http.Response, into *answer) error {
 		return backend.StatusError(resp)
 	}
 	if err := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBytes)).Decode(into); err != nil {
+		if readErr := backend.BodyError(resp, err); readErr != nil {
+			return readErr
+		}
 		return &backend.Error{Class: backend.Temporary, Status: resp.StatusCode, Err: errors.New("answer is not JSON")}
 	}
 	if into.OK {

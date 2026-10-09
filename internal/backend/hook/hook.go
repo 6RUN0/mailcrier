@@ -9,7 +9,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"log/slog"
+	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
@@ -117,7 +120,7 @@ func (s *Sender) Send(ctx context.Context, p backend.Payload) error {
 	if p.Message == nil {
 		return &backend.Error{Class: backend.Permanent, Err: errors.New("no message for the hook")}
 	}
-	ctx, cancel := context.WithTimeout(ctx, s.opts.Timeout)
+	ctx, cancel := context.WithTimeoutCause(ctx, s.opts.Timeout, &backend.LimitError{Key: "timeout", Value: s.opts.Timeout})
 	defer cancel()
 	cmd := exec.CommandContext(ctx, s.opts.Argv[0], s.opts.Argv[1:]...)
 	cmd.Env = buildEnv(s.opts, p.Message)
@@ -168,11 +171,45 @@ func classify(ctx context.Context, cmd *exec.Cmd, err error) error {
 		return &backend.Error{Class: backend.Permanent, Err: fmt.Errorf("hook failed: %w", err)}
 	case ctx.Err() != nil:
 		return &backend.Error{Class: backend.Temporary, Err: fmt.Errorf("hook killed: %w", context.Cause(ctx))}
+	case cmd.Process == nil && errors.Is(err, fs.ErrNotExist):
+		// The kernel reports a missing interpreter of a script as a
+		// missing script.
+		if interpreter := missingInterpreter(cmd.Path); interpreter != "" {
+			return &backend.Error{Class: backend.Permanent, Err: fmt.Errorf("hook not started: interpreter %s of %s not found", interpreter, cmd.Path)}
+		}
+		return &backend.Error{Class: backend.Permanent, Err: fmt.Errorf("hook not started: %w", err)}
 	case cmd.Process == nil:
 		return &backend.Error{Class: backend.Permanent, Err: fmt.Errorf("hook not started: %w", err)}
 	default:
 		return &backend.Error{Class: backend.Permanent, Err: fmt.Errorf("hook failed: %w", err)}
 	}
+}
+
+// maxShebang bounds the first line of a script read for its interpreter,
+// as the kernel does (BINPRM_BUF_SIZE).
+const maxShebang = 256
+
+// missingInterpreter returns the interpreter that the "#!" line of the
+// file at path names when that interpreter does not exist; empty when the
+// file has no such line, cannot be read, or its interpreter exists.
+func missingInterpreter(path string) string {
+	file, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = file.Close() }()
+	head := make([]byte, maxShebang)
+	n, _ := io.ReadFull(file, head)
+	line, _, _ := bytes.Cut(head[:n], []byte("\n"))
+	rest, ok := bytes.CutPrefix(line, []byte("#!"))
+	fields := strings.Fields(string(rest))
+	if !ok || len(fields) == 0 {
+		return ""
+	}
+	if _, err := os.Stat(fields[0]); !errors.Is(err, fs.ErrNotExist) {
+		return ""
+	}
+	return fields[0]
 }
 
 // logOutput writes what the hook printed as one record, through the

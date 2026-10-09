@@ -320,7 +320,7 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 		}
 		data := render.NewData(msg, env, bcc)
 		data.Hostname, data.ReceivedAt, data.Strings = d.Hostname, receivedAt, q.notices
-		deliverCtx, cancel := context.WithTimeout(ctx, q.deadline)
+		deliverCtx, cancel := withDeadline(ctx, q.deadline)
 		defer cancel()
 		return q.deliverOwn(deliverCtx, q.selectTargets(names), msg, env, data, openErr)
 	}()
@@ -343,6 +343,12 @@ func holdExitCode(state delivery.Queue, code int) int {
 		return exitIOErr
 	}
 	return code
+}
+
+// withDeadline bounds the delivery of one message by the deadline key,
+// which the error of a target that runs out of it names with its value.
+func withDeadline(ctx context.Context, deadline time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeoutCause(ctx, deadline, &backend.LimitError{Key: "deadline", Value: deadline})
 }
 
 // catchSignals applies d.CatchSignals to ctx when it is set.

@@ -266,7 +266,13 @@ preset = "generic-json"
 - `http_timeout` bounds one HTTP request from dialing to the end of the
   response; `deadline` bounds the delivery to all targets together. Both
   take Go duration strings (`"500ms"`, `"15s"`, `"1m"`) and must be
-  positive. A target that runs out of either counts as a temporary failure.
+  positive. A target that runs out of either counts as a temporary
+  failure whose error names the bound, such as `Post: http_timeout 15s
+  exceeded` or `Post: deadline 30s exceeded`; `run_budget`,
+  `drain_budget` and the `timeout` of a hook show the same way, a stop
+  signal as `terminated signal received`. A timeout while the answer of
+  Telegram or Slack is read is temporary as well (`answer not read`),
+  whatever the status.
 - Proxy environment variables (`HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`)
   are honoured without elevation and ignored by a setgid-elevated process.
 - The file mode creation mask is always `007`.
@@ -434,7 +440,8 @@ msg = "{{ .Subject | truncate 200 }}"
   the log like tokens, and so is every piece of the text of `path` outside
   the actions between two slashes of 16 characters or more, as written
   and unescaped. A redirect is not followed and counts as a permanent
-  failure.
+  failure, `redirect to <Location> not followed`, with user information
+  and query dropped and a token of the target in the path masked.
 
 ```toml
 [target.run]
@@ -466,7 +473,10 @@ timeout = "30s"                 # optional, the default
   - Outcome: exit status 0 is a delivery; 75 (`EX_TEMPFAIL`) a temporary
     failure, queued and retried; any other status, or death by a signal,
     a permanent failure. A hook that cannot be started (missing file, no
-    execute permission, `E2BIG`) fails permanently.
+    execute permission, `E2BIG`) fails permanently; a script whose `#!`
+    names a missing interpreter says so (`interpreter /usr/bin/python3
+    of /usr/local/bin/hook not found`) rather than report the script
+    missing, as the kernel does.
   - Time: `timeout`, a positive Go duration, 30 s by default, bounds one
     run; so do `deadline` and the budget of a queue run, whichever ends
     first. Past it the process group of the hook (each hook starts in

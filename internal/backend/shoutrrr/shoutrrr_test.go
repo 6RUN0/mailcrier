@@ -168,14 +168,16 @@ func TestSendStopsAtDeadline(t *testing.T) {
 }
 
 // TestNewRejectsURL pins that a URL shoutrrr cannot use fails with the
-// configuration, naming the scheme but not the URL.
+// configuration, naming the scheme and the cause of the library but not
+// the URL nor the token, which the library quotes.
 func TestNewRejectsURL(t *testing.T) {
 	for url, want := range map[string]string{
 		"nosuch://SECRET-TOKEN@example.org":     `unknown shoutrrr service "nosuch"`,
-		"telegram://SECRET-TOKEN@telegram?x=%%": `URL rejected by shoutrrr service "telegram"`,
+		"telegram://SECRET-TOKEN@telegram?x=%%": `URL rejected by shoutrrr service "telegram": telegram: invalid telegram token: ***:`,
+		"telegram://ab@telegram":                `URL rejected by shoutrrr service "telegram": telegram: invalid telegram token: ***:`,
 	} {
 		_, err := New(Options{URL: url, Client: &http.Client{}})
-		if err == nil || err.Error() != want {
+		if err == nil || !strings.HasPrefix(err.Error(), want) || strings.Contains(err.Error(), "SECRET") || strings.Contains(err.Error(), "ab:") {
 			t.Errorf("New(%s) error = %v, want %s", url, err, want)
 		}
 	}

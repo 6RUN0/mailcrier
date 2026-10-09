@@ -73,7 +73,15 @@ func TestRunKeepsTokenOutOfLogs(t *testing.T) {
 		}, 69, "target failed"},
 		{"timeout", func(t *testing.T) (string, *http.Client) {
 			return "[general]\nhttp_timeout = \"50ms\"\n\n" + httpTargetConfig(hangingServer(t).URL+"/hook/"+secretToken), nil
-		}, 69, "target failed"},
+		}, 69, `err="temporary failure: Post: http_timeout 50ms exceeded"`},
+		{"redirect-quotes-token", func(t *testing.T) (string, *http.Client) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Location", "https://user:pass@moved.example.org/hook/"+secretToken+"?sig=abc")
+				w.WriteHeader(http.StatusFound)
+			}))
+			t.Cleanup(server.Close)
+			return httpTargetConfig(server.URL + "/hook/" + secretToken), nil
+		}, 69, `status=302 err="permanent failure, status 302: redirect to https://moved.example.org*** not followed"`},
 		{"tls-error", func(t *testing.T) (string, *http.Client) {
 			server := httptest.NewTLSServer(http.NotFoundHandler())
 			t.Cleanup(server.Close)

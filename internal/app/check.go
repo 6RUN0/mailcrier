@@ -143,7 +143,7 @@ func renderSample(ctx context.Context, d Deps, log *slog.Logger, redactor *redac
 		dry[i] = target
 		dry[i].Sender = dryRunSender{caps: target.Sender.Caps()}
 	}
-	renderCtx, cancel := context.WithTimeout(ctx, cfg.General.Deadline.Duration)
+	renderCtx, cancel := withDeadline(ctx, cfg.General.Deadline.Duration)
 	defer cancel()
 	var findings []string
 	for _, r := range delivery.Deliver(renderCtx, dry, data, nil) {
