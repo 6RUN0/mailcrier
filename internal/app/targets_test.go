@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 
 	"github.com/6RUN0/mailcrier/internal/backend"
@@ -20,17 +19,6 @@ import (
 	"github.com/6RUN0/mailcrier/internal/delivery"
 	"github.com/6RUN0/mailcrier/internal/redact"
 )
-
-// statusServer answers every request with status and counts the requests.
-func statusServer(t *testing.T, status int, requests *atomic.Int32) *httptest.Server {
-	t.Helper()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		requests.Add(1)
-		w.WriteHeader(status)
-	}))
-	t.Cleanup(server.Close)
-	return server
-}
 
 // TestRunServiceStatuses pins the exit status for the answers of a
 // service when it is the only target: without a queue a temporary failure
@@ -51,15 +39,14 @@ type serviceStatusCase struct {
 }
 
 func (tc serviceStatusCase) check(t *testing.T) {
-	var requests atomic.Int32
-	server := statusServer(t, tc.status, &requests)
+	server := newStatusServer(t, tc.status, 0)
 	inv := &invocation{config: tc.config(server.URL), stdin: strings.NewReader("Subject: t\n\nb\n")}
 	if code := inv.run(t); code != 69 {
 		t.Fatalf("Run() = %d, want 69", code)
 	}
 	want := fmt.Sprintf("class=%s status=%d", tc.wantClass, tc.status)
-	if log := inv.log("mailcrier"); requests.Load() != 1 || !strings.Contains(log, want) {
-		t.Errorf("%d requests, log lacks %q:\n%s", requests.Load(), want, log)
+	if log := inv.log("mailcrier"); server.requests.Load() != 1 || !strings.Contains(log, want) {
+		t.Errorf("%d requests, log lacks %q:\n%s", server.requests.Load(), want, log)
 	}
 }
 
