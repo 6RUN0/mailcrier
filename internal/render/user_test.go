@@ -165,9 +165,14 @@ func TestUserTemplateOutputLimit(t *testing.T) {
 		}
 	})
 	t.Run("over-limit-cut-by-fit", func(t *testing.T) {
-		out, truncated, err := Fit(tmpl, d, 4096, text.RuneCount)
+		bounded := tmpl.WithBudget(time.Time{})
+		out, truncated, err := Fit(bounded, d, 4096, text.RuneCount)
 		if err != nil || !truncated || text.RuneCount(out) > 4096 || !strings.HasPrefix(out, "s\n0123") {
 			t.Errorf("Fit = %d characters, %v, %v", text.RuneCount(out), truncated, err)
+		}
+		// The copy tells the cut from one of a long message.
+		if !bounded.IsOverOutput() || tmpl.IsOverOutput() {
+			t.Errorf("IsOverOutput() = %v for the copy, %v for the template; want true, false", bounded.IsOverOutput(), tmpl.IsOverOutput())
 		}
 	})
 	t.Run("within-limit", func(t *testing.T) {

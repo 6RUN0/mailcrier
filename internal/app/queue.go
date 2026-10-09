@@ -246,11 +246,17 @@ func (q *queue) send(ctx context.Context, targets []delivery.Target, env message
 	return results, donePanic
 }
 
-// apply records the result of one target in e.
+// apply records the result of one target in e. The error is stored
+// without its class, which mailq shows as the key: "status 503: Service
+// Unavailable".
 func (q *queue) apply(e *spool.Entry, r delivery.Result) {
 	errText := ""
 	if r.Err != nil {
-		errText = q.redactor.String(r.Err.Error())
+		errText = failureCause(r.Err).Error()
+		if deliveryErr, ok := r.Err.(*backend.Error); ok && deliveryErr.Status != 0 {
+			errText = fmt.Sprintf("status %d: %s", deliveryErr.Status, errText)
+		}
+		errText = q.redactor.String(errText)
 	}
 	switch {
 	case r.Status == delivery.OK:
@@ -391,7 +397,7 @@ func (q *queue) run(ctx context.Context, limits runLimits) error {
 		}
 		for _, id := range ids {
 			if isOver() {
-				q.log.Info("queue run budget spent")
+				q.logStop(ctx, delivered, limits)
 				return nil
 			}
 			if q.isUnsaved(id) {
@@ -412,6 +418,17 @@ func (q *queue) run(ctx context.Context, limits runLimits) error {
 		}
 	}
 	return nil
+}
+
+// logStop records why a queue run stopped before its end: a stop signal,
+// or its budget of time or messages, with the count it delivered.
+func (q *queue) logStop(ctx context.Context, delivered int, limits runLimits) {
+	var limit *backend.LimitError
+	if cause := context.Cause(ctx); cause != nil && !errors.As(cause, &limit) {
+		q.log.Info("queue run stopped", "delivered", delivered, "err", cause)
+		return
+	}
+	q.log.Info("queue run budget spent", "delivered", delivered, "budget", limits.budget)
 }
 
 // lock returns the entry id of area locked, or nil when it belongs to
@@ -888,7 +905,7 @@ func (q *queue) runQueue(ctx context.Context) int {
 		other = q.releaseOtherHold(limits.owner)
 	}
 	if err := q.run(ctx, limits); err != nil {
-		q.log.Error("queue not listed", "err", err)
+		q.log.Error("queue not listed", "mode", "run", "err", err)
 		tellUser(q.d, q.redactor, "queue not listed", err)
 		return exitIOErr
 	}
@@ -931,7 +948,7 @@ func (q *queue) drainOwn(ctx context.Context) {
 	defer func() { _ = lock.Close() }()
 	limits := runLimits{owner: q.d.Credentials.UID, budget: q.settings.DrainBudget.Duration, budgetKey: "drain_budget", maxMessages: q.settings.DrainMaxMessages}
 	if err := q.run(ctx, limits); err != nil {
-		q.log.Error("queue not listed", "err", err)
+		q.log.Error("queue not listed", "mode", "drain", "err", err)
 	}
 }
 
@@ -946,17 +963,23 @@ type queueCounts struct {
 // for a privileged caller, the counts alone for anyone else, who must not
 // see the entries and errors of other users.
 func (q *queue) listQueue(w io.Writer) int {
+	empty := "queue is empty\n"
+	if q.settings.Dir == "" {
+		// Nothing is queued with the spool off, which an empty queue would
+		// hide.
+		empty = "spool off\n"
+	}
 	if q.sp == nil && q.otherHold == "" {
-		return q.print(w, "queue is empty\n")
+		return q.print(w, empty)
 	}
 	counts, lines, err := q.scan(q.d.Credentials.isPrivilegedCaller())
 	if err != nil {
-		q.log.Error("queue not listed", "err", err)
+		q.log.Error("queue not listed", "mode", "mailq", "err", err)
 		tellUser(q.d, q.redactor, "queue not listed", err)
 		return exitIOErr
 	}
 	if counts.queued+counts.held+counts.failed == 0 {
-		return q.print(w, "queue is empty\n")
+		return q.print(w, empty)
 	}
 	var out strings.Builder
 	_, _ = fmt.Fprintf(&out, "%d queued, %d held, %d failed; oldest %s\n", counts.queued, counts.held, counts.failed, counts.oldest)
@@ -972,7 +995,7 @@ func (q *queue) status(w io.Writer) int {
 	if q.sp != nil || q.otherHold != "" {
 		var err error
 		if counts, _, err = q.scan(false); err != nil {
-			q.log.Error("queue not listed", "err", err)
+			q.log.Error("queue not listed", "mode", "status", "err", err)
 			tellUser(q.d, q.redactor, "queue not listed", err)
 			return exitIOErr
 		}
@@ -1004,8 +1027,9 @@ func (q *queue) scan(isDetailed bool) (queueCounts, []string, error) {
 		for _, id := range ids {
 			e, err := sp.Peek(area, id)
 			if err != nil {
+				// The cause, as a queue run logs it, tells what to do.
 				if isDetailed {
-					lines = append(lines, fmt.Sprintf("%s %s unreadable", id, area)+dirField(dir))
+					lines = append(lines, fmt.Sprintf("%s %s unreadable", id, area)+dirField(dir)+fmt.Sprintf(" err=%q", strings.ToValidUTF8(err.Error(), "")))
 				}
 				continue
 			}

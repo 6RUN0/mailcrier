@@ -215,6 +215,12 @@ func Decode(data []byte) (*Entry, error) {
 		Version int `json:"version"`
 	}
 	if err := json.Unmarshal(data, &head); err != nil {
+		// encoding/json names the Go type of head for a document that is
+		// not an object, which tells the reader of mailq nothing.
+		var typeErr *json.UnmarshalTypeError
+		if errors.As(err, &typeErr) && typeErr.Field == "" {
+			return nil, fmt.Errorf("%w: not a JSON object", ErrCorrupt)
+		}
 		return nil, fmt.Errorf("%w: %w", ErrCorrupt, err)
 	}
 	if head.Version != Version {

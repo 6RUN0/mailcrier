@@ -496,13 +496,15 @@ func decodeSidecar(data []byte, id string) (*Entry, error) {
 }
 
 // Peek reads the sidecar of id in area without locking it: enough for
-// fields that never change, such as OwnerUID, and for listing.
+// fields that never change, such as OwnerUID, and for listing. A sidecar
+// of another id is corrupt, as for Lock, so that mailq shows what a queue
+// run finds.
 func (s *Spool) Peek(area, id string) (*Entry, error) {
 	data, err := readFile(s.path(area, id+entrySuffix))
 	if err != nil {
 		return nil, err
 	}
-	return Decode(data)
+	return decodeSidecar(data, id)
 }
 
 // Has reports whether area holds a message file of id.

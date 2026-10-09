@@ -249,6 +249,16 @@ func TestLogTextRejected(t *testing.T) {
 	}
 }
 
+// TestLogOverOutput pins the warning for a text cut because the template
+// wrote past its output limit, which the template must fix.
+func TestLogOverOutput(t *testing.T) {
+	var b strings.Builder
+	logResult(slog.New(slog.NewTextHandler(&b, nil)), &redact.Redactor{}, delivery.Result{TargetID: "api", Status: delivery.OK, IsTruncated: true, IsOverOutput: true}, true)
+	if want := `level=WARN msg="template output limit reached" target=api`; !strings.Contains(b.String(), want) {
+		t.Errorf("log %q, want %q", b.String(), want)
+	}
+}
+
 // TestLogResultLevel pins the level of a failed target: a warning for a
 // temporary failure the spool retries, an error for one nothing retries
 // and for a permanent failure, which someone must look at.

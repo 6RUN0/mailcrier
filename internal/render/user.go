@@ -121,6 +121,7 @@ func (t *Template) WithBudget(deadline time.Time) *Template {
 		return t
 	}
 	bounded := *t
+	bounded.overOutput = &atomic.Bool{}
 	bounded.deadline = t.user.now().Add(t.user.budget)
 	if !deadline.IsZero() && deadline.Before(bounded.deadline) {
 		bounded.deadline = deadline
@@ -228,6 +229,9 @@ func (t *Template) executeUser(d Data) ([]byte, error) {
 	case result := <-done:
 		switch {
 		case result.err != nil:
+			if errors.Is(result.err, errOutputLimit) && t.overOutput != nil {
+				t.overOutput.Store(true)
+			}
 			return nil, &TemplateError{Err: result.err}
 		case !t.mayBeEmpty && len(bytes.TrimSpace(result.out)) == 0:
 			return nil, &TemplateError{Err: errEmpty}

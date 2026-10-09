@@ -505,3 +505,18 @@ func TestRunTagsRecordsWithCall(t *testing.T) {
 		})
 	}
 }
+
+// TestRunLogsSizeLimit pins the fields of the warning for a message over
+// the size limit: the bytes read and the limit, which say how much was
+// lost.
+func TestRunLogsSizeLimit(t *testing.T) {
+	input := "Subject: big\n\n" + strings.Repeat("x", message.MaxSize)
+	inv := &invocation{config: twoTargets, stdin: strings.NewReader(input), deliver: (&recorder{}).deliver}
+	if code := inv.run(t); code != 0 {
+		t.Fatalf("Run() = %d, want 0", code)
+	}
+	want := fmt.Sprintf(`level=WARN msg="message over the size limit, rest discarded" size=%d max_size=%d`, len(input), message.MaxSize)
+	if !strings.Contains(inv.log("mailcrier"), want) {
+		t.Errorf("log lacks %q:\n%.2000s", want, inv.log("mailcrier"))
+	}
+}

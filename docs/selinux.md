@@ -90,10 +90,10 @@ domains does not let it write files outside the mail spools (`/var/log`,
 that part was not measured hook by hook.
 
 A hook refused there fails its delivery: the log line names the target
-(`target failed ... target=<name> ... err="permanent failure: hook
-..."`), and the audit log has the denial with the `comm` of the
-program the hook ran. To let it through, write a module of your own from
-those denials, as root, after the hook failed from cron or smartd:
+(`target failed ... target=<name> class=perm err="hook ..."`), and the
+audit log has the denial with the `comm` of the program the hook ran. To
+let it through, write a module of your own from those denials, as root,
+after the hook failed from cron or smartd:
 
 ```sh
 ausearch -m avc -ts recent -c <program> --raw | audit2allow -M mailcrier_local

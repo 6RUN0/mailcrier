@@ -998,11 +998,24 @@ func TestQueueRunClock(t *testing.T) {
 		c.clock.advance(time.Minute)
 		c.service.clock, c.service.step = c.clock, 25*time.Second
 		code, inv := c.queueRun(serviceCaller)
-		if code != 0 || !strings.Contains(inv.output(), `msg="queue run budget spent"`) {
+		if code != 0 || !strings.Contains(inv.output(), `msg="queue run budget spent" delivered=3 budget=1m0s`) {
 			t.Fatalf("-q = %d; output:\n%s", code, inv.output())
 		}
 		if got := c.service.got("a")[4:]; !slices.Equal(got, []string{"one", "two", "three"}) {
 			t.Errorf("a got %v in the run, want three entries within 60 s", got)
+		}
+	})
+	t.Run("stop-signal-ends-the-run", func(t *testing.T) {
+		c := newSpoolCase(t)
+		c.service.reply("a", delivery.Temp)
+		c.send("one", elevatedUser)
+		c.clock.advance(time.Minute)
+		ctx, stop := context.WithCancelCause(context.Background())
+		stop(errors.New("terminated signal received"))
+		inv := c.invocation(serviceCaller, []string{"-q"})
+		inv.ctx = ctx
+		if code := inv.run(t); code != 0 || !strings.Contains(inv.output(), `level=INFO msg="queue run stopped" delivered=0 err="terminated signal received"`) {
+			t.Fatalf("-q = %d; output:\n%s", code, inv.output())
 		}
 	})
 	t.Run("drain-after-own-message", func(t *testing.T) {
@@ -1298,7 +1311,7 @@ func TestListQueue(t *testing.T) {
 		code, inv := c.queueRun(serviceCaller, "-bp")
 		want := "1 queued, 1 held, 0 failed; oldest 1m30s\n" +
 			ids[0] + " queue uid=1000 age=1m30s\n" +
-			"  a pending attempts=1 next=2026-09-27T10:01:00Z temp=\"temporary failure, status 503: unavailable\"\n" +
+			"  a pending attempts=1 next=2026-09-27T10:01:00Z temp=\"status 503: unavailable\"\n" +
 			"  b done attempts=0\n" +
 			ids[1] + " hold uid=1001 age=1m30s reason=\"configuration rejected\"\n"
 		if code != 0 || inv.stdout.String() != want {
@@ -1784,6 +1797,25 @@ func TestQueueModesTellUser(t *testing.T) {
 			t.Errorf("Run() = %d, stderr:\n%s\nwant 74 and the record alone", code, inv.stderr.String())
 		}
 	})
+	t.Run("queue-not-listed", func(t *testing.T) {
+		if os.Geteuid() == 0 {
+			t.Skip("root ignores directory modes")
+		}
+		c := newSpoolCase(t)
+		if _, err := spool.Open(c.dir); err != nil {
+			t.Fatal(err)
+		}
+		queueDir := filepath.Join(c.dir, spool.QueueDir)
+		if err := os.Chmod(queueDir, 0o300); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(queueDir, 0o770) })
+		code, inv := c.queueRun(rootCaller)
+		if code != 74 || !strings.Contains(inv.output(), `level=ERROR msg="queue not listed" mode=run err="open `+queueDir+`: permission denied"`) ||
+			inv.stderr.String() != "mailcrier: queue not listed: open "+queueDir+": permission denied\n" {
+			t.Errorf("-q = %d; output:\n%s", code, inv.output())
+		}
+	})
 	t.Run("queue-run-incomplete", func(t *testing.T) {
 		c := newSpoolCase(t)
 		c.service.reply("a", delivery.Temp)
@@ -1794,4 +1826,39 @@ func TestQueueModesTellUser(t *testing.T) {
 			t.Errorf("-q = %d, stderr %q; want 74 and one line", code, inv.stderr.String())
 		}
 	})
+}
+
+// TestListQueueUnreadable pins that mailq shows why an entry cannot be
+// read, as a queue run logs it: a sidecar that is not a JSON object, and
+// one of another id, which a queue run refuses as well.
+func TestListQueueUnreadable(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		sidecar func(id string, valid []byte) []byte
+		want    string
+	}{
+		{"not-an-object", func(string, []byte) []byte { return []byte("[]") }, `err="corrupt sidecar: not a JSON object"`},
+		{"other-id", func(id string, valid []byte) []byte {
+			return []byte(strings.Replace(string(valid), id, "1790503200000000000-0000000000000000", 1))
+		}, `err="corrupt sidecar: id does not match the file name"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newSpoolCase(t)
+			c.service.reply("a", delivery.Temp)
+			c.send("s", elevatedUser)
+			id := c.ids(spool.QueueDir)[0]
+			path := filepath.Join(c.dir, spool.QueueDir, id+".json")
+			valid, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, tc.sidecar(id, valid), 0o660); err != nil {
+				t.Fatal(err)
+			}
+			code, inv := c.queueRun(serviceCaller, "-bp")
+			if want := id + " queue unreadable " + tc.want + "\n"; code != 0 || !strings.HasSuffix(inv.stdout.String(), want) {
+				t.Errorf("-bp = %d, stdout %q, want a line %q", code, inv.stdout.String(), want)
+			}
+		})
+	}
 }

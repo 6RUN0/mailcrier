@@ -164,7 +164,7 @@ func TestNoRoute(t *testing.T) {
 		if code != 0 || !slices.Equal(c.service.got("a"), []string{"x"}) || len(c.service.got("b")) != 0 {
 			t.Fatalf("Run() = %d, a %v, b %v; output:\n%s", code, c.service.got("a"), c.service.got("b"), inv.output())
 		}
-		if !strings.Contains(inv.output(), `level=WARN msg="no route for recipient" unrouted=2`) || strings.Contains(inv.output(), "alice") {
+		if !strings.Contains(inv.output(), `level=WARN msg="no route for recipient" count=2`) || strings.Contains(inv.output(), "alice") {
 			t.Errorf("output:\n%s", inv.output())
 		}
 	})

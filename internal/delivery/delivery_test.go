@@ -255,6 +255,28 @@ func TestDeliverNamesLimit(t *testing.T) {
 	}
 }
 
+// TestDeliverReportsOverOutput pins that a template from the configuration
+// that writes past its output limit is reported, beside the cut text: the
+// cut comes from the template, not from a long message.
+func TestDeliverReportsOverOutput(t *testing.T) {
+	tmpl, err := render.Parse("t", "{{ .Body }}{{ .Body }}", text.FormatPlain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := testData()
+	d.Body = strings.Repeat("x", 600<<10)
+	sender := &fakeSender{caps: backend.Caps{MaxText: 100}}
+	results := Deliver(context.Background(), []Target{{ID: "t", Sender: sender, Template: tmpl, Fallback: plainTemplate(t)}}, d, nil)
+	if r := results[0]; r.Status != OK || !r.IsTruncated || !r.IsOverOutput {
+		t.Errorf("result = %+v, want OK, truncated, over output", r)
+	}
+	d.Body = "short"
+	results = Deliver(context.Background(), []Target{{ID: "t", Sender: sender, Template: tmpl, Fallback: plainTemplate(t)}}, d, nil)
+	if results[0].IsOverOutput {
+		t.Errorf("short text reported over output: %+v", results[0])
+	}
+}
+
 // TestDeliverLongText pins the policies for a text over the limit: what
 // the text says and which file goes along.
 func TestDeliverLongText(t *testing.T) {

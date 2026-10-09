@@ -104,7 +104,7 @@ func TestProbe(t *testing.T) {
 		if got := inv.stdout.String(); got != "target=a class=ok\n" {
 			t.Errorf("stdout = %q", got)
 		}
-		if log := inv.log("mailcrier"); !strings.Contains(log, `level=INFO msg="probe sent" targets=1`) {
+		if log := inv.log("mailcrier"); !strings.Contains(log, `level=INFO msg="probe sent" mode=probe count=1`) {
 			t.Errorf("log lacks the record:\n%s", log)
 		}
 	})
@@ -220,7 +220,7 @@ func TestProbe(t *testing.T) {
 		if code != 78 || server.requests.Load() != 0 {
 			t.Errorf("Run() = %d with %d requests, want 78 and none", code, server.requests.Load())
 		}
-		if got := inv.stderr.String(); !strings.HasPrefix(got, "error: /etc/mailcrier.conf:5:1: unknown key") {
+		if got := inv.stderr.String(); !strings.HasPrefix(got, "mailcrier: /etc/mailcrier.conf:5:1: unknown key") {
 			t.Errorf("stderr = %q", got)
 		}
 	})
@@ -229,7 +229,7 @@ func TestProbe(t *testing.T) {
 		if code != 78 {
 			t.Errorf("Run() = %d, want 78", code)
 		}
-		if got := inv.stderr.String(); got != "error: /etc/missing.conf: file does not exist\n" {
+		if got := inv.stderr.String(); got != "mailcrier: /etc/missing.conf: file does not exist\n" {
 			t.Errorf("stderr = %q", got)
 		}
 	})

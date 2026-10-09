@@ -26,11 +26,14 @@ func runProbe(ctx context.Context, d Deps, log *slog.Logger, newLogger func(tag 
 	// runCheckConfig.
 	configPath, err := selectConfigPath(d, inv, log)
 	if err != nil {
-		log.Error("configuration rejected", "err", err)
-		_, _ = fmt.Fprintf(d.Stderr, "error: %v\n", err)
+		log.Error("configuration rejected", "mode", "probe", "err", err)
+		_, _ = fmt.Fprintf(d.Stderr, "mailcrier: %v\n", err)
 		return exitConfig
 	}
 	cfg, targets, log, err := loadTargets(d, log, newLogger, redactor, client, configPath, config.Load)
+	// The records of a probe are told from those of a delivery, which an
+	// alert watches.
+	log = log.With("mode", "probe")
 	if err != nil {
 		var cfgErr *config.Error
 		text := err.Error()
@@ -38,7 +41,7 @@ func runProbe(ctx context.Context, d Deps, log *slog.Logger, newLogger func(tag 
 			text = "/" + configPath + ": " + text
 		}
 		log.Error("configuration rejected", "err", err)
-		_, _ = fmt.Fprintln(d.Stderr, redactor.String("error: "+text))
+		_, _ = fmt.Fprintln(d.Stderr, redactor.String("mailcrier: "+text))
 		return exitConfig
 	}
 	selected, unknown := selectProbeTargets(targets, inv.Recipients)
@@ -64,7 +67,7 @@ func runProbe(ctx context.Context, d Deps, log *slog.Logger, newLogger func(tag 
 		logResult(log, redactor, r, false)
 		_, _ = fmt.Fprintln(d.Stdout, probeLine(redactor, r))
 	}
-	log.Info("probe sent", "targets", len(selected))
+	log.Info("probe sent", "count", len(selected))
 	return probeExitCode(results)
 }
 
@@ -102,7 +105,7 @@ func probeLine(redactor *redact.Redactor, r delivery.Result) string {
 		fields = append(fields, "template=fallback")
 	}
 	if r.Err != nil {
-		fields = append(fields, fmt.Sprintf("err=%q", redactor.String(r.Err.Error())))
+		fields = append(fields, fmt.Sprintf("err=%q", redactor.String(failureCause(r.Err).Error())))
 	}
 	return strings.Join(fields, " ")
 }

@@ -233,14 +233,20 @@ preset = "generic-json"
   digits, one value per invocation) on every record, `msgid` (the
   Message-ID header, cut to 256 bytes, absent when the message has none)
   and `size` (bytes read) for the message, `target`, `class` (`temp` or
-  `perm`), `status` (the HTTP status, when the service answered) and
-  `retry_after` (the delay the service asked for) for a failed target:
+  `perm`), `status` (the HTTP status, when the service answered),
+  `retry_after` (the delay the service asked for) and `err` (the cause,
+  without class and status) for a failed target:
   `target failed, retry queued` (warning) when the spool retries a
   temporary failure, `target failed` (error) for a permanent one and for
-  a temporary one nothing retries, `--probe` included.
+  a temporary one nothing retries, `--probe` included. A number of
+  things is `count`, a list of target names `targets`, a spool directory
+  `dir`, the operation `mode` (`run`, `drain`, `mailq`, `status`,
+  `probe`).
   `hook output` (info, warning when the run failed) carries what an
   `exec` hook printed, see "Targets".
   `text truncated for target` (info) names a target that got a cut text,
+  `template output limit reached` (warning) one whose template from the
+  configuration wrote more than 1 MiB, so that the cut is the template's,
   `text rejected, sent as file` (warning) one that refused the text and
   got it as a file, `text rejected, file failed too` (warning) one that
   took neither, `attachments not delivered` (warning) one that took
@@ -674,7 +680,8 @@ template = '''
   dozen times. All the renderings of the text of one message for one
   target may take 2 s together, ending no later than `deadline`, and each
   one 1 s and 1 MiB of output. Past 1 MiB a text with a limit counts as
-  too long and its body is cut; without a limit (`http` without
+  too long and its body is cut, with the warning `template output limit
+  reached`; without a limit (`http` without
   `max_text`, `shoutrrr`) the template fails. A template stopped while
   rendering, by either time limit, stays failed for the rest of the call
   or queue run, so that each further message gets the built-in template at
@@ -983,8 +990,12 @@ preset = "generic-json"
   with the state, attempts, next attempt and last error of each target,
   for root, the `mailcrier` user and a process without the setgid bit;
   anyone else sees one line of counts; a spool directory that does not
-  exist lists as `queue is empty`. `--status` prints one logfmt line for
-  monitoring,
+  exist lists as `queue is empty`, the spool off (`dir = ""`) as `spool
+  off`. An entry that cannot be read lists as `<id> <area> unreadable
+  err="..."` with the cause a queue run logs, such as `corrupt sidecar:
+  not a JSON object`. The last error of a target is shown under its
+  class, `temp="status 503: Service Unavailable"`. `--status` prints one
+  logfmt line for monitoring,
   `queued=1 held=0 failed=0 tmp=0 bytes=1432 oldest_age_seconds=75`, and
   exits 74 when the directory does not exist, and also, after printing the
   line, when this process cannot write one of its areas or the file
@@ -1029,9 +1040,11 @@ preset = "generic-json"
   `[[suppress]]` rules and direct chats do not apply. It reads no stdin,
   does not touch the spool and does not run the queue. One logfmt line
   per target goes to stdout, such as `target=mm class=temp status=503
-  err="..."`; a template that failed and was replaced by the built-in one
-  shows `template=fallback` with status 0, and `--check-config` shows the
-  template error. The exit status is 0 when every target took the
+  err="Service Unavailable"`; a template that failed and was replaced by
+  the built-in one shows `template=fallback` with status 0, and
+  `--check-config` shows the template error. A configuration it cannot
+  use goes to stderr as `mailcrier: <error>`, and its records in the log
+  carry `mode=probe`. The exit status is 0 when every target took the
   message, 69 when one rejected it, and 75 when one failed temporarily
   and none rejected it. root, the `mailcrier` user and a caller without
   the setgid bit may run it. Mail flags such as `-f` or `-t` are ignored,

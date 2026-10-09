@@ -148,6 +148,9 @@ type Result struct {
 	// IsTruncated reports that the text was cut to the length limit of
 	// the target.
 	IsTruncated bool
+	// IsOverOutput reports that the template from the configuration wrote
+	// past its output limit, so that its text was cut as too long.
+	IsOverOutput bool
 	// TextRejected is the error of the attempt before the last when the
 	// target rejected the text and the full text went again as a file
 	// alone; nil otherwise.
@@ -262,6 +265,9 @@ func deliverOne(ctx context.Context, target Target, d render.Data, files []messa
 		}
 	}
 	out, err := job.fit(target.Template)
+	if err == nil {
+		defer func(isOverOutput bool) { result.IsOverOutput = isOverOutput }(out.isOverOutput)
+	}
 	var templateErr error
 	var userErr *render.TemplateError
 	if errors.As(err, &userErr) && target.Fallback != nil {
@@ -382,6 +388,8 @@ type textJob struct {
 type fitted struct {
 	text        string
 	isTruncated bool
+	// isOverOutput reports that the template wrote past its output limit.
+	isOverOutput bool
 	// sent are the files to send: the attachments within the limits of
 	// the target, with longFile first when isLongFileSent.
 	sent           []backend.Attachment
@@ -406,6 +414,7 @@ func (j *textJob) fit(tmpl *render.Template) (*fitted, error) {
 	d.Attachments, out.sent = selectFiles(caps, j.full.Attachments, j.named)
 	var err error
 	out.text, out.isTruncated, err = render.ExecuteWhole(tmpl, d, j.limit, j.target.MaxLines, j.measure)
+	out.isOverOutput = tmpl.IsOverOutput()
 	if err != nil || !out.isTruncated {
 		return out, j.withLimit(err)
 	}
@@ -427,6 +436,7 @@ func (j *textJob) fit(tmpl *render.Template) (*fitted, error) {
 	}
 	d.IsCollapsed = j.target.OnLong == OnLongBlockquote
 	out.text, _, err = render.FitLines(tmpl, d, j.limit, j.target.MaxLines, j.measure)
+	out.isOverOutput = tmpl.IsOverOutput()
 	return out, j.withLimit(err)
 }
 

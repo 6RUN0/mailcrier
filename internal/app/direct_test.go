@@ -147,7 +147,7 @@ func TestDirectChats(t *testing.T) {
 		bot := newFakeBot(t)
 		code, inv := bot.run(t, bot.directConfig(directGeneral+"telegram_direct_max = 1\n", ""), "Subject: s\n\nb\n", "--", "1234@telegram", "-100123@telegram", "@ops_channel@telegram")
 		if code != 0 || !slices.Equal(bot.chats(), []string{"1234"}) ||
-			!strings.Contains(inv.output(), `level=WARN msg="direct chats over limit" dropped=2`) || strings.Contains(inv.output(), "100123") {
+			!strings.Contains(inv.output(), `level=WARN msg="direct chats over limit" count=2`) || strings.Contains(inv.output(), "100123") {
 			t.Errorf("Run() = %d, chats %v; output:\n%s", code, bot.chats(), inv.output())
 		}
 	})
@@ -165,7 +165,7 @@ func TestDirectChats(t *testing.T) {
 		bot := newFakeBot(t)
 		code, inv := bot.run(t, bot.directConfig(directGeneral, "\n[[route]]\nrecipient = \"backup\"\ntargets = [\"mm\"]\n"), "Subject: s\n\nb\n", "root", "1234@telegram")
 		if code != 0 || !slices.Equal(bot.chats(), []string{"1234"}) || bot.webhookCount() != 0 ||
-			!strings.Contains(inv.output(), `level=WARN msg="no route for recipient" unrouted=1`) {
+			!strings.Contains(inv.output(), `level=WARN msg="no route for recipient" count=1`) {
 			t.Errorf("Run() = %d, chats %v; output:\n%s", code, bot.chats(), inv.output())
 		}
 	})

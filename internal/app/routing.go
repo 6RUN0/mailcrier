@@ -110,7 +110,7 @@ func (q *queue) decide(log *slog.Logger, subject string, env message.Envelope, i
 			log.Log(ctx, level, "direct chat not allowed", "count", split.NotAllowed)
 		}
 		if split.Dropped > 0 {
-			log.Log(ctx, level, "direct chats over limit", "dropped", split.Dropped)
+			log.Log(ctx, level, "direct chats over limit", "count", split.Dropped)
 		}
 		chats, recipients = split.Chats, split.Rest
 	}
@@ -125,7 +125,7 @@ func (q *queue) decide(log *slog.Logger, subject string, env message.Envelope, i
 			log.Debug("message routed", "targets", decision.Names)
 		}
 		if decision.Unrouted > 0 && (len(names) > 0 || len(chats) > 0) {
-			log.Log(ctx, level, "no route for recipient", "unrouted", decision.Unrouted)
+			log.Log(ctx, level, "no route for recipient", "count", decision.Unrouted)
 		}
 	}
 	for _, chat := range chats {

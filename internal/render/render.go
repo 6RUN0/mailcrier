@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"text/template"
 	"time"
 	"unicode"
@@ -197,6 +198,16 @@ type Template struct {
 	deadline time.Time
 	// mayBeEmpty lets a template of ParsePart render nothing.
 	mayBeEmpty bool
+	// overOutput records that an execution of a copy made by WithBudget
+	// hit the output limit; nil for any other template.
+	overOutput *atomic.Bool
+}
+
+// IsOverOutput reports whether an execution of t, a copy made by
+// WithBudget, wrote past the output limit, which Fit takes as a text over
+// the length limit of the target and cuts.
+func (t *Template) IsOverOutput() bool {
+	return t.overOutput != nil && t.overOutput.Load()
 }
 
 //go:embed defaults/*.tmpl

@@ -279,6 +279,10 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 	// loads: a filter on that tag sees the whole call from here on.
 	received := func(log *slog.Logger) {
 		for _, w := range readWarnings {
+			if w == message.WarningTruncated {
+				log.Warn(w, "size", msg.Size, "max_size", message.MaxSize)
+				continue
+			}
 			log.Warn(w)
 		}
 		log.Info("message received", "size", msg.Size, "recipients", len(env.Recipients))
@@ -454,7 +458,7 @@ func loadTargets(d Deps, log *slog.Logger, newLogger func(tag string) *slog.Logg
 // nothing for mailq, while --status, read by monitoring, reports it as an
 // error.
 func listSpool(d Deps, log *slog.Logger, redactor *redact.Redactor, dir string, mode sendmail.Mode) int {
-	q := &queue{d: d, log: log, redactor: redactor}
+	q := &queue{d: d, log: log, redactor: redactor, settings: config.Spool{Dir: dir}}
 	// What -q takes from the hold/ of the default directory into another
 	// one is listed with it, see queue.otherHold.
 	if d.SpoolDir != "" && dir != d.SpoolDir {
@@ -680,6 +684,11 @@ func logResult(log *slog.Logger, redactor *redact.Redactor, r delivery.Result, i
 	if r.IsTruncated {
 		log.Info("text truncated for target", "target", r.TargetID)
 	}
+	if r.IsOverOutput {
+		// The text was cut because the template wrote too much, not because
+		// the message is long: the template needs fixing.
+		log.Warn("template output limit reached", "target", r.TargetID)
+	}
 	if r.TemplateErr != nil {
 		log.Warn("template failed, built-in used", "target", r.TargetID, "err", r.TemplateErr)
 	}
@@ -711,7 +720,7 @@ func logResult(log *slog.Logger, redactor *redact.Redactor, r delivery.Result, i
 	if deliveryErr != nil && deliveryErr.RetryAfter > 0 {
 		attrs = append(attrs, "retry_after", deliveryErr.RetryAfter)
 	}
-	attrs = append(attrs, "err", r.Err)
+	attrs = append(attrs, "err", failureCause(r.Err))
 	var panicErr *backend.PanicError
 	if errors.As(r.Err, &panicErr) {
 		attrs = append(attrs, "stack", stackText(redactor, panicErr.Stack))
@@ -721,6 +730,17 @@ func logResult(log *slog.Logger, redactor *redact.Redactor, r delivery.Result, i
 		return
 	}
 	log.Error("target failed", attrs...)
+}
+
+// failureCause returns the cause of the failure err of a target without
+// the class and the status of a *backend.Error, which the record carries
+// as fields: "Service Unavailable", not "temporary failure, status 503:
+// Service Unavailable". Any other error comes back as it is.
+func failureCause(err error) error {
+	if deliveryErr, ok := err.(*backend.Error); ok && deliveryErr.Err != nil {
+		return deliveryErr.Err
+	}
+	return err
 }
 
 // minHeaderSecret is the shortest header value, or credential after an
