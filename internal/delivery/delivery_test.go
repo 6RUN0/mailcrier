@@ -685,3 +685,36 @@ func (c requestFailureCase) check(t *testing.T) {
 		t.Errorf("exit code %d", code)
 	}
 }
+
+// BenchmarkFitTarget measures the text of one Telegram target for a body
+// of cron output over its limit: the fit and the choice of files, with
+// the full text built once outside the loop, as all targets share it:
+// go test -run '^$' -bench FitTarget -benchmem ./internal/delivery
+func BenchmarkFitTarget(b *testing.B) {
+	tmpl, err := render.Builtin(text.FormatTelegramHTML)
+	if err != nil {
+		b.Fatal(err)
+	}
+	line := "Oct  9 03:00:01 host CRON[1234]: (root) CMD (run-parts /etc/cron.daily) <x> & y\n"
+	for _, body := range []struct {
+		name string
+		size int
+	}{{"100KiB", 100 << 10}, {"1MiB", 1 << 20}, {"10MiB", 10 << 20}} {
+		b.Run(body.name, func(b *testing.B) {
+			d := testData()
+			d.Body = strings.Repeat(line, body.size/len(line)+1)[:body.size]
+			caps := backend.Caps{MaxText: 4096, Measure: text.MeasureTelegramHTML, MaxFiles: 10}
+			job := &textJob{target: Target{ID: "t"}, caps: caps, limit: caps.MaxText, measure: caps.Measure, full: d, d: d, long: newLongFiles(d, nil)}
+			if _, err := job.long.text(); err != nil {
+				b.Fatal(err)
+			}
+			b.SetBytes(int64(body.size))
+			b.ReportAllocs()
+			for b.Loop() {
+				if out, err := job.fit(tmpl); err != nil || !out.isTruncated {
+					b.Fatalf("truncated = %v, err = %v", out != nil && out.isTruncated, err)
+				}
+			}
+		})
+	}
+}

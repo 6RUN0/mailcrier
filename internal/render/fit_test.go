@@ -517,3 +517,43 @@ func checkFitMatrix(t *testing.T, body string) {
 		}
 	}
 }
+
+// BenchmarkFit measures Fit of a body of cron output with the Telegram
+// HTML template at the limit of the Bot API, with no and two attachments:
+// go test -run '^$' -bench Fit -benchmem ./internal/render
+func BenchmarkFit(b *testing.B) {
+	tmpl, err := Builtin(text.FormatTelegramHTML)
+	if err != nil {
+		b.Fatal(err)
+	}
+	for _, body := range benchBodies {
+		for _, files := range []int{0, 2} {
+			b.Run(fmt.Sprintf("%s/%dfiles", body.name, files), func(b *testing.B) {
+				d := fitData(benchBody(body.size))
+				for i := range files {
+					d.Attachments = append(d.Attachments, Attachment{Name: fmt.Sprintf("%d.log", i), ContentType: "text/plain", Size: 1000})
+				}
+				b.SetBytes(int64(body.size))
+				b.ReportAllocs()
+				for b.Loop() {
+					if _, _, err := Fit(tmpl, d, 4096, text.MeasureTelegramHTML); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
+	}
+}
+
+// benchBodies are the body sizes of BenchmarkFit.
+var benchBodies = []struct {
+	name string
+	size int
+}{{"100KiB", 100 << 10}, {"1MiB", 1 << 20}, {"10MiB", 10 << 20}}
+
+// benchBody returns size bytes of cron output with characters that
+// Telegram HTML escapes.
+func benchBody(size int) string {
+	line := "Oct  9 03:00:01 host CRON[1234]: (root) CMD (run-parts /etc/cron.daily) <x> & y\n"
+	return strings.Repeat(line, size/len(line)+1)[:size]
+}

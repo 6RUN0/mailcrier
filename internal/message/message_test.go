@@ -2,7 +2,9 @@ package message
 
 import (
 	"bytes"
+	"encoding/base64"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"reflect"
@@ -564,4 +566,39 @@ func TestParseAddressListLong(t *testing.T) {
 	if !reflect.DeepEqual(got[len(got)-2:], want) {
 		t.Errorf("last addresses = %+v, want %+v", got[len(got)-2:], want)
 	}
+}
+
+// BenchmarkRead measures Read of a message with an attachment of 1 and
+// 7 MiB in base64, the larger close to MaxSize after encoding:
+// go test -run '^$' -bench Read -benchmem ./internal/message
+func BenchmarkRead(b *testing.B) {
+	for _, size := range []int{1 << 20, 7 << 20} {
+		b.Run(fmt.Sprintf("%dMiB", size>>20), func(b *testing.B) {
+			raw := benchMIME(size)
+			b.SetBytes(int64(len(raw)))
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, _, _, err := Read(bytes.NewReader(raw), ReadOptions{IgnoreDots: true, MaxSize: MaxSize}); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+// benchMIME returns a multipart message with a short text part and an
+// attachment of size bytes of log lines in base64, 76 characters a line.
+func benchMIME(size int) []byte {
+	payload := bytes.Repeat([]byte("Oct  9 03:00:01 host logrotate[1234]: rotating log\n"), size/51+1)[:size]
+	encoded := base64.StdEncoding.EncodeToString(payload)
+	var b bytes.Buffer
+	b.WriteString("From: root@example.org\nTo: root@example.org\nSubject: logrotate\nMIME-Version: 1.0\n" +
+		"Content-Type: multipart/mixed; boundary=\"b\"\n\n--b\nContent-Type: text/plain\n\nsee the log\n" +
+		"--b\nContent-Type: text/plain\nContent-Disposition: attachment; filename=\"rotate.log\"\nContent-Transfer-Encoding: base64\n\n")
+	for line := range slices.Chunk([]byte(encoded), 76) {
+		b.Write(line)
+		b.WriteByte('\n')
+	}
+	b.WriteString("--b--\n")
+	return b.Bytes()
 }
