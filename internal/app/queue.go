@@ -830,8 +830,7 @@ type queueCounts struct {
 // see the entries and errors of other users.
 func (q *queue) listQueue(w io.Writer) int {
 	if q.sp == nil {
-		_, _ = fmt.Fprintln(w, "queue is empty")
-		return exitOK
+		return q.print(w, "queue is empty\n")
 	}
 	counts, lines, err := q.scan(q.d.Credentials.isPrivilegedCaller())
 	if err != nil {
@@ -839,14 +838,14 @@ func (q *queue) listQueue(w io.Writer) int {
 		return exitIOErr
 	}
 	if counts.queued+counts.held+counts.failed == 0 {
-		_, _ = fmt.Fprintln(w, "queue is empty")
-		return exitOK
+		return q.print(w, "queue is empty\n")
 	}
-	_, _ = fmt.Fprintf(w, "%d queued, %d held, %d failed; oldest %s\n", counts.queued, counts.held, counts.failed, counts.oldest)
+	var out strings.Builder
+	_, _ = fmt.Fprintf(&out, "%d queued, %d held, %d failed; oldest %s\n", counts.queued, counts.held, counts.failed, counts.oldest)
 	for _, line := range lines {
-		_, _ = fmt.Fprintln(w, line)
+		out.WriteString(line + "\n")
 	}
-	return exitOK
+	return q.print(w, out.String())
 }
 
 // status prints the counts as one logfmt line for monitoring.
@@ -859,8 +858,17 @@ func (q *queue) status(w io.Writer) int {
 			return exitIOErr
 		}
 	}
-	_, _ = fmt.Fprintf(w, "queued=%d held=%d failed=%d tmp=%d bytes=%d oldest_age_seconds=%d\n",
-		counts.queued, counts.held, counts.failed, counts.tmp, counts.bytes, int64(counts.oldest/time.Second))
+	return q.print(w, fmt.Sprintf("queued=%d held=%d failed=%d tmp=%d bytes=%d oldest_age_seconds=%d\n",
+		counts.queued, counts.held, counts.failed, counts.tmp, counts.bytes, int64(counts.oldest/time.Second)))
+}
+
+// print writes text to w in one call and returns 0, or 74 when that
+// fails: a full disk under a redirection must not read as an empty queue.
+func (q *queue) print(w io.Writer, text string) int {
+	if _, err := io.WriteString(w, text); err != nil {
+		q.log.Error("queue listing not written", "err", err)
+		return exitIOErr
+	}
 	return exitOK
 }
 

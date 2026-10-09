@@ -879,9 +879,13 @@ writable, or a limit is reached.
 A target failed temporarily, or a message to be held could not be held,
 and the spool entry could not be written,
 .Fl q
-could not read the spool, or
+could not read the spool,
 .Fl -status
-found no spool directory.
+found no spool directory, or
+.Nm mailq
+or
+.Fl -status
+could not write their output.
 .It 75
 Only
 .Fl -probe :

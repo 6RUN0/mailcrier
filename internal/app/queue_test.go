@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"testing/iotest"
 	"time"
@@ -1017,6 +1018,15 @@ func TestListQueue(t *testing.T) {
 			t.Errorf("--status = %d, stdout %q", code, inv.stdout.String())
 		}
 	})
+	t.Run("output-not-written-exits-74", func(t *testing.T) {
+		for _, args := range [][]string{{"-bp"}, {"--status"}} {
+			inv := c.invocation(serviceCaller, args)
+			inv.stdoutWriter = failingWriter{}
+			if code := inv.run(t); code != 74 || !strings.Contains(inv.output(), `level=ERROR msg="queue listing not written" err="no space left on device"`) {
+				t.Errorf("%v = %d, want 74; output:\n%s", args, code, inv.output())
+			}
+		}
+	})
 	t.Run("T-MTA-31/empty-spool", func(t *testing.T) {
 		empty := newSpoolCase(t)
 		if code, inv := empty.queueRun(serviceCaller, "-bp"); code != 0 || inv.stdout.String() != "queue is empty\n" {
@@ -1024,6 +1034,11 @@ func TestListQueue(t *testing.T) {
 		}
 	})
 }
+
+// failingWriter fails every write as a full disk does.
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, syscall.ENOSPC }
 
 // TestQueueRemoveFailureSaves pins the fallback of the last result: when
 // the removal of the finished entry fails, the result is saved in a new

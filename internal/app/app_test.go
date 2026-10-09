@@ -52,6 +52,8 @@ type invocation struct {
 	// the output of the modes that print.
 	program string
 	stdout  bytes.Buffer
+	// stdoutWriter replaces stdout when set.
+	stdoutWriter io.Writer
 	// deliver replaces the delivery to the configured targets.
 	deliver func(ctx context.Context, targets []delivery.Target, env message.Envelope, d render.Data, files []message.Attachment) []delivery.Result
 	// spoolDir is Deps.SpoolDir, empty for no spool; now replaces the
@@ -113,6 +115,10 @@ func (inv *invocation) run(t testing.TB) int {
 	if inv.configFS != nil {
 		configFS = inv.configFS
 	}
+	var stdout io.Writer = &inv.stdout
+	if inv.stdoutWriter != nil {
+		stdout = inv.stdoutWriter
+	}
 	deps := Deps{
 		NewLogger: func(tag string) *slog.Logger {
 			buf := &bytes.Buffer{}
@@ -125,7 +131,7 @@ func (inv *invocation) run(t testing.TB) int {
 		Hostname:     "host1.example.org",
 		Now:          now,
 		Program:      program,
-		Stdout:       &inv.stdout,
+		Stdout:       stdout,
 		Stderr:       &inv.stderr,
 		SetLogOutput: func(w io.Writer) { inv.logOutput = w },
 		Credentials:  inv.creds,
