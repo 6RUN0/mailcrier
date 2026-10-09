@@ -644,3 +644,28 @@ func TestFitSearchesBodyMeasuredAsNothing(t *testing.T) {
 		t.Errorf("%d words after the tags kept, want the limit filled: %q", n, out)
 	}
 }
+
+// TestFitRendersTheWholeBodyOnce pins the cost of a body far over the
+// limit: the whole rendering is measured once, every other rendering
+// holds a part of the body of about the limit, also with attachments.
+func TestFitRendersTheWholeBodyOnce(t *testing.T) {
+	tmpl, err := Builtin(text.FormatTelegramHTML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := fitData(benchBody(1 << 20))
+	d.Attachments = []Attachment{{Name: "a.log", ContentType: "text/plain", Size: 1000}, {Name: "b.log", ContentType: "text/plain", Size: 1000}}
+	long := 0
+	measure := func(s string) int {
+		if len(s) > 64<<10 {
+			long++
+		}
+		return text.MeasureTelegramHTML(s)
+	}
+	if _, truncated, err := Fit(tmpl, d, 4096, measure); err != nil || !truncated {
+		t.Fatalf("truncated = %v, err = %v", truncated, err)
+	}
+	if long != 1 {
+		t.Errorf("%d renderings over 64 KiB measured, want the whole one only", long)
+	}
+}

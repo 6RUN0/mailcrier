@@ -45,13 +45,15 @@ var strictFormats = map[text.Format]bool{
 // characters kept: at most about log2 of that number renderings. A search
 // over the body keeps at most limit plus text.WordWindow plus one
 // characters when the rendering of that many is over the limit, which it
-// is unless the measure counts characters of the body as nothing: a body
-// of megabytes costs renderings of about the limit. The body
-// is cut before escaping, so a cut never splits an entity, and the
-// rendering is measured after escaping, because escaping grows the text by
-// a factor that depends on the characters. The search relies on the
-// template growing with the body, the subject and the attachments, which
-// holds for every template that writes them once or more.
+// is unless the measure counts characters of the body as nothing, and the
+// step over attachments is left out when that many characters with no
+// attachment are: a body of megabytes costs renderings of about the
+// limit after the whole one. The body is cut before escaping, so a cut
+// never splits an entity, and the rendering is measured after escaping,
+// because escaping grows the text by a factor that depends on the
+// characters. The search relies on the template growing with the body,
+// the subject and the attachments, which holds for every template that
+// writes them once or more.
 //
 // A template from the configuration whose output exceeds its size limit
 // counts as too long here, as long as there is a limit, so that a body of
@@ -128,9 +130,26 @@ func FitLines(t *Template, d Data, limit, maxLines int, measure func(string) int
 		}
 		return longestFit(total, renderBody)
 	}
+	// isBodyOver reports that the first bound characters of the body,
+	// with no attachment, are over the limit already: then no number of
+	// attachments fits the whole body, and the search over them is spared
+	// its renderings of the whole body.
+	isBodyOver := func() bool {
+		whole := d.Body
+		if bound <= 0 || utf8.RuneCountInString(whole) <= bound {
+			return false
+		}
+		d.Body = text.TruncateRunes(whole, bound)
+		keepAttachments(0)
+		_, fits, err := render()
+		d.Body = whole
+		return err == nil && !fits
+	}
 	if len(attachments) > 0 {
-		if best, found, err := longestFit(len(attachments), renderAttachments); err != nil || found {
-			return best, true, err
+		if !isBodyOver() {
+			if best, found, err := longestFit(len(attachments), renderAttachments); err != nil || found {
+				return best, true, err
+			}
 		}
 		keepAttachments(len(attachments))
 	}
