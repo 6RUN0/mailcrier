@@ -965,3 +965,35 @@ func TestLoadTargetsKeepsConfigTag(t *testing.T) {
 		t.Errorf("log of tag custom lacks the rejection:\n%s", inv.output())
 	}
 }
+
+// BenchmarkOwnMessage measures one call that spools its message and
+// delivers it to every target at once, the fsyncs of the spool included:
+// the spool is in the temporary directory, so a TMPDIR on tmpfs syncs
+// nothing. go test -run '^$' -bench OwnMessage ./internal/app
+func BenchmarkOwnMessage(b *testing.B) {
+	deliver := func(_ context.Context, targets []delivery.Target, _ message.Envelope, _ render.Data, _ []message.Attachment) []delivery.Result {
+		results := make([]delivery.Result, len(targets))
+		for i, target := range targets {
+			results[i] = delivery.Result{TargetID: target.ID, Status: delivery.OK}
+		}
+		return results
+	}
+	for _, n := range []int{1, 3} {
+		b.Run(fmt.Sprintf("targets=%d", n), func(b *testing.B) {
+			var config strings.Builder
+			for i := range n {
+				fmt.Fprintf(&config, "[target.t%d]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"http://127.0.0.1:1/\"\n\n", i)
+			}
+			dir := b.TempDir()
+			for b.Loop() {
+				inv := &invocation{config: config.String(), spoolDir: dir, stdin: strings.NewReader("Subject: disk full\n\n/dev/sda1 99%\n"), deliver: deliver}
+				if code := inv.run(b); code != 0 {
+					b.Fatalf("Run() = %d; output:\n%s", code, inv.output())
+				}
+			}
+			if ids, _ := os.ReadDir(filepath.Join(dir, spool.QueueDir)); len(ids) != 0 {
+				b.Fatalf("queue/ keeps %d files", len(ids))
+			}
+		})
+	}
+}

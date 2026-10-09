@@ -68,7 +68,7 @@ type execCall struct {
 	argv, env []string
 }
 
-func (inv *invocation) run(t *testing.T) int {
+func (inv *invocation) run(t testing.TB) int {
 	t.Helper()
 	inv.logs = map[string]*bytes.Buffer{}
 	client := inv.client

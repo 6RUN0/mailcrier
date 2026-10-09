@@ -173,6 +173,15 @@ func (q *queue) send(ctx context.Context, targets []delivery.Target, env message
 			return
 		}
 		q.apply(rec.Entry, r)
+		// The entry of the last result is removed at once: a Save just
+		// before would cost a sync. On failure Save records the result,
+		// and finish tries the removal again.
+		if !rec.Entry.IsPending() && rec.Remove() == nil {
+			if q.d.spoolSaved != nil {
+				q.d.spoolSaved(rec.Entry)
+			}
+			return
+		}
 		if err := rec.Save(); err != nil {
 			q.hasIOError = true
 			q.log.Error("spool entry not updated", "id", rec.ID(), "target", r.TargetID, "err", err)

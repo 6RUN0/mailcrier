@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -346,6 +347,28 @@ func TestSpoolCrashAfterFirstTarget(t *testing.T) {
 	sp, _ := spool.Open(dir)
 	if ids, _ := sp.List(spool.QueueDir); len(ids) != 0 {
 		t.Errorf("queue/ = %v, want empty", ids)
+	}
+}
+
+// TestSpoolCrashAfterLastTarget kills a delivering process right after
+// the result of its only target is recorded: the entry is gone already,
+// no sidecar with every target finished is left for a queue run.
+func TestSpoolCrashAfterLastTarget(t *testing.T) {
+	r := newReceiver(t)
+	dir := t.TempDir()
+	config := r.config("a")
+	h := startHelper(t, helperKillAfterDone, helperArgs{Config: config, SpoolDir: dir, Creds: elevatedUser, Args: []string{"-ti"}, Stdin: "Subject: last\n\nbody\n"})
+	err := h.cmd.Wait()
+	if status, ok := h.cmd.ProcessState.Sys().(syscall.WaitStatus); !ok || !status.Signaled() || status.Signal() != syscall.SIGKILL {
+		t.Fatalf("helper ended with %v, want SIGKILL; output:\n%s", err, h.output.String())
+	}
+	if got := r.delivered("/a"); len(got) != 1 {
+		t.Fatalf("a got %v, want the message once", got)
+	}
+	for _, area := range []string{spool.QueueDir, spool.TmpDir} {
+		if files, err := os.ReadDir(filepath.Join(dir, area)); err != nil || len(files) != 0 {
+			t.Errorf("%s/ = %v, %v, want empty", area, files, err)
+		}
 	}
 }
 

@@ -186,6 +186,11 @@ func TestLock(t *testing.T) {
 	if err := second.Remove(); err != nil {
 		t.Fatal(err)
 	}
+	// The queue removes an entry after its last result and again when it
+	// releases it.
+	if err := second.Remove(); err != nil {
+		t.Errorf("second Remove() error = %v, want nil", err)
+	}
 	_ = second.Close()
 	if _, err := sp.Lock(QueueDir, e.ID); !errors.Is(err, ErrGone) {
 		t.Errorf("Lock() after Remove error = %v, want ErrGone", err)

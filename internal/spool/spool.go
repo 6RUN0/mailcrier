@@ -130,6 +130,8 @@ type Record struct {
 	// changes of this process.
 	Entry *Entry
 	file  *os.File
+	// isRemoved is set once Remove succeeded.
+	isRemoved bool
 }
 
 // Create writes a new entry into area, locked, and returns it; the caller
@@ -455,12 +457,20 @@ func (r *Record) Save() error {
 
 // Remove deletes the entry: the sidecar first, so that a crash in
 // between leaves a message file that Lock recognizes as finished. Like
-// Save it does not sync the directory.
+// Save it does not sync the directory. Once it succeeded, Remove does
+// nothing.
 func (r *Record) Remove() error {
+	if r.isRemoved {
+		return nil
+	}
 	if err := os.Remove(r.sp.path(r.Area, r.Entry.ID+entrySuffix)); err != nil {
 		return err
 	}
-	return os.Remove(r.sp.path(r.Area, r.Entry.ID+messageSuffix))
+	if err := os.Remove(r.sp.path(r.Area, r.Entry.ID+messageSuffix)); err != nil {
+		return err
+	}
+	r.isRemoved = true
+	return nil
 }
 
 // Move moves the entry to area with its current state. The new sidecar

@@ -115,7 +115,8 @@ type Deps struct {
 	// template data and to choose outcomes.
 	deliver func(ctx context.Context, targets []delivery.Target, env message.Envelope, d render.Data, files []message.Attachment) []delivery.Result
 	// spoolSaved is called after every write of a sidecar during a
-	// delivery, and entryLocked after a queue run took an entry; tests
+	// delivery and after the removal of an entry its last result
+	// finished, and entryLocked after a queue run took an entry; tests
 	// kill or stop the process there.
 	spoolSaved  func(e *spool.Entry)
 	entryLocked func(id string)
