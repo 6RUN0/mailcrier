@@ -1259,6 +1259,22 @@ func TestHold(t *testing.T) {
 			t.Errorf("Run() = %d, tmp %v, want 74 and nothing left; output:\n%s", code, c.ids(spool.TmpDir), inv.output())
 		}
 	})
+	t.Run("rejected-targets-expire-in-own-dir", func(t *testing.T) {
+		c := newSpoolCase(t)
+		own := t.TempDir()
+		c.config = "[spool]\ndir = \"" + own + "\"\n\n[target.x]\ntype = \"shoutrrr\"\nurl = \"nosuch://example.org\"\n"
+		c.send("held", elevatedUser)
+		c.clock.advance(7*24*time.Hour + time.Second)
+		code, inv := c.queueRun(serviceCaller)
+		sp, err := spool.Open(own)
+		if err != nil {
+			t.Fatal(err)
+		}
+		failed, _ := sp.List(spool.FailedDir)
+		if code != 78 || len(failed) != 1 {
+			t.Errorf("-q = %d, failed/ of the own dir %v, want 78 and the entry expired there; output:\n%s", code, failed, inv.output())
+		}
+	})
 	t.Run("rejected-target-holds", func(t *testing.T) {
 		c := newSpoolCase(t)
 		c.config = "[target.x]\ntype = \"shoutrrr\"\nurl = \"nosuch://example.org\"\n"

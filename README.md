@@ -891,7 +891,11 @@ preset = "generic-json"
   the first queue run with a valid configuration routes it as a new
   message, see "Routes and suppression". When the valid file names a
   `dir` other than the default, `-q` also moves what `hold/` of the
-  default directory keeps into that queue. `hold_ttl` bounds the wait.
+  default directory keeps into that queue. `hold_ttl` bounds the wait:
+  while the file is rejected, `-q` moves expired entries to `failed/` and
+  exits 78, in the `dir` of the file when it parses and only its targets
+  are rejected, as the call held its message there, in the default
+  directory otherwise.
   A message to be held, for a rejected configuration or without a route,
   whose entry cannot be created or written (`message lost, not held`)
   exits 73 or 74 instead of 78 or 64, as a temporary failure without a

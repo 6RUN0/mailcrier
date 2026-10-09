@@ -343,11 +343,12 @@ func catchSignals(ctx context.Context, d Deps) (context.Context, context.CancelF
 }
 
 // runQueueMode handles -q, mailq and --status, which need the spool
-// directory and, for -q, the targets from the configuration. A rejected
-// configuration leaves the default directory: -q then only moves expired
-// entries to failed/ and exits 78, mailq and --status list as usual. With
-// a valid file whose dir is not the default, -q also releases what the
-// default directory holds.
+// directory and, for -q, the targets from the configuration. A file
+// that is not read or parsed leaves the default directory, one whose
+// targets are rejected its own dir and limits, where a call holds its
+// message then: -q only moves expired entries to failed/ there and exits
+// 78, mailq and --status list as usual. With a valid file whose dir is not
+// the default, -q also releases what the default directory holds.
 func runQueueMode(ctx context.Context, d Deps, log *slog.Logger, newLogger func(tag string) *slog.Logger, redactor *redact.Redactor, client *http.Client, inv sendmail.Invocation) int {
 	var cfg *config.Config
 	var targets []delivery.Target
@@ -362,13 +363,12 @@ func runQueueMode(ctx context.Context, d Deps, log *slog.Logger, newLogger func(
 		log.Error("configuration rejected", "err", err)
 		cfg, targets = nil, nil
 	}
-	settings := spoolSettings(d, cfg)
+	settings := spoolSettings(d, parsed)
 	if inv.Mode == sendmail.ListQueue || inv.Mode == sendmail.Status {
-		dir := spoolSettings(d, parsed).Dir
 		if err != nil {
-			log.Warn("spool listed under a rejected configuration", "dir", dir)
+			log.Warn("spool listed under a rejected configuration", "dir", settings.Dir)
 		}
-		return listSpool(d, log, dir, inv.Mode)
+		return listSpool(d, log, settings.Dir, inv.Mode)
 	}
 	q, openErr := newQueue(d, log, redactor, settings, targets)
 	if cfg != nil {
