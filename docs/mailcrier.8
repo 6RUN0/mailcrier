@@ -398,6 +398,11 @@ of the
 table names another directory or is empty, which turns the spool off.
 The entry keeps the raw message and the state of each target; it is removed
 once every target has the message or has rejected it.
+When a target failed by a panic, an internal error, the entry moves to
+.Pa failed/
+with the reason
+.Dq internal error
+instead, once no other target waits for it: a retry would repeat the error.
 A target that fails temporarily is tried again by a later queue run, one
 minute after the first failure, twice as long after each further failure, at
 most after 24 hours and never before the Retry-After of the service; later

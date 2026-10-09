@@ -33,7 +33,15 @@ const (
 	reasonNoRoute       = "no route"
 	reasonExpired       = "expired"
 	reasonTargetRemoved = "target removed"
+	// reasonInternal moves an entry to failed/ once no target waits for
+	// it, when a target failed by a panic: a retry would repeat the bug,
+	// and the message stays where mailq shows it.
+	reasonInternal = "internal error"
 )
+
+// classInternal is the class stored for a target that failed by a panic,
+// beside the "temp" and "perm" of delivery.Status.
+const classInternal = "internal"
 
 // queue delivers messages through the spool: the own message of a call
 // and the entries of a queue run. A nil sp means the spool is off.
@@ -173,10 +181,10 @@ func (q *queue) send(ctx context.Context, targets []delivery.Target, env message
 			return
 		}
 		q.apply(rec.Entry, r)
-		// The entry of the last result is removed at once: a Save just
-		// before would cost a sync. On failure Save records the result,
-		// and finish tries the removal again.
-		if !rec.Entry.IsPending() && rec.Remove() == nil {
+		// The entry of the last result is removed, or moved to failed/,
+		// at once: a Save just before would cost a sync. On failure Save
+		// records the result, and finish tries again.
+		if !rec.Entry.IsPending() && q.retire(rec) {
 			if q.d.spoolSaved != nil {
 				q.d.spoolSaved(rec.Entry)
 			}
@@ -207,14 +215,36 @@ func (q *queue) apply(e *spool.Entry, r delivery.Result) {
 	if r.Err != nil {
 		errText = q.redactor.String(r.Err.Error())
 	}
-	switch r.Status {
-	case delivery.OK:
+	switch {
+	case r.Status == delivery.OK:
 		e.MarkDone(r.TargetID)
-	case delivery.Temp:
+	case r.Status == delivery.Temp:
 		e.MarkRetry(r.TargetID, q.d.Now(), retryAfter(r.Err), delivery.Temp.String(), errText)
+	case r.IsInternal():
+		e.MarkFailed(r.TargetID, classInternal, errText)
 	default:
 		e.MarkFailed(r.TargetID, delivery.Perm.String(), errText)
 	}
+}
+
+// hasInternalFailure reports whether a target of e failed by a panic.
+func hasInternalFailure(e *spool.Entry) bool {
+	for _, target := range e.Targets {
+		if target.State == spool.Failed && target.LastClass == classInternal {
+			return true
+		}
+	}
+	return false
+}
+
+// retire disposes of an entry that no target waits for: it moves one with
+// a target that failed by a panic to failed/ and removes any other. It
+// reports whether that succeeded; a failed removal is left to finish.
+func (q *queue) retire(rec *spool.Record) bool {
+	if hasInternalFailure(rec.Entry) {
+		return q.fail(rec, reasonInternal)
+	}
+	return rec.Remove() == nil
 }
 
 // throttle keeps the target out of the rest of a queue run when the
@@ -234,9 +264,14 @@ func retryAfter(err error) time.Duration {
 	return 0
 }
 
-// finish removes an entry that no target waits for and releases it.
+// finish disposes of an entry that no target waits for, as retire does,
+// and releases it.
 func (q *queue) finish(rec *spool.Record) {
-	if !rec.Entry.IsPending() {
+	switch {
+	case rec.Entry.IsPending(), rec.Area == spool.FailedDir:
+	case hasInternalFailure(rec.Entry):
+		q.fail(rec, reasonInternal)
+	default:
 		if err := rec.Remove(); err != nil {
 			q.hasIOError = true
 			q.log.Error("spool entry not removed", "id", rec.ID(), "err", err)
@@ -586,15 +621,16 @@ func (q *queue) save(rec *spool.Record) {
 	}
 }
 
-// fail moves an entry to failed/ with reason.
-func (q *queue) fail(rec *spool.Record, reason string) {
+// fail moves an entry to failed/ with reason and reports whether it did.
+func (q *queue) fail(rec *spool.Record, reason string) bool {
 	rec.Entry.Reason, rec.Entry.FailedAt = reason, q.d.Now()
 	if err := rec.Move(spool.FailedDir); err != nil {
 		q.hasIOError = true
 		q.log.Error("spool entry not moved to failed", "id", rec.ID(), "err", err)
-		return
+		return false
 	}
 	q.log.Error("message failed", "id", rec.ID(), "reason", reason)
+	return true
 }
 
 // clean deletes the files that dead processes left in sp and entries

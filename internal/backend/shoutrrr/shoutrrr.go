@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"runtime/debug"
 	"strings"
 	"sync"
 
@@ -44,8 +45,8 @@ type outcome struct {
 	status       int
 	header       http.Header
 	transportErr error
-	// panicked is the value of a panic of the library, nil without one.
-	panicked any
+	// panicErr is a panic of the library, nil without one.
+	panicErr *backend.PanicError
 }
 
 // New locates the service of opts.URL, so that an unknown scheme or a
@@ -90,8 +91,8 @@ func (s *Sender) Caps() backend.Caps {
 // a rejected request from a network error, and the spool bounds the
 // retries by its TTL. A redirect counts as a permanent failure even when
 // the service reports success: some services accept any status below
-// 400. A panic of the library is a permanent failure that carries its
-// value.
+// 400. A panic of the library is a permanent failure that wraps a
+// *backend.PanicError.
 func (s *Sender) Send(ctx context.Context, p backend.Payload) error {
 	select {
 	case s.busy <- struct{}{}:
@@ -107,7 +108,7 @@ func (s *Sender) Send(ctx context.Context, p backend.Payload) error {
 		// the URL, on stderr.
 		defer func() {
 			if value := recover(); value != nil {
-				done <- outcome{panicked: value}
+				done <- outcome{panicErr: &backend.PanicError{Value: value, Stack: debug.Stack()}}
 			}
 		}()
 		var err error
@@ -128,8 +129,8 @@ func (s *Sender) Send(ctx context.Context, p backend.Payload) error {
 		return &backend.Error{Class: backend.Temporary, Err: fmt.Errorf("shoutrrr send: %w", context.Cause(ctx))}
 	}
 	err, status, header, transportErr := result.err, result.status, result.header, result.transportErr
-	if result.panicked != nil {
-		return &backend.Error{Class: backend.Permanent, Err: fmt.Errorf("panic: %v", result.panicked)}
+	if result.panicErr != nil {
+		return &backend.Error{Class: backend.Permanent, Err: result.panicErr}
 	}
 	switch {
 	case err == nil && status >= 300 && status < 400:

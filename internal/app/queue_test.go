@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -29,6 +31,8 @@ type service struct {
 	replies map[string][]delivery.Status
 	// retryAfter is the delay a temporary failure of the target asks for.
 	retryAfter map[string]time.Duration
+	// panicking marks the targets whose permanent failure is a panic.
+	panicking map[string]bool
 	// sent lists the subjects each target got, whatever the outcome.
 	sent map[string][]string
 	// clock, when set, advances by step on every call.
@@ -37,7 +41,10 @@ type service struct {
 }
 
 func newService() *service {
-	return &service{replies: map[string][]delivery.Status{}, retryAfter: map[string]time.Duration{}, sent: map[string][]string{}}
+	return &service{
+		replies: map[string][]delivery.Status{}, retryAfter: map[string]time.Duration{}, panicking: map[string]bool{},
+		sent: map[string][]string{},
+	}
 }
 
 // reply queues statuses for target.
@@ -66,6 +73,9 @@ func (s *service) deliver(_ context.Context, targets []delivery.Target, _ messag
 			result.Err = &backend.Error{Class: backend.Temporary, Status: 503, RetryAfter: s.retryAfter[target.ID], Err: errors.New("unavailable")}
 		case delivery.Perm:
 			result.Err = &backend.Error{Class: backend.Permanent, Status: 400, Err: errors.New("rejected")}
+			if s.panicking[target.ID] {
+				result.Err = &backend.PanicError{Value: "boom"}
+			}
 		}
 		results = append(results, result)
 	}
@@ -249,6 +259,87 @@ func TestSpoolDelivery(t *testing.T) {
 		e := c.entry(spool.QueueDir)
 		if e.Targets["a"].State != spool.Failed || e.Targets["a"].LastClass != "perm" || e.Targets["b"].State != spool.Pending {
 			t.Errorf("targets = a %+v, b %+v", e.Targets["a"], e.Targets["b"])
+		}
+	})
+}
+
+// TestSpoolInternalError pins that a target that failed by a panic leaves
+// the message in failed/ with the reason internal error, once no other
+// target waits for it, instead of removing it as a rejection does: a
+// retry would repeat the bug, and mailq shows the message.
+func TestSpoolInternalError(t *testing.T) {
+	t.Run("own-message", func(t *testing.T) {
+		c := newSpoolCase(t)
+		c.service.reply("a", delivery.Perm)
+		c.service.panicking["a"] = true
+		if code, inv := c.send("bug", elevatedUser); code != 0 {
+			t.Fatalf("Run() = %d, want 0: b took the message; output:\n%s", code, inv.output())
+		}
+		e := c.entry(spool.FailedDir)
+		if e.Reason != reasonInternal || e.Targets["a"].State != spool.Failed || e.Targets["a"].LastClass != classInternal ||
+			e.Targets["a"].LastError != "panic: boom" || e.Targets["b"].State != spool.Done {
+			t.Errorf("entry = %+v, a = %+v, b = %+v", e, e.Targets["a"], e.Targets["b"])
+		}
+		if ids := c.ids(spool.QueueDir); len(ids) != 0 {
+			t.Errorf("queue/ = %v, want empty", ids)
+		}
+	})
+	t.Run("queue-run-waits-for-pending-target", func(t *testing.T) {
+		c := newSpoolCase(t)
+		c.service.reply("a", delivery.Temp, delivery.Perm)
+		c.service.reply("b", delivery.Temp, delivery.Temp)
+		c.service.panicking["a"] = true
+		if code, inv := c.send("bug", elevatedUser); code != 0 {
+			t.Fatalf("Run() = %d, want 0; output:\n%s", code, inv.output())
+		}
+		c.clock.advance(2 * time.Minute)
+		if code, inv := c.queueRun(rootCaller); code != 0 {
+			t.Fatalf("first -q = %d, want 0; output:\n%s", code, inv.output())
+		}
+		e := c.entry(spool.QueueDir)
+		if e.Targets["a"].LastClass != classInternal || e.Targets["b"].State != spool.Pending {
+			t.Fatalf("after the panic a = %+v, b = %+v; want a failed internal, b pending", e.Targets["a"], e.Targets["b"])
+		}
+		c.clock.advance(3 * time.Minute)
+		code, inv := c.queueRun(rootCaller)
+		if code != 0 || !strings.Contains(inv.output(), `msg="message failed" id=`+e.ID+` reason="internal error"`) {
+			t.Fatalf("second -q = %d; output:\n%s", code, inv.output())
+		}
+		if got := c.entry(spool.FailedDir); got.Reason != reasonInternal || got.Targets["b"].State != spool.Done {
+			t.Errorf("failed entry = %+v, b = %+v", got, got.Targets["b"])
+		}
+		mailq := c.invocation(rootCaller, []string{"-bp"})
+		if code := mailq.run(t); code != 0 || !strings.Contains(mailq.stdout.String(), `reason="internal error"`) ||
+			!strings.Contains(mailq.stdout.String(), `a failed attempts=1 internal="panic: boom"`) {
+			t.Errorf("mailq = %d:\n%s", code, mailq.stdout.String())
+		}
+	})
+	t.Run("real-panic-keeps-token-out-of-spool", func(t *testing.T) {
+		dir := t.TempDir()
+		inv := &invocation{
+			config: httpTargetConfig("https://hooks.example.org/hook/" + secretToken), client: &http.Client{Transport: panickingTransport{}},
+			spoolDir: dir, stdin: strings.NewReader("Subject: t\n\nb\n"),
+		}
+		if code := inv.run(t); code != 69 {
+			t.Fatalf("Run() = %d, want 69; output:\n%s", code, inv.output())
+		}
+		files := spoolFiles(t, dir)
+		var sidecar string
+		for name, content := range files {
+			if strings.HasPrefix(name, "/"+spool.FailedDir+"/") && strings.HasSuffix(name, ".json") {
+				sidecar = content
+			}
+		}
+		if !strings.Contains(sidecar, `"last_class": "internal"`) || !strings.Contains(sidecar, "panic: unexpected request to ***") {
+			t.Errorf("failed/ sidecar = %q; spool: %v", sidecar, slices.Collect(maps.Keys(files)))
+		}
+		for name, content := range files {
+			if strings.Contains(content, secretToken) {
+				t.Errorf("%s contains the token", name)
+			}
+		}
+		if strings.Contains(inv.output(), secretToken) {
+			t.Errorf("output contains the token:\n%s", inv.output())
 		}
 	})
 }

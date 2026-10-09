@@ -160,3 +160,19 @@ func (e *Error) Error() string {
 func (e *Error) Unwrap() error {
 	return e.Err
 }
+
+// PanicError is a recovered panic of the code that renders or sends for a
+// target: a bug of this program or of a library, not an answer of the
+// service, so a retry would only repeat it.
+type PanicError struct {
+	// Value is the value of the panic. It may quote a request URL, so it
+	// goes through the redactor like any error text.
+	Value any
+	// Stack is the stack of the goroutine that panicked.
+	Stack []byte
+}
+
+// Error returns the value of the panic.
+func (e *PanicError) Error() string {
+	return fmt.Sprintf("panic: %v", e.Value)
+}

@@ -147,7 +147,8 @@ func TestDeliverEachReportsEarly(t *testing.T) {
 }
 
 // TestDeliverRecoversPanic pins that a panic for one target becomes its
-// permanent failure while the other target delivers.
+// permanent failure, marked internal and with the stack, while the other
+// target delivers; a rejection by the service is not internal.
 func TestDeliverRecoversPanic(t *testing.T) {
 	t.Run("panic-in-sender", func(t *testing.T) {
 		panicking := &fakeSender{send: func(context.Context, backend.Payload) error { panic("bug in sender") }}
@@ -155,17 +156,23 @@ func TestDeliverRecoversPanic(t *testing.T) {
 			{ID: "bad", Sender: panicking, Template: plainTemplate(t)},
 			{ID: "good", Sender: &fakeSender{}, Template: plainTemplate(t)},
 		}, testData(), nil)
-		if results[0].Status != Perm || results[0].Err == nil || !strings.Contains(results[0].Err.Error(), "bug in sender") {
+		var panicErr *backend.PanicError
+		if results[0].Status != Perm || !results[0].IsInternal() || !errors.As(results[0].Err, &panicErr) ||
+			!strings.Contains(results[0].Err.Error(), "bug in sender") || !strings.Contains(string(panicErr.Stack), "TestDeliverRecoversPanic") {
 			t.Errorf("panicking target: %+v", results[0])
 		}
-		if results[1].Status != OK || ExitCode(results, QueueOff) != 0 {
+		if results[1].Status != OK || results[1].IsInternal() || ExitCode(results, QueueOff) != 0 {
 			t.Errorf("other target: %+v", results[1])
+		}
+		rejected := Result{Status: Perm, Err: &backend.Error{Class: backend.Permanent, Status: 400, Err: errors.New("rejected")}}
+		if rejected.IsInternal() {
+			t.Errorf("a rejection counts as internal: %+v", rejected)
 		}
 	})
 	t.Run("panic-in-rendering", func(t *testing.T) {
 		sender := &fakeSender{caps: backend.Caps{MaxText: 10, Measure: func(string) int { panic("bug in measure") }}}
 		results := Deliver(context.Background(), []Target{{ID: "bad-measure", Sender: sender, Template: plainTemplate(t)}}, testData(), nil)
-		if results[0].Status != Perm || results[0].Err == nil || !strings.HasPrefix(results[0].Err.Error(), "panic: ") {
+		if results[0].Status != Perm || !results[0].IsInternal() || !strings.HasPrefix(results[0].Err.Error(), "panic: ") {
 			t.Errorf("result = %+v", results[0])
 		}
 	})

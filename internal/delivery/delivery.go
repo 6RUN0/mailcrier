@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"maps"
 	"net/url"
+	"runtime/debug"
 	"slices"
 	"sync"
 	"time"
@@ -161,6 +162,13 @@ type Result struct {
 	RequestErr error
 }
 
+// IsInternal reports that the target failed by a panic, a bug of this
+// program or of a library, rather than by an answer of the service.
+func (r Result) IsInternal() bool {
+	var panicErr *backend.PanicError
+	return errors.As(r.Err, &panicErr)
+}
+
 // Deliver renders d for every target, fitted to its length limit, and
 // sends it with the files of the message, all targets at once. files are
 // the attachments of the message in the order of d.Attachments. The
@@ -177,8 +185,9 @@ type Result struct {
 // that template, once, before the full text goes as a file.
 //
 // A panic while rendering or sending for one target, a bug, becomes a
-// permanent failure of that target: the others still deliver, and the
-// value goes into the error, which the caller logs redacted.
+// permanent failure of that target with a *backend.PanicError, which
+// Result.IsInternal reports: the others still deliver, and the value goes
+// into the error, which the caller logs redacted.
 func Deliver(ctx context.Context, targets []Target, d render.Data, files []message.Attachment) []Result {
 	return DeliverEach(ctx, targets, d, files, nil, nil)
 }
@@ -208,7 +217,7 @@ func DeliverEach(ctx context.Context, targets []Target, d render.Data, files []m
 func deliverOne(ctx context.Context, target Target, d render.Data, files []message.Attachment, long *longFiles) (result Result) {
 	defer func() {
 		if value := recover(); value != nil {
-			result = Result{TargetID: target.ID, Status: Perm, Err: fmt.Errorf("panic: %v", value)}
+			result = Result{TargetID: target.ID, Status: Perm, Err: &backend.PanicError{Value: value, Stack: debug.Stack()}}
 		}
 	}()
 	caps := target.Sender.Caps()

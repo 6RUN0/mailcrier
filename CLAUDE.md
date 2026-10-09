@@ -259,8 +259,10 @@ with "build constraints exclude all Go files".
   and without fallback (`request template failed, message not sent`).
   `Result.RequestErr` marks it for `app.logResult`. `Template` is nil for
   an http GET, which sends no text. A panic in the goroutine of a target
-  is recovered into a permanent result, so a target must not share
-  mutable state with another. `DeliverEach` also hands each result to a
+  is recovered into a permanent result with a `*backend.PanicError`
+  (`Result.IsInternal`, class `internal` in the sidecar; the spool moves
+  the entry to `failed/` with reason `internal error` once no target is
+  pending), so a target must not share mutable state with another. `DeliverEach` also hands each result to a
   callback as its target finishes (the spool marks `Done` there).
   `ExitCode(results, queue)` is the exit status matrix, rules in order:
   Temp without a spool entry 73/74, any OK 0, any Perm 69, Temp queued 0,

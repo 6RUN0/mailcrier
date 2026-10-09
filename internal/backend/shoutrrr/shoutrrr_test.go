@@ -136,7 +136,9 @@ func TestSendRecoversPanic(t *testing.T) {
 	}
 	err = sender.Send(context.Background(), backend.Payload{Text: "t"})
 	var deliveryErr *backend.Error
-	if !errors.As(err, &deliveryErr) || deliveryErr.Class != backend.Permanent || !strings.Contains(err.Error(), "panic: transport broken") {
+	var panicErr *backend.PanicError
+	if !errors.As(err, &deliveryErr) || deliveryErr.Class != backend.Permanent || !errors.As(err, &panicErr) ||
+		!strings.Contains(err.Error(), "panic: transport broken") || len(panicErr.Stack) == 0 {
 		t.Fatalf("Send() error = %v, want permanent with the panic value", err)
 	}
 	err = sender.Send(context.Background(), backend.Payload{Text: "t"})

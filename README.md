@@ -849,7 +849,9 @@ preset = "generic-json"
   message as `queue/<id>.eml` and its state per target as
   `queue/<id>.json`, each first written to `tmp/`, synced and moved into
   `queue/`. The state is rewritten after each target, and the entry
-  removed once no target waits for it. A target that fails temporarily
+  removed once no target waits for it, or moved to `failed/` with the
+  reason `internal error` when a target failed by a panic (see "Exit
+  status"). A target that fails temporarily
   stays pending, and the call exits 0 with the warning `message queued` (or
   `message queued for target` when another target has the message): the
   message is accepted, as a classic MTA accepts it into its queue.
@@ -1184,7 +1186,11 @@ option: `-f --probe` names a sender.
 
 The targets are sent to at the same time. A panic while rendering or
 sending for one target (a bug) fails that target permanently, logged
-redacted as `target failed`, and the others still deliver. A panic in any
+redacted as `target failed`, and the others still deliver. Its spool
+entry is not removed: once no target of the message is pending it moves
+to `failed/` with the reason `internal error` (`message failed`), where
+`mailq` shows the target with `internal="panic: ..."` until `failed_ttl`
+deletes it; a retry would repeat the bug. A panic in any
 other goroutine ends the process with the Go runtime's own report on
 stderr and status 2; that report is not redacted. A target that failed is
 logged as `target failed`; a temporary failure is also logged as

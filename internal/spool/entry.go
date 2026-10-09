@@ -91,7 +91,8 @@ type TargetState struct {
 	Attempts int `json:"attempts,omitempty"`
 	// NextAt is the earliest time of the next attempt.
 	NextAt time.Time `json:"next_at,omitzero"`
-	// LastClass is "temp" or "perm" after a failure.
+	// LastClass is "temp", "perm" or, for a panic of the code, "internal"
+	// after a failure.
 	LastClass string `json:"last_class,omitempty"`
 	// LastError is the text of the last failure, redacted by the caller.
 	LastError string `json:"last_error,omitempty"`
