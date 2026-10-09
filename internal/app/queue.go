@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"runtime/debug"
 	"slices"
 	"strings"
 	"sync"
@@ -72,6 +73,9 @@ type queue struct {
 	throttled map[string]time.Time
 	// hasIOError records a spool error that makes -q exit 74.
 	hasIOError bool
+	// hasPanicked records a panic on one entry of a queue run, which
+	// makes -q exit 70.
+	hasPanicked bool
 	// otherHold is another spool directory whose hold/ a queue run
 	// releases into this queue; empty for none.
 	otherHold string
@@ -314,7 +318,8 @@ type runLimits struct {
 
 // run works through hold/ and queue/, oldest entries first, and returns
 // an error when the spool cannot be listed. Entries locked by another
-// process are skipped: that process delivers them.
+// process are skipped: that process delivers them. A panic on one entry
+// fails that entry alone, see recoverEntry.
 func (q *queue) run(ctx context.Context, limits runLimits) error {
 	ctx, cancel := context.WithTimeout(ctx, limits.budget)
 	defer cancel()
@@ -382,6 +387,7 @@ func (q *queue) lock(area, id string, owner int) *spool.Record {
 // keeps one without a route. It reports whether the entry is now in the
 // queue.
 func (q *queue) release(rec *spool.Record) bool {
+	defer q.recoverEntry(rec)
 	if spool.Expired(rec.Entry, q.d.Now(), q.settings.HoldTTL.Duration) {
 		q.fail(rec, reasonExpired)
 		return false
@@ -547,6 +553,7 @@ func (q *queue) removeReleased(rec *spool.Record, message string) {
 // anything.
 func (q *queue) deliverEntry(ctx context.Context, rec *spool.Record) bool {
 	defer q.finish(rec)
+	defer q.recoverEntry(rec)
 	e, now := rec.Entry, q.d.Now()
 	log := q.log.With("id", e.ID)
 	if spool.Expired(e, now, q.settings.QueueTTL.Duration) {
@@ -618,6 +625,22 @@ func (q *queue) save(rec *spool.Record) {
 	if err := rec.Save(); err != nil {
 		q.hasIOError = true
 		q.log.Error("spool entry not updated", "id", rec.ID(), "err", err)
+	}
+}
+
+// recoverEntry is deferred by the steps of a queue run on one locked
+// entry. A panic there, a bug, is logged with its stack and moves the
+// entry to failed/ with reasonInternal, so that the next run does not die
+// on it again, and the run goes on with the next entry.
+func (q *queue) recoverEntry(rec *spool.Record) {
+	value := recover()
+	if value == nil {
+		return
+	}
+	q.hasPanicked = true
+	q.log.Error("panic in queue run", "id", rec.ID(), "panic", value, "stack", stackText(q.redactor, debug.Stack()))
+	if rec.Area != spool.FailedDir && q.sp.Has(rec.Area, rec.ID()) {
+		q.fail(rec, reasonInternal)
 	}
 }
 
@@ -700,6 +723,9 @@ func (q *queue) runQueue(ctx context.Context) int {
 		if other != nil {
 			q.clean(other)
 		}
+	}
+	if q.hasPanicked {
+		return exitSoftware
 	}
 	if q.hasIOError {
 		return exitIOErr

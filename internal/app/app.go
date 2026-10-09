@@ -55,6 +55,20 @@ const (
 	exitConfig      = 78
 )
 
+// maxStackLength bounds the stack in the record of a panic: rsyslog keeps
+// 8 KiB of a message by default (maxMessageSize), the other fields included.
+const maxStackLength = 4096
+
+// stackText returns stack redacted and cut to maxStackLength, after the
+// redaction: a secret cut in half would no longer match.
+func stackText(redactor *redact.Redactor, stack []byte) string {
+	text := redactor.String(string(stack))
+	if len(text) > maxStackLength {
+		text = strings.ToValidUTF8(text[:maxStackLength], "")
+	}
+	return text
+}
+
 // envConfig names another configuration file, like --config.
 const envConfig = "MAILCRIER_CONFIG"
 

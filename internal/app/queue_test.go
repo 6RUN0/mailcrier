@@ -460,6 +460,39 @@ func TestQueueRun(t *testing.T) {
 			t.Errorf("queue/ = %v, want only the temporary failure", ids)
 		}
 	})
+	t.Run("T-ADJ-53/run-goes-on-after-a-panic", func(t *testing.T) {
+		c := newSpoolCase(t)
+		for _, subject := range []string{"one", "two"} {
+			c.service.reply("a", delivery.Temp)
+			c.send(subject, elevatedUser)
+		}
+		poisoned := c.ids(spool.QueueDir)[0]
+		c.clock.advance(time.Minute)
+		inv := c.invocation(serviceCaller, []string{"-q"})
+		inv.deliver = func(ctx context.Context, targets []delivery.Target, env message.Envelope, d render.Data, files []message.Attachment) []delivery.Result {
+			if d.Subject == "one" {
+				panic("bug in the queue run")
+			}
+			return c.service.deliver(ctx, targets, env, d, files)
+		}
+		if code := inv.run(t); code != 70 {
+			t.Fatalf("-q = %d, want 70; output:\n%s", code, inv.output())
+		}
+		output := inv.output()
+		if !strings.Contains(output, `level=ERROR msg="panic in queue run" id=`+poisoned+` panic="bug in the queue run" stack="goroutine `) ||
+			!strings.Contains(output, `msg="message failed" id=`+poisoned+` reason="internal error"`) {
+			t.Errorf("output lacks the panic and the failed entry:\n%s", output)
+		}
+		if got := c.service.got("a")[2:]; !slices.Equal(got, []string{"two"}) {
+			t.Errorf("a got %v in the run, want the entry after the panic", got)
+		}
+		if ids := c.ids(spool.QueueDir); len(ids) != 0 {
+			t.Errorf("queue/ = %v, want empty", ids)
+		}
+		if e := c.entry(spool.FailedDir); e.ID != poisoned || e.Reason != reasonInternal {
+			t.Errorf("failed entry = %+v, want %s with reason internal error", e, poisoned)
+		}
+	})
 	t.Run("T-ADJ-19/expired-entry-moves-to-failed", func(t *testing.T) {
 		c := newSpoolCase(t)
 		c.service.reply("a", delivery.Temp)

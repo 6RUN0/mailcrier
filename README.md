@@ -1190,7 +1190,10 @@ redacted as `target failed`, and the others still deliver. Its spool
 entry is not removed: once no target of the message is pending it moves
 to `failed/` with the reason `internal error` (`message failed`), where
 `mailq` shows the target with `internal="panic: ..."` until `failed_ttl`
-deletes it; a retry would repeat the bug. A panic in any
+deletes it; a retry would repeat the bug. A panic on one entry of a queue
+run is logged as `panic in queue run` with the id and the stack, moves
+that entry to `failed/` the same way, and the run goes on with the next
+one; `-q` then exits 70. A panic in any
 other goroutine ends the process with the Go runtime's own report on
 stderr and status 2; that report is not redacted. A target that failed is
 logged as `target failed`; a temporary failure is also logged as
