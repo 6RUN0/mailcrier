@@ -456,14 +456,15 @@ func (r *Record) Save() error {
 }
 
 // Remove deletes the entry: the sidecar first, so that a crash in
-// between leaves a message file that Lock recognizes as finished. Like
-// Save it does not sync the directory. Once it succeeded, Remove does
-// nothing.
+// between leaves a message file that Lock recognizes as finished. A
+// missing sidecar is the trace of such a removal whose second step
+// failed, so Remove goes on to the message. Like Save it does not sync
+// the directory. Once it succeeded, Remove does nothing.
 func (r *Record) Remove() error {
 	if r.isRemoved {
 		return nil
 	}
-	if err := os.Remove(r.sp.path(r.Area, r.Entry.ID+entrySuffix)); err != nil {
+	if err := os.Remove(r.sp.path(r.Area, r.Entry.ID+entrySuffix)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 	if err := os.Remove(r.sp.path(r.Area, r.Entry.ID+messageSuffix)); err != nil {

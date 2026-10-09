@@ -197,6 +197,28 @@ func TestLock(t *testing.T) {
 	}
 }
 
+// TestRemoveWithoutSidecar pins that Remove deletes the message of an
+// entry whose sidecar a previous Remove deleted before its unlink of the
+// message failed, rather than failing on the missing sidecar.
+func TestRemoveWithoutSidecar(t *testing.T) {
+	sp := openSpool(t)
+	e := NewEntry(NewID(testNow), 1000, testNow, testNow, message.Envelope{}, []string{"a"})
+	rec, err := sp.Create(QueueDir, e, []byte("Subject: s\n\nb\n"), Quota{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rec.Close() }()
+	if err := os.Remove(filepath.Join(sp.dir, QueueDir, e.ID+entrySuffix)); err != nil {
+		t.Fatal(err)
+	}
+	if err := rec.Remove(); err != nil {
+		t.Errorf("Remove() error = %v, want nil", err)
+	}
+	if got := names(t, sp, QueueDir); len(got) != 0 {
+		t.Errorf("queue/ = %v, want empty", got)
+	}
+}
+
 // TestLockAfterRemovalByHolder pins that an entry opened before its
 // holder removed it is recognized as gone once the lock comes free.
 func TestLockAfterRemovalByHolder(t *testing.T) {
