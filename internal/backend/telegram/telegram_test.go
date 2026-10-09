@@ -131,6 +131,17 @@ func TestSendTransportErrors(t *testing.T) {
 		<-release
 	}))
 	defer cutAnswer.Close()
+	// A proxy closes the connection in the middle of the answer.
+	closedAnswer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		conn, buf, err := w.(http.Hijacker).Hijack()
+		if err != nil {
+			return
+		}
+		_, _ = buf.WriteString("HTTP/1.1 400 Bad Request\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n{\"ok\": false, \"descr")
+		_ = buf.Flush()
+		_ = conn.Close()
+	}))
+	defer closedAnswer.Close()
 	defer close(release)
 	closed := httptest.NewServer(http.NotFoundHandler())
 	closed.Close()
@@ -152,6 +163,7 @@ func TestSendTransportErrors(t *testing.T) {
 		{"T-ADJ-45/timeout", hanging.URL, 100 * time.Millisecond, "temporary failure: Post: http_timeout 100ms exceeded"},
 		{"T-ADJ-45/deadline", hanging.URL, 0, "temporary failure: Post: deadline 100ms exceeded"},
 		{"T-ADJ-45/answer-cut-by-timeout", cutAnswer.URL, 100 * time.Millisecond, "temporary failure, status 400: answer not read: http_timeout 100ms exceeded"},
+		{"T-ADJ-45/answer-cut-by-close", closedAnswer.URL, 100 * time.Millisecond, "temporary failure, status 400: answer not read: unexpected EOF"},
 		{"T-ADJ-45/connection-refused", closed.URL, 100 * time.Millisecond, "connection refused"},
 	}
 	for _, tc := range cases {

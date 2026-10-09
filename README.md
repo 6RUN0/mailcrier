@@ -279,9 +279,9 @@ preset = "generic-json"
   failure whose error names the bound, such as `Post: http_timeout 15s
   exceeded` or `Post: deadline 30s exceeded`; `run_budget`,
   `drain_budget` and the `timeout` of a hook show the same way, a stop
-  signal as `terminated signal received`. A timeout while the answer of
-  Telegram or Slack is read is temporary as well (`answer not read`),
-  whatever the status.
+  signal as `terminated signal received`. A timeout or a connection closed
+  while the answer of Telegram or Slack is read is temporary as well
+  (`answer not read`), whatever the status.
 - Proxy environment variables (`HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`)
   are honoured without elevation and ignored by a setgid-elevated process.
 - The file mode creation mask is always `007`.
@@ -449,8 +449,10 @@ msg = "{{ .Subject | truncate 200 }}"
   the log like tokens, and so is every piece of the text of `path` outside
   the actions between two slashes of 16 characters or more, as written
   and unescaped. A redirect is not followed and counts as a permanent
-  failure, `redirect to <Location> not followed`, with user information
-  and query dropped and a token of the target in the path masked.
+  failure, `redirect to https://host not followed` with only the scheme
+  and host of the Location: its path repeats that of the target, where a
+  topic or key is a secret of any length. The same holds for every
+  target type, `shoutrrr` included.
 
 ```toml
 [target.run]

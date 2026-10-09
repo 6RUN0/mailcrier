@@ -21,6 +21,10 @@ const secretToken = "T0KEN-0123456789abcdefghij"
 // each webhook its own subdomain.
 const secretHost = "eo1a2b3c4d5e6f7g8h9i0j"
 
+// shortTopic is a secret in the path of a target shorter than the
+// fragments the redactor masks on its own, such as a topic of ntfy.
+const shortTopic = "alerts7q"
+
 // redirectingClient trusts server and connects every request to it,
 // whatever host the URL names.
 func redirectingClient(server *httptest.Server) *http.Client {
@@ -81,7 +85,17 @@ func TestRunKeepsTokenOutOfLogs(t *testing.T) {
 			}))
 			t.Cleanup(server.Close)
 			return httpTargetConfig(server.URL + "/hook/" + secretToken), nil
-		}, 69, `status=302 err="redirect to https://moved.example.org*** not followed"`},
+		}, 69, `status=302 err="redirect to https://moved.example.org not followed"`},
+		{"redirect-repeats-short-topic", func(t *testing.T) (string, *http.Client) {
+			// The topic is shorter than any secret the redactor masks on its
+			// own; the Location repeats it on another scheme.
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Location", "https://ntfy.example.org/"+shortTopic)
+				w.WriteHeader(http.StatusMovedPermanently)
+			}))
+			t.Cleanup(server.Close)
+			return "[target.nt]\ntype = \"ntfy\"\nurl = \"" + server.URL + "/" + shortTopic + "\"\n", nil
+		}, 69, `status=301 err="redirect to https://ntfy.example.org not followed"`},
 		{"tls-error", func(t *testing.T) (string, *http.Client) {
 			server := httptest.NewTLSServer(http.NotFoundHandler())
 			t.Cleanup(server.Close)
@@ -150,7 +164,7 @@ func TestRunKeepsTokenOutOfLogs(t *testing.T) {
 			if !strings.Contains(output, tc.wantLog) {
 				t.Errorf("output lacks %q:\n%s", tc.wantLog, output)
 			}
-			for _, secret := range []string{secretToken, secretHost} {
+			for _, secret := range []string{secretToken, secretHost, shortTopic} {
 				if strings.Contains(output, secret) {
 					t.Errorf("output contains %q:\n%s", secret, output)
 				}

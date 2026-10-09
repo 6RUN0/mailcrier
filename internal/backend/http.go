@@ -74,12 +74,17 @@ type clientTimeoutKey struct{}
 
 // BodyError returns the error of reading the body of resp as a temporary
 // *Error when the reading failed, not the content: the context of the
-// request ended or the connection failed; the cause names the bound as in
-// RequestError. It returns nil for any other error, such as JSON that does
-// not parse, which the caller describes without quoting the body.
+// request ended, the connection failed, or the body ended early, which
+// net/http reports as io.ErrUnexpectedEOF when the connection closed
+// before Content-Length; the cause names the bound as in RequestError. It
+// returns nil for any other error, such as JSON that does not parse, which
+// the caller describes without quoting the body. A JSON decoder gives
+// io.ErrUnexpectedEOF for a whole body cut in the middle of a value too:
+// whether the message arrived is unknown then as well, and a duplicate
+// costs less than a loss.
 func BodyError(resp *http.Response, err error) *Error {
 	var netErr net.Error
-	if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) && !errors.As(err, &netErr) {
+	if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) && !errors.As(err, &netErr) && !errors.Is(err, io.ErrUnexpectedEOF) {
 		return nil
 	}
 	cause := WithoutURL(err)
@@ -103,42 +108,44 @@ func WithoutURL(err error) error {
 }
 
 // StatusError returns the *Error of a response outside 2xx, classified by
-// its status and Retry-After header. The body is not quoted: it may echo
-// the request, and the request carries the message. A redirect names its
-// Location, see locationText.
+// its status and Retry-After header, with StatusCause as the cause.
 func StatusError(resp *http.Response) *Error {
-	cause := errors.New(http.StatusText(resp.StatusCode))
-	if location := resp.Header.Get("Location"); resp.StatusCode >= 300 && resp.StatusCode < 400 && location != "" {
-		cause = fmt.Errorf("redirect to %s not followed", locationText(location))
-	}
 	return &Error{
 		Class:      Classify(resp.StatusCode, resp.Header, nil),
 		Status:     resp.StatusCode,
 		RetryAfter: RetryAfter(resp.Header),
-		Err:        cause,
+		Err:        StatusCause(resp.StatusCode, resp.Header),
 	}
 }
 
-// maxLocationBytes bounds the Location quoted in the error of a redirect,
-// a header of the service.
-const maxLocationBytes = 256
-
-// locationText returns the Location of a redirect without user
-// information, query and fragment, cut to maxLocationBytes: a moved
-// webhook shows where it went. A token in the path is masked by the
-// redactor of the log like the URL of the target it repeats.
-func locationText(location string) string {
-	u, err := url.Parse(location)
-	if err != nil {
-		return "an invalid URL"
+// StatusCause describes a response outside 2xx by its status text. The
+// body is not quoted: it may echo the request, and the request carries
+// the message. A redirect names the scheme and host of its Location,
+// "redirect to https://ntfy.example.org not followed", which tells a
+// moved service; the path and query are left out, since they repeat the
+// path of the target, where a topic or a key of any length is a secret
+// the redactor does not know.
+func StatusCause(status int, header http.Header) error {
+	if status < 300 || status >= 400 {
+		return errors.New(http.StatusText(status))
 	}
-	u.User, u.RawQuery, u.ForceQuery, u.Fragment, u.RawFragment = nil, "", false, "", ""
-	text := u.String()
-	if len(text) > maxLocationBytes {
-		text = strings.ToValidUTF8(text[:maxLocationBytes], "") + "..."
+	location, err := url.Parse(header.Get("Location"))
+	switch {
+	case err != nil || header.Get("Location") == "":
+		return errors.New("redirect not followed")
+	case location.Host == "":
+		return errors.New("redirect to another path not followed")
 	}
-	return text
+	host := location.Host
+	if len(host) > maxLocationHost {
+		host = strings.ToValidUTF8(host[:maxLocationHost], "") + "..."
+	}
+	return fmt.Errorf("redirect to %s://%s not followed", location.Scheme, host)
 }
+
+// maxLocationHost bounds the host of a Location quoted in the error of a
+// redirect, a header of the service; a DNS name has at most 253 bytes.
+const maxLocationHost = 253
 
 // Do sends req with client and returns the outcome as an *Error: a
 // transport failure by TransportError, the response by parse, or, with a

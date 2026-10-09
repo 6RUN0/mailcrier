@@ -80,34 +80,31 @@ func New(opts Options) (*Sender, error) {
 	return &Sender{service: service, recorder: recorder, busy: make(chan struct{}, 1)}, nil
 }
 
-// minURLPart is the shortest path segment or query value of the URL that
-// withoutURLParts masks: a shorter one is a word such as "id", whose
-// masking would garble the text. User name and password are masked at any
-// length.
+// minURLPart is the shortest part of the URL that withoutURLParts masks:
+// a shorter one is a word such as "id", whose masking would garble the
+// text.
 const minURLPart = 3
 
 // withoutURLParts returns the text of an error of the library with the
-// user name, password, path segments and query values of raw replaced by
-// ***: the library quotes the token it rejects, whatever its length, and
-// the redactor of the log masks a short one only as part of the whole URL.
+// parts of raw that may hold a secret replaced by ***: user information,
+// host and its labels, path segments, raw and decoded, and query values.
+// The library quotes the token it rejects whatever its length, several
+// services keep it in the host (pushover://shoutrrr:token@userKey/), and
+// the redactor of the log masks a short part only within the whole URL.
+// The scheme stays, and so does a host that only repeats the name of the
+// service (telegram://token@telegram): they name the service.
 func withoutURLParts(err error, raw string) string {
 	text := backend.WithoutURL(err).Error()
 	parsed, parseErr := url.Parse(raw)
 	if parseErr != nil {
 		return "invalid URL"
 	}
-	parts := []string{raw}
-	for _, segment := range strings.Split(parsed.Path, "/") {
-		if len(segment) >= minURLPart {
-			parts = append(parts, segment)
-		}
-	}
+	parts := []string{raw, parsed.Host, parsed.Hostname()}
+	parts = append(parts, strings.Split(parsed.Hostname(), ".")...)
+	parts = append(parts, strings.Split(parsed.Path, "/")...)
+	parts = append(parts, strings.Split(parsed.EscapedPath(), "/")...)
 	for _, values := range parsed.Query() {
-		for _, value := range values {
-			if len(value) >= minURLPart {
-				parts = append(parts, value)
-			}
-		}
+		parts = append(parts, values...)
 	}
 	if user := parsed.User; user != nil {
 		parts = append(parts, user.String(), user.Username())
@@ -118,8 +115,9 @@ func withoutURLParts(err error, raw string) string {
 	// The longest first, so that a part inside another one does not leave
 	// the rest of it.
 	slices.SortFunc(parts, func(a, b string) int { return len(b) - len(a) })
+	service, _, _ := strings.Cut(strings.ToLower(parsed.Scheme), "+")
 	for _, part := range parts {
-		if part != "" {
+		if len(part) >= minURLPart && strings.ToLower(part) != service {
 			text = strings.ReplaceAll(text, part, "***")
 		}
 	}
@@ -181,7 +179,7 @@ func (s *Sender) Send(ctx context.Context, p backend.Payload) error {
 	}
 	switch {
 	case err == nil && status >= 300 && status < 400:
-		return &backend.Error{Class: backend.Permanent, Status: status, Err: errors.New("redirect not followed")}
+		return &backend.Error{Class: backend.Permanent, Status: status, Err: backend.StatusCause(status, header)}
 	case err == nil:
 		return nil
 	case transportErr != nil:
@@ -189,7 +187,7 @@ func (s *Sender) Send(ctx context.Context, p backend.Payload) error {
 	case status >= 300:
 		return &backend.Error{
 			Class: backend.Classify(status, header, nil), Status: status, RetryAfter: backend.RetryAfter(header),
-			Err: errors.New(http.StatusText(status)),
+			Err: backend.StatusCause(status, header),
 		}
 	default:
 		// The text of shoutrrr may quote the URL; the redactor masks it

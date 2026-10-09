@@ -87,6 +87,10 @@ func TestSendClassifiesStatus(t *testing.T) {
 			if requests != 1 {
 				t.Errorf("receiver got %d requests, want 1: a redirect is not followed", requests)
 			}
+			// As for every other target, the redirect says where it went.
+			if tc.status == http.StatusFound && deliveryErr.Err.Error() != "redirect to another path not followed" {
+				t.Errorf("error = %v, want the redirect described", err)
+			}
 		})
 	}
 }
@@ -174,10 +178,10 @@ func TestNewRejectsURL(t *testing.T) {
 	for url, want := range map[string]string{
 		"nosuch://SECRET-TOKEN@example.org":     `unknown shoutrrr service "nosuch"`,
 		"telegram://SECRET-TOKEN@telegram?x=%%": `URL rejected by shoutrrr service "telegram": telegram: invalid telegram token: ***:`,
-		"telegram://ab@telegram":                `URL rejected by shoutrrr service "telegram": telegram: invalid telegram token: ***:`,
+		"telegram://abc@telegram":               `URL rejected by shoutrrr service "telegram": telegram: invalid telegram token: ***:`,
 	} {
 		_, err := New(Options{URL: url, Client: &http.Client{}})
-		if err == nil || !strings.HasPrefix(err.Error(), want) || strings.Contains(err.Error(), "SECRET") || strings.Contains(err.Error(), "ab:") {
+		if err == nil || !strings.HasPrefix(err.Error(), want) || strings.Contains(err.Error(), "SECRET") || strings.Contains(err.Error(), "abc:") {
 			t.Errorf("New(%s) error = %v, want %s", url, err, want)
 		}
 	}
@@ -249,5 +253,16 @@ func TestNewRejectsMatrixLogin(t *testing.T) {
 	}
 	if n := requests.Load(); n != 0 {
 		t.Errorf("server got %d requests, want none", n)
+	}
+}
+
+// TestWithoutURLParts pins what withoutURLParts masks in a text of the
+// library: a secret in the host, as pushover keeps the user key, and in
+// the user information, but not the name of the service.
+func TestWithoutURLParts(t *testing.T) {
+	err := errors.New("pushover: invalid user key userKey9 for token tok42 at pushover://shoutrrr:tok42@userKey9/")
+	want := "pushover: invalid user key *** for token *** at ***"
+	if got := withoutURLParts(err, "pushover://shoutrrr:tok42@userKey9/"); got != want {
+		t.Errorf("withoutURLParts() = %q, want %q", got, want)
 	}
 }
