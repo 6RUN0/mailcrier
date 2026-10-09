@@ -96,7 +96,7 @@ func (s *Sender) Send(ctx context.Context, p backend.Payload) error {
 		if err != nil {
 			return &backend.Error{Class: backend.Permanent, Err: err}
 		}
-		if err := s.do(req); err != nil {
+		if err := backend.Do(s.opts.Client, req, parseResponse); err != nil {
 			return rejectedText(err)
 		}
 		files = files[1:]
@@ -105,14 +105,14 @@ func (s *Sender) Send(ctx context.Context, p backend.Payload) error {
 		if err != nil {
 			return &backend.Error{Class: backend.Permanent, Err: err}
 		}
-		if err := s.do(req); err != nil {
+		if err := backend.Do(s.opts.Client, req, parseResponse); err != nil {
 			return rejectedText(err)
 		}
 	}
 	for i, file := range files {
 		req, err := buildDocumentRequest(ctx, s.opts, file, "")
 		if err == nil {
-			err = s.do(req)
+			err = backend.Do(s.opts.Client, req, parseResponse)
 		} else {
 			err = &backend.Error{Class: backend.Permanent, Err: err}
 		}
@@ -140,16 +140,6 @@ func rejectedText(err error) error {
 		deliveryErr.IsTextRejected = true
 	}
 	return err
-}
-
-// do performs one Bot API request.
-func (s *Sender) do(req *http.Request) error {
-	resp, err := s.opts.Client.Do(req)
-	if err != nil {
-		return backend.TransportError(err)
-	}
-	defer backend.Drain(resp.Body)
-	return parseResponse(resp)
 }
 
 // sendMessage is the body of the sendMessage method.

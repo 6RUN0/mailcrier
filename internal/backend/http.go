@@ -51,6 +51,25 @@ func StatusError(resp *http.Response) *Error {
 	}
 }
 
+// Do sends req with client and returns the outcome as an *Error: a
+// transport failure by TransportError, the response by parse, or, with a
+// nil parse, nil for 2xx and StatusError otherwise. The body is drained
+// after parse returns, so parse may read it.
+func Do(client *http.Client, req *http.Request, parse func(*http.Response) error) error {
+	resp, err := client.Do(req)
+	if err != nil {
+		return TransportError(err)
+	}
+	defer Drain(resp.Body)
+	if parse != nil {
+		return parse(resp)
+	}
+	if IsSuccess(resp.StatusCode) {
+		return nil
+	}
+	return StatusError(resp)
+}
+
 // MaxDrainBytes bounds how much of a response body is read and thrown
 // away, so that an endless response cannot hold the process.
 const MaxDrainBytes = 4 << 10

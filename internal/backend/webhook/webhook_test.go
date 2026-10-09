@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/6RUN0/mailcrier/internal/backend"
 	"github.com/6RUN0/mailcrier/internal/golden"
@@ -152,52 +151,6 @@ func TestBuildRequestHidesURLInError(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "SECRET") {
 		t.Errorf("error text contains the URL: %v", err)
-	}
-}
-
-func TestParseResponse(t *testing.T) {
-	cases := []struct {
-		name       string
-		status     int
-		wantErr    bool
-		wantClass  backend.Class
-		wantStatus int
-	}{
-		{"ok", http.StatusOK, false, 0, 0},
-		{"no-content", http.StatusNoContent, false, 0, 0},
-		{"server-error", http.StatusBadGateway, true, backend.Temporary, http.StatusBadGateway},
-		{"rate-limited", http.StatusTooManyRequests, true, backend.Temporary, http.StatusTooManyRequests},
-		{"rejected", http.StatusBadRequest, true, backend.Permanent, http.StatusBadRequest},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			resp := &http.Response{StatusCode: tc.status, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("echo of the request"))}
-			err := parseResponse(resp)
-			if !tc.wantErr {
-				if err != nil {
-					t.Fatalf("parseResponse() error = %v", err)
-				}
-				return
-			}
-			var deliveryErr *backend.Error
-			if !errors.As(err, &deliveryErr) {
-				t.Fatalf("parseResponse() error = %v, want *backend.Error", err)
-			}
-			if deliveryErr.Class != tc.wantClass || deliveryErr.Status != tc.wantStatus {
-				t.Errorf("error = %+v, want class %v status %d", deliveryErr, tc.wantClass, tc.wantStatus)
-			}
-			if strings.Contains(err.Error(), "echo") {
-				t.Errorf("error text contains the response body: %v", err)
-			}
-		})
-	}
-}
-
-func TestParseResponseRetryAfter(t *testing.T) {
-	resp := &http.Response{StatusCode: http.StatusServiceUnavailable, Header: http.Header{"Retry-After": {"120"}}, Body: http.NoBody}
-	var deliveryErr *backend.Error
-	if err := parseResponse(resp); !errors.As(err, &deliveryErr) || deliveryErr.Class != backend.Temporary || deliveryErr.RetryAfter != 2*time.Minute {
-		t.Errorf("parseResponse() error = %+v, want temporary with RetryAfter 2m", err)
 	}
 }
 

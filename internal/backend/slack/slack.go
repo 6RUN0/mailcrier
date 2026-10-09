@@ -171,15 +171,7 @@ func (s *Sender) post(ctx context.Context, uploadURL string, file backend.Attach
 		return &backend.Error{Class: backend.Permanent, Err: fmt.Errorf("build upload: %w", backend.WithoutURL(err))}
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
-	resp, err := s.opts.Client.Do(req)
-	if err != nil {
-		return backend.TransportError(err)
-	}
-	defer backend.Drain(resp.Body)
-	if !backend.IsSuccess(resp.StatusCode) {
-		return backend.StatusError(resp)
-	}
-	return nil
+	return backend.Do(s.opts.Client, req, nil)
 }
 
 // postMessage is the body of chat.postMessage. Unfurling is off: a URL in a
@@ -221,12 +213,9 @@ func (s *Sender) formRequest(ctx context.Context, method string, form url.Values
 
 // call performs one Web API request and decodes the answer into into.
 func (s *Sender) call(req *http.Request, into *answer) error {
-	resp, err := s.opts.Client.Do(req)
-	if err != nil {
-		return backend.TransportError(err)
-	}
-	defer backend.Drain(resp.Body)
-	return parseResponse(resp, into)
+	return backend.Do(s.opts.Client, req, func(resp *http.Response) error {
+		return parseResponse(resp, into)
+	})
 }
 
 // parseResponse decodes a Web API answer. A status outside 2xx fails by

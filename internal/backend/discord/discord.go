@@ -62,15 +62,7 @@ func (s *Sender) Send(ctx context.Context, p backend.Payload) error {
 	if err != nil {
 		return &backend.Error{Class: backend.Permanent, Err: err}
 	}
-	resp, err := s.opts.Client.Do(req)
-	if err != nil {
-		return backend.TransportError(err)
-	}
-	defer backend.Drain(resp.Body)
-	if backend.IsSuccess(resp.StatusCode) {
-		return nil
-	}
-	return backend.StatusError(resp)
+	return backend.Do(s.opts.Client, req, nil)
 }
 
 // execution is the JSON part of a webhook execution.

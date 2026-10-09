@@ -76,13 +76,13 @@ func (s *Sender) Send(ctx context.Context, p backend.Payload) error {
 	if err != nil {
 		return &backend.Error{Class: backend.Permanent, Err: err}
 	}
-	if err := s.do(req); err != nil {
+	if err := backend.Do(s.opts.Client, req, nil); err != nil {
 		return err
 	}
 	for i, file := range p.Attachments {
 		req, err := s.buildAttachmentRequest(ctx, p.Title, file)
 		if err == nil {
-			err = s.do(req)
+			err = backend.Do(s.opts.Client, req, nil)
 		} else {
 			err = &backend.Error{Class: backend.Permanent, Err: err}
 		}
@@ -95,18 +95,6 @@ func (s *Sender) Send(ctx context.Context, p backend.Payload) error {
 		}
 	}
 	return nil
-}
-
-func (s *Sender) do(req *http.Request) error {
-	resp, err := s.opts.Client.Do(req)
-	if err != nil {
-		return backend.TransportError(err)
-	}
-	defer backend.Drain(resp.Body)
-	if backend.IsSuccess(resp.StatusCode) {
-		return nil
-	}
-	return backend.StatusError(resp)
 }
 
 // publish is the body of a JSON publish.

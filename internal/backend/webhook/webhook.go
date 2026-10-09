@@ -77,12 +77,7 @@ func (s *Sender) Send(ctx context.Context, p backend.Payload) error {
 	if err != nil {
 		return &backend.Error{Class: backend.Permanent, Err: err}
 	}
-	resp, err := s.opts.Client.Do(req)
-	if err != nil {
-		return backend.TransportError(err)
-	}
-	defer backend.Drain(resp.Body)
-	return parseResponse(resp)
+	return backend.Do(s.opts.Client, req, nil)
 }
 
 // buildRequest sends p.Text, the JSON document of the template, with
@@ -272,12 +267,4 @@ func withFields(document string, fields map[string]string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSuffix(b.String(), "\n"), nil
-}
-
-// parseResponse accepts any 2xx status.
-func parseResponse(resp *http.Response) error {
-	if backend.IsSuccess(resp.StatusCode) {
-		return nil
-	}
-	return backend.StatusError(resp)
 }
