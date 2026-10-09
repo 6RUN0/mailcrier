@@ -404,9 +404,9 @@ func (s *Spool) Lock(area, id string) (*Record, error) {
 // directory, is owned by that uid and dated by the copy, and an entry
 // released from hold/ keeps the time it was held. The entry has no
 // targets: the record serves to move it to failed/, where Move writes a
-// valid sidecar, or to remove it. It returns ErrBusy and ErrGone as Lock does, ErrGone
-// also when the sidecar decodes meanwhile, and the error of Decode for a
-// sidecar of another version.
+// valid sidecar, or to remove it. It returns ErrBusy and ErrGone as Lock
+// does, ErrGone also when the sidecar decodes meanwhile, and the error of
+// Decode for a sidecar of another version.
 func (s *Spool) LockCorrupt(area, id string) (*Record, error) {
 	rec, data, err := s.lockMessage(area, id)
 	if err != nil {

@@ -916,8 +916,8 @@ preset = "generic-json"
   default directory belongs to the user of that run and dates from the
   copy, and one released from `hold/` counts from the time it was held,
   not from its release. The message is kept as it was; when its headers
-  name the recipients,
-  `mailcrier -t < failed/<id>.eml` sends it again. A corrupt sidecar in
+  name the recipients, `mailcrier -t < failed/<id>.eml` sends it again.
+  A corrupt sidecar in
   `failed/` goes with its message `failed_ttl` after the file was
   written. An entry of another sidecar version is left alone, for the
   release that wrote it, with its own warning and exit status 0.
@@ -1011,7 +1011,10 @@ preset = "generic-json"
   rejected configuration they show the `dir` of the file when it parses
   and only its targets are rejected, since a call holds its message
   there, the default directory otherwise, and log `spool listed under a
-  rejected configuration` with the directory.
+  rejected configuration` with the directory. While only the targets are
+  rejected, `-q` leaves the default directory alone: what its `hold/`
+  keeps neither expires nor moves, and its `failed/` is not cleaned,
+  until the targets load again.
 - When `-q`, `mailq` or `--status` fails, or lists under a rejected
   configuration, stderr gets one line per cause besides the record in
   the log, interactive or not, such as `mailcrier: spool not opened:
@@ -1290,7 +1293,7 @@ option: `-f --probe` names a sender.
 | `--check-config` with an argument, `--probe` naming no configured target, or either from an elevated caller with `--config` or `MAILCRIER_CONFIG` | 64 |
 | no route selects a target; the message is held, or lost with the spool off | 64 |
 | stdin cannot be read | 66 |
-| panic in the main goroutine (a bug; the record `panic, call ended` carries the value and the stack, redacted) | 70 |
+| panic of the call, or on an entry of a `-q` run (a bug; the record `panic, call ended` or `panic in queue run` carries the value and the stack, redacted) | 70 |
 | `--probe` or `--check-config` from an elevated caller other than root and the `mailcrier` user | 77 |
 | for a call with a message: the configuration cannot be read, parsed or validated, defines no targets, or holds a template that does not parse; the message is held, or lost with the spool off | 78 |
 | `--check-config` found an error, `--probe` cannot use the configuration, or `-q` ran with a rejected configuration and only expired entries; nothing is held | 78 |

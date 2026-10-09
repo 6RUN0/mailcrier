@@ -315,11 +315,11 @@ with "build constraints exclude all Go files".
   `dir` is not `Deps.SpoolDir`, `-q` also releases the `hold/` of
   `Deps.SpoolDir` (`queue.otherHold`), where a message held under a
   rejected file went, and `mailq` and `--status` list it (`listSpool`).
-  Under a rejected file all three take the `dir` of a file that parses
-  (`spoolSettings(d, parsed)`), where the call held its message; `-q`
-  only expires entries there and exits 78. `--check-config`
-  (`check.go`) prints its findings to stderr and
-  renders `sample.go`'s message through `delivery.Deliver` with
+  With a file that parses but whose targets are rejected, all three take
+  its `dir` (`spoolSettings(d, parsed)`), where the call held its
+  message; `-q` only expires entries there and exits 78.
+  `--check-config` (`check.go`) prints its findings to stderr and renders
+  `sample.go`'s message through `delivery.Deliver` with
   `dryRunSender`; `--probe` (`probe.go`) sends it with `DeliverEach`,
   without spool, routes or suppression, and exits by `probeExitCode`
   (0, 69, 75), the only place of 75.

@@ -82,9 +82,10 @@ Exit status:
   73  a target failed temporarily, or a message to be held was not held,
       and no spool entry could be created
   74  a target failed temporarily, or a message to be held was not held,
-      and the spool entry could not be written, -q could not read the
-      spool, -q or --status found it not writable, --status found no
-      spool directory, or mailq or --status could not write their output
+      and the spool entry could not be written, -q or --status could not
+      read the spool, mailq a spool that exists, -q or --status found it
+      not writable, --status found no spool directory, or mailq or
+      --status could not write their output
   75  --probe only: a target failed temporarily, none rejected
   77  --check-config or --probe by a setgid caller other than the mailcrier
       user
