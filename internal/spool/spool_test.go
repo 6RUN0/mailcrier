@@ -261,6 +261,54 @@ func TestLockOrphanMessage(t *testing.T) {
 	}
 }
 
+// TestLockCorrupt pins the record of an entry whose sidecar is corrupt:
+// owner and time come from the message file, and Move gives it a valid
+// sidecar in failed/ beside the unchanged message.
+func TestLockCorrupt(t *testing.T) {
+	sp := openSpool(t)
+	e := create(t, sp, QueueDir, 1000, "Subject: s\n\nb\n")
+	path := filepath.Join(sp.dir, QueueDir, e.ID)
+	if _, err := sp.LockCorrupt(QueueDir, e.ID); !errors.Is(err, ErrGone) {
+		t.Errorf("LockCorrupt() of a valid entry error = %v, want ErrGone", err)
+	}
+	if err := os.WriteFile(path+".json", []byte("{"), 0o660); err != nil {
+		t.Fatal(err)
+	}
+	written := testNow.Add(-time.Hour)
+	if err := os.Chtimes(path+".eml", written, written); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sp.Lock(QueueDir, e.ID); !errors.Is(err, ErrCorrupt) {
+		t.Fatalf("Lock() error = %v, want ErrCorrupt", err)
+	}
+	rec, err := sp.LockCorrupt(QueueDir, e.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sp.Lock(QueueDir, e.ID); !errors.Is(err, ErrBusy) {
+		t.Errorf("Lock() of the held entry error = %v, want ErrBusy", err)
+	}
+	if got := rec.Entry; got.ID != e.ID || got.OwnerUID != os.Getuid() || !got.CreatedAt.Equal(written) || got.Targets != nil {
+		t.Errorf("entry = %+v, want id, owner and time of the message file", got)
+	}
+	rec.Entry.Reason = "corrupt sidecar"
+	if err := rec.Move(FailedDir); err != nil {
+		t.Fatal(err)
+	}
+	_ = rec.Close()
+	moved, err := sp.Lock(FailedDir, e.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = moved.Close() }()
+	if raw, _ := moved.Message(); string(raw) != "Subject: s\n\nb\n" || moved.Entry.Reason != "corrupt sidecar" {
+		t.Errorf("failed/ entry = %+v with message %q", moved.Entry, raw)
+	}
+	if got := names(t, sp, QueueDir); len(got) != 0 {
+		t.Errorf("queue/ = %v, want empty", got)
+	}
+}
+
 func TestLockUnknownVersion(t *testing.T) {
 	sp := openSpool(t)
 	e := create(t, sp, QueueDir, 1000, "x")

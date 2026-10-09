@@ -1067,6 +1067,78 @@ func TestQueueRemoveFailureSaves(t *testing.T) {
 	}
 }
 
+// corrupt overwrites the sidecar of the only entry in area with text that
+// does not decode and dates its message file at written; it returns the id.
+func (c *spoolCase) corrupt(area string, written time.Time) string {
+	c.t.Helper()
+	id := c.ids(area)[0]
+	path := filepath.Join(c.dir, area, id)
+	if err := os.WriteFile(path+".json", []byte("{"), 0o660); err != nil {
+		c.t.Fatal(err)
+	}
+	if err := os.Chtimes(path+".eml", written, written); err != nil {
+		c.t.Fatal(err)
+	}
+	return id
+}
+
+// TestQueueCorruptSidecar pins what a queue run does with an entry whose
+// sidecar does not decode: it warns and exits 74 until the message file is
+// older than the TTL of its area, then moves the entry to failed/, whose
+// failed_ttl deletes it.
+func TestQueueCorruptSidecar(t *testing.T) {
+	t.Run("queue-entry-fails-after-queue-ttl", func(t *testing.T) {
+		c := newSpoolCase(t)
+		c.service.reply("a", delivery.Temp)
+		c.send("s", elevatedUser)
+		id := c.corrupt(spool.QueueDir, testNow.Add(-time.Hour))
+		code, inv := c.queueRun(serviceCaller)
+		if code != 74 || !strings.Contains(inv.output(), `level=WARN msg="spool entry unreadable, left alone" id=`+id+` area=queue err="corrupt sidecar: `) {
+			t.Fatalf("-q = %d, want 74 and a warning; output:\n%s", code, inv.output())
+		}
+		c.corrupt(spool.QueueDir, testNow.Add(-7*24*time.Hour-time.Minute))
+		code, inv = c.queueRun(serviceCaller)
+		if code != 0 || !strings.Contains(inv.output(), `level=ERROR msg="message failed" id=`+id+` reason="corrupt sidecar"`) {
+			t.Fatalf("-q = %d, want 0 and the entry failed; output:\n%s", code, inv.output())
+		}
+		if e := c.entry(spool.FailedDir); e.ID != id || e.OwnerUID != os.Getuid() || e.Reason != reasonCorrupt || !e.FailedAt.Equal(c.clock.now()) {
+			t.Errorf("failed entry = %+v", e)
+		}
+		if _, inv := c.queueRun(serviceCaller, "-bp"); !strings.Contains(inv.stdout.String(), id+` failed uid=`) {
+			t.Errorf("-bp does not list the entry:\n%s", inv.stdout.String())
+		}
+		c.clock.advance(30*24*time.Hour + time.Minute)
+		if code, _ := c.queueRun(serviceCaller); code != 0 || len(c.ids(spool.FailedDir)) != 0 {
+			t.Errorf("-q = %d, failed %v, want the entry deleted after failed_ttl", code, c.ids(spool.FailedDir))
+		}
+	})
+	t.Run("held-entry-fails-after-hold-ttl", func(t *testing.T) {
+		c := newSpoolCase(t)
+		c.config = "[target.a]\ntype = \"http\"\n"
+		c.send("held", elevatedUser)
+		id := c.corrupt(spool.HoldDir, testNow.Add(-2*time.Hour))
+		c.config = "[spool]\nhold_ttl = \"1h\"\n\n" + twoTargets
+		if code, inv := c.queueRun(serviceCaller); code != 0 || len(c.ids(spool.FailedDir)) != 1 {
+			t.Fatalf("-q = %d, failed %v, want %s failed after hold_ttl; output:\n%s", code, c.ids(spool.FailedDir), id, inv.output())
+		}
+	})
+	t.Run("failed-entry-deleted-after-failed-ttl", func(t *testing.T) {
+		c := newSpoolCase(t)
+		c.config = "[target.a]\ntype = \"http\"\n"
+		c.send("held", elevatedUser)
+		c.clock.advance(7*24*time.Hour + time.Second)
+		c.queueRun(serviceCaller)
+		c.corrupt(spool.FailedDir, c.clock.now().Add(-29*24*time.Hour))
+		if c.queueRun(serviceCaller); len(c.ids(spool.FailedDir)) != 1 {
+			t.Fatalf("failed %v, want the entry kept within failed_ttl", c.ids(spool.FailedDir))
+		}
+		c.corrupt(spool.FailedDir, c.clock.now().Add(-31*24*time.Hour))
+		if c.queueRun(serviceCaller); len(c.ids(spool.FailedDir)) != 0 {
+			t.Errorf("failed %v, want the entry deleted", c.ids(spool.FailedDir))
+		}
+	})
+}
+
 // TestQueueErrorRedacted pins that the error stored in the sidecar and
 // shown by mailq passes through the redactor.
 func TestQueueErrorRedacted(t *testing.T) {

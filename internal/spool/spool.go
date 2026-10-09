@@ -334,30 +334,82 @@ func flock(file *os.File, how int) error {
 // entry was finished or moved away, and a Decode error, with the entry
 // unlocked and untouched, when the sidecar is unreadable.
 func (s *Spool) Lock(area, id string) (*Record, error) {
+	rec, data, err := s.lockMessage(area, id)
+	if err != nil {
+		return nil, err
+	}
+	e, err := decodeSidecar(data, id)
+	if err != nil {
+		_ = rec.Close()
+		return nil, err
+	}
+	rec.Entry = e
+	return rec, nil
+}
+
+// LockCorrupt takes the entry id in area, as Lock does, when its sidecar
+// is corrupt, and returns it with an Entry made from what the message file
+// tells: OwnerUID is the owner of the file, and CreatedAt and ReceivedAt
+// are its modification time, which is when the entry was written, since
+// the message file is never rewritten. The entry has no targets: the
+// record serves to move it to failed/, where Move writes a valid sidecar,
+// or to remove it. It returns ErrBusy and ErrGone as Lock does, ErrGone
+// also when the sidecar decodes meanwhile, and the error of Decode for a
+// sidecar of another version.
+func (s *Spool) LockCorrupt(area, id string) (*Record, error) {
+	rec, data, err := s.lockMessage(area, id)
+	if err != nil {
+		return nil, err
+	}
+	_, err = decodeSidecar(data, id)
+	if !errors.Is(err, ErrCorrupt) {
+		_ = rec.Close()
+		if err == nil {
+			err = ErrGone
+		}
+		return nil, err
+	}
+	info, err := rec.file.Stat()
+	if err != nil {
+		_ = rec.Close()
+		return nil, err
+	}
+	owner := -1
+	if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+		owner = int(stat.Uid)
+	}
+	rec.Entry = &Entry{Version: Version, ID: id, OwnerUID: owner, CreatedAt: info.ModTime(), ReceivedAt: info.ModTime()}
+	return rec, nil
+}
+
+// lockMessage takes the message file of the entry id in area without
+// waiting and returns it as a record without Entry, with the content of
+// the sidecar read after the lock; see Lock for the errors.
+func (s *Spool) lockMessage(area, id string) (*Record, []byte, error) {
 	path := s.path(area, id+messageSuffix)
 	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, ErrGone
+		return nil, nil, ErrGone
 	}
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	rec := &Record{sp: s, Area: area, file: file}
 	if err := flock(file, syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		_ = rec.Close()
-		return nil, err
+		return nil, nil, err
 	}
 	// The previous holder may have finished or moved the entry: then the
 	// open file is no longer the one at path.
 	held, err := file.Stat()
 	if err != nil {
 		_ = rec.Close()
-		return nil, err
+		return nil, nil, err
 	}
 	current, err := os.Lstat(path)
 	if err != nil || !os.SameFile(held, current) {
 		_ = rec.Close()
-		return nil, ErrGone
+		return nil, nil, ErrGone
 	}
 	data, err := readFile(s.path(area, id+entrySuffix))
 	if errors.Is(err, fs.ErrNotExist) {
@@ -367,22 +419,26 @@ func (s *Spool) Lock(area, id string) (*Record, error) {
 		// what a run left that died in the middle of Remove.
 		_ = os.Remove(path)
 		_ = rec.Close()
-		return nil, ErrGone
+		return nil, nil, ErrGone
 	}
 	if err != nil {
 		_ = rec.Close()
-		return nil, err
+		return nil, nil, err
 	}
+	return rec, data, nil
+}
+
+// decodeSidecar decodes the sidecar data of the entry id; a valid entry
+// of another id is corrupt as well.
+func decodeSidecar(data []byte, id string) (*Entry, error) {
 	e, err := Decode(data)
 	if err == nil && e.ID != id {
 		err = fmt.Errorf("%w: id does not match the file name", ErrCorrupt)
 	}
 	if err != nil {
-		_ = rec.Close()
 		return nil, err
 	}
-	rec.Entry = e
-	return rec, nil
+	return e, nil
 }
 
 // Peek reads the sidecar of id in area without locking it: enough for

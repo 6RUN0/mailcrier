@@ -286,6 +286,9 @@ with "build constraints exclude all Go files".
   harmless and `RemoveStale` deletes it after an hour. The entry lock is
   `flock(LOCK_EX|LOCK_NB)` on the `.eml`, opened `O_NOFOLLOW`; after taking
   it the sidecar is read again and the open inode compared with the path.
+  `LockCorrupt` takes an entry whose sidecar does not decode, with an
+  `Entry` made from the message file (owner, mtime as `CreatedAt`):
+  `queue.failCorrupt` moves it to `failed/` after the TTL of its area.
   `locks/drain-<uid>.lock` is taken by the run after a call and by `-q` of
   an elevated user; `-q` of root, the service user or an unelevated caller
   takes none. `Save` and `Remove` do not fsync the directory (a lost rename

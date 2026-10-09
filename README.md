@@ -865,6 +865,18 @@ preset = "generic-json"
   older than one hour that a killed process left behind, in `tmp/` unless
   a live process still holds them and sidecars without their message
   elsewhere, are removed.
+- An entry whose sidecar cannot be read stays where it is with the
+  warning `spool entry unreadable, left alone` on every queue run, which
+  then exits 74. A corrupt sidecar has lost the dates of the entry, so
+  the message file stands in for them: written with the entry and never
+  rewritten, once it is older than `queue_ttl` (`hold_ttl` in `hold/`)
+  the entry moves to `failed/` with the reason `corrupt sidecar` and a
+  new sidecar without targets, owned by the owner of the file. The
+  message is kept as it was; when its headers name the recipients,
+  `mailcrier -t < failed/<id>.eml` sends it again. A corrupt sidecar in
+  `failed/` goes with its message `failed_ttl` after the file was
+  written. An entry of another sidecar version is left alone, for the
+  release that wrote it, with its own warning and exit status 0.
 - A retry renders the stored message with the configuration and templates
   of the moment, to the targets fixed when it was queued. Renaming or
   removing a target drops its pending messages: they fail for that target

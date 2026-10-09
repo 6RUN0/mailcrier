@@ -33,6 +33,9 @@ const (
 	reasonNoRoute       = "no route"
 	reasonExpired       = "expired"
 	reasonTargetRemoved = "target removed"
+	// reasonCorrupt moves an entry whose sidecar does not decode to
+	// failed/, once its message file is older than the TTL of its area.
+	reasonCorrupt = "corrupt sidecar"
 	// reasonInternal moves an entry to failed/ once no target waits for
 	// it, when a target failed by a panic: a retry would repeat the bug,
 	// and the message stays where mailq shows it.
@@ -376,20 +379,57 @@ func (q *queue) lock(area, id string, owner int) *spool.Record {
 		}
 	}
 	rec, err := q.sp.Lock(area, id)
-	switch {
-	case errors.Is(err, spool.ErrBusy), errors.Is(err, spool.ErrGone):
-		return nil
-	case errors.Is(err, spool.ErrUnknownVersion):
-		q.log.Warn("spool entry of another version left alone", "id", id, "err", err)
-		return nil
-	case err != nil:
-		q.log.Warn("spool entry unreadable, left alone", "id", id, "err", err)
+	if err != nil {
+		q.lockFailed(q.sp, area, id, err)
 		return nil
 	}
 	if q.d.entryLocked != nil {
 		q.d.entryLocked(id)
 	}
 	return rec
+}
+
+// lockFailed handles the error of Lock on the entry id of area in sp. An
+// entry of another version is left alone, for the release that wrote it.
+// One whose sidecar is corrupt moves to failed/ once its message file is
+// older than the TTL of its area, see failCorrupt; until then, like an
+// entry that cannot be read at all, it makes -q exit 74.
+func (q *queue) lockFailed(sp *spool.Spool, area, id string, err error) {
+	switch {
+	case errors.Is(err, spool.ErrBusy), errors.Is(err, spool.ErrGone):
+	case errors.Is(err, spool.ErrUnknownVersion):
+		q.log.Warn("spool entry of another version left alone", "id", id, "area", area, "err", err)
+	case errors.Is(err, spool.ErrCorrupt) && q.failCorrupt(sp, area, id):
+	default:
+		q.hasIOError = true
+		q.log.Warn("spool entry unreadable, left alone", "id", id, "area", area, "err", err)
+	}
+}
+
+// failCorrupt moves the entry id of area in sp, whose sidecar is corrupt,
+// to failed/ with reasonCorrupt once its message file is older than
+// queue_ttl, or hold_ttl in hold/. It reports false when the entry stays
+// where it is, unexpired or unreadable for another reason; fail logs a
+// failed move. The sidecar that holds the dates is unreadable, and the
+// message file is written once, when the entry is.
+func (q *queue) failCorrupt(sp *spool.Spool, area, id string) bool {
+	rec, err := sp.LockCorrupt(area, id)
+	switch {
+	case errors.Is(err, spool.ErrBusy), errors.Is(err, spool.ErrGone):
+		return true
+	case err != nil:
+		return false
+	}
+	defer func() { _ = rec.Close() }()
+	ttl := q.settings.QueueTTL.Duration
+	if area == spool.HoldDir {
+		ttl = q.settings.HoldTTL.Duration
+	}
+	if !spool.Expired(rec.Entry, q.d.Now(), ttl) {
+		return false
+	}
+	q.fail(rec, reasonCorrupt)
+	return true
 }
 
 // release moves a held entry to the queue with the targets its rules
@@ -481,6 +521,7 @@ func (q *queue) releaseOtherHold(owner int) *spool.Spool {
 		}
 		rec, err := other.Lock(spool.HoldDir, id)
 		if err != nil {
+			q.lockFailed(other, spool.HoldDir, id, err)
 			continue
 		}
 		q.releaseInto(rec)
@@ -503,6 +544,7 @@ func (q *queue) releaseInto(rec *spool.Record) {
 	}
 	raw, err := rec.Message()
 	if err != nil {
+		q.hasIOError = true
 		q.log.Error("held message unreadable", "id", id, "err", err)
 		return
 	}
@@ -517,6 +559,7 @@ func (q *queue) releaseInto(rec *spool.Record) {
 		names, v, err := q.routeHeld(log, &entry, func() ([]byte, error) { return raw, nil })
 		switch {
 		case err != nil:
+			q.hasIOError = true
 			log.Error("held message unreadable", "err", err)
 			return
 		case v == suppressed:
@@ -603,6 +646,7 @@ func (q *queue) deliverEntry(ctx context.Context, rec *spool.Record) bool {
 	}
 	msg, bcc, _, err := readStored(raw, e)
 	if err != nil {
+		q.hasIOError = true
 		log.Error("queued message unreadable", "err", err)
 		return false
 	}
@@ -684,6 +728,13 @@ func (q *queue) clean(sp *spool.Spool) {
 	}
 	for _, id := range ids {
 		rec, err := sp.Lock(spool.FailedDir, id)
+		if errors.Is(err, spool.ErrCorrupt) {
+			// Without FailedAt, failed_ttl counts from the time the entry
+			// was written.
+			if rec, err = sp.LockCorrupt(spool.FailedDir, id); err == nil {
+				rec.Entry.FailedAt = rec.Entry.CreatedAt
+			}
+		}
 		if err != nil {
 			continue
 		}

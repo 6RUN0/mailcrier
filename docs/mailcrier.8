@@ -411,6 +411,14 @@ An entry older than 7 days moves to
 .Pa failed/ ,
 which keeps it 30 days; for a message that was held the 7 days count from
 its release.
+An entry whose state file cannot be read is left alone, and
+.Fl q
+exits 74; when the file is corrupt, the entry moves to
+.Pa failed/
+with the reason
+.Dq corrupt sidecar
+once its message file is older than the same limit, counted from the time
+the file was written.
 A retry renders the message with the configuration of the moment, to the
 targets fixed when it was queued; a target no longer configured fails for it.
 Delivery is at least once: a process killed after a service accepted the
