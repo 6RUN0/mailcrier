@@ -790,6 +790,40 @@ func TestQueueRun(t *testing.T) {
 			t.Errorf("failed entry = %+v, want %s with reason internal error", e, poisoned)
 		}
 	})
+	t.Run("T-ADJ-53/run-goes-on-after-a-panic-in-hold", func(t *testing.T) {
+		c := newSpoolCase(t)
+		c.service.reply("a", delivery.Temp)
+		c.send("queued", elevatedUser)
+		// A rejected configuration holds the message and runs no queue.
+		c.config = "[target.x]\ntype = \"nosuch\"\n"
+		c.send("held", elevatedUser)
+		c.config = twoTargets
+		held := c.ids(spool.HoldDir)
+		c.clock.advance(time.Minute)
+		// The clock panics once, at its first reading after the held
+		// entry is locked: release reads it first.
+		var isArmed atomic.Bool
+		inv := c.invocation(rootCaller, []string{"-q"})
+		inv.entryLocked = func(id string) { isArmed.Store(len(held) == 1 && id == held[0]) }
+		inv.now = func() time.Time {
+			if isArmed.CompareAndSwap(true, false) {
+				panic("bug in routing")
+			}
+			return c.clock.now()
+		}
+		if code := inv.run(t); code != 70 {
+			t.Fatalf("-q = %d, want 70; output:\n%s", code, inv.output())
+		}
+		if !strings.Contains(inv.output(), `msg="panic in queue run" id=`+held[0]+` panic="bug in routing"`) {
+			t.Errorf("output lacks the panic of the held entry:\n%s", inv.output())
+		}
+		if e := c.entry(spool.FailedDir); e.ID != held[0] || e.Reason != reasonInternal {
+			t.Errorf("failed entry = %+v, want %v with reason internal error", e, held)
+		}
+		if ids := c.ids(spool.QueueDir); len(ids) != 0 || !slices.Equal(c.service.got("a"), []string{"queued", "queued"}) {
+			t.Errorf("queue/ = %v, a got %v; want the queued entry delivered after the panic", ids, c.service.got("a"))
+		}
+	})
 	t.Run("T-ADJ-19/expired-entry-moves-to-failed", func(t *testing.T) {
 		c := newSpoolCase(t)
 		c.service.reply("a", delivery.Temp)

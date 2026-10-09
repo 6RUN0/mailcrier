@@ -452,7 +452,7 @@ func (q *queue) lockFailed(sp *spool.Spool, area, id string, err error) {
 // where it is, unexpired or unreadable for another reason; fail logs a
 // failed move. The sidecar that holds the dates is unreadable, and the
 // message file is written once, when the entry is.
-func (q *queue) failCorrupt(sp *spool.Spool, area, id string) bool {
+func (q *queue) failCorrupt(sp *spool.Spool, area, id string) (isHandled bool) {
 	rec, err := sp.LockCorrupt(area, id)
 	switch {
 	case errors.Is(err, spool.ErrBusy), errors.Is(err, spool.ErrGone):
@@ -461,6 +461,9 @@ func (q *queue) failCorrupt(sp *spool.Spool, area, id string) bool {
 		return false
 	}
 	defer func() { _ = rec.Close() }()
+	// A panic from here on is handled: recoverEntry fails the entry.
+	isHandled = true
+	defer q.recoverEntry(sp, rec)
 	ttl := q.settings.QueueTTL.Duration
 	if area == spool.HoldDir {
 		ttl = q.settings.HoldTTL.Duration
@@ -477,7 +480,7 @@ func (q *queue) failCorrupt(sp *spool.Spool, area, id string) bool {
 // keeps one without a route. It reports whether the entry is now in the
 // queue.
 func (q *queue) release(rec *spool.Record) bool {
-	defer q.recoverEntry(rec)
+	defer q.recoverEntry(q.sp, rec)
 	if spool.Expired(rec.Entry, q.d.Now(), q.settings.HoldTTL.Duration) {
 		q.fail(rec, reasonExpired)
 		return false
@@ -564,7 +567,10 @@ func (q *queue) releaseOtherHold(owner int) *spool.Spool {
 			q.lockFailed(other, spool.HoldDir, id, err)
 			continue
 		}
-		q.releaseInto(rec)
+		func() {
+			defer q.recoverEntry(other, rec)
+			q.releaseInto(rec)
+		}()
 		_ = rec.Close()
 	}
 	return other
@@ -646,7 +652,7 @@ func (q *queue) removeReleased(rec *spool.Record, message string) {
 // anything.
 func (q *queue) deliverEntry(ctx context.Context, rec *spool.Record) bool {
 	defer q.finish(rec)
-	defer q.recoverEntry(rec)
+	defer q.recoverEntry(q.sp, rec)
 	e, now := rec.Entry, q.d.Now()
 	log := q.log.With("id", e.ID)
 	if spool.Expired(e, now, q.settings.QueueTTL.Duration) {
@@ -739,16 +745,16 @@ func (q *queue) isUnsaved(id string) bool {
 }
 
 // recoverEntry is deferred by the steps of a queue run on one locked
-// entry. A panic there, a bug, is logged with its stack and moves the
-// entry to failed/ with reasonInternal, so that the next run does not die
-// on it again, and the run goes on with the next entry.
-func (q *queue) recoverEntry(rec *spool.Record) {
+// entry of sp. A panic there, a bug, is logged with its stack and moves the
+// entry to failed/ of sp with reasonInternal, so that the next run does
+// not die on it again, and the run goes on with the next entry.
+func (q *queue) recoverEntry(sp *spool.Spool, rec *spool.Record) {
 	value := recover()
 	if value == nil {
 		return
 	}
 	q.notePanic(q.log.With("id", rec.ID()), value)
-	if rec.Area != spool.FailedDir && q.sp.Has(rec.Area, rec.ID()) {
+	if rec.Area != spool.FailedDir && sp.Has(rec.Area, rec.ID()) {
 		q.fail(rec, reasonInternal)
 	}
 }
@@ -803,14 +809,17 @@ func (q *queue) clean(sp *spool.Spool) {
 		if err != nil {
 			continue
 		}
-		if now.Sub(rec.Entry.FailedAt) > q.settings.FailedTTL.Duration {
-			if err := rec.Remove(); err != nil {
-				q.hasIOError = true
-				q.log.Error("failed message not deleted", "id", id, "err", err)
-			} else {
-				q.log.Info("failed message deleted", "id", id)
+		func() {
+			defer q.recoverEntry(sp, rec)
+			if now.Sub(rec.Entry.FailedAt) > q.settings.FailedTTL.Duration {
+				if err := rec.Remove(); err != nil {
+					q.hasIOError = true
+					q.log.Error("failed message not deleted", "id", id, "err", err)
+				} else {
+					q.log.Info("failed message deleted", "id", id)
+				}
 			}
-		}
+		}()
 		_ = rec.Close()
 	}
 }
