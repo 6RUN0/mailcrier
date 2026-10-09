@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/6RUN0/mailcrier/internal/config"
 	"github.com/6RUN0/mailcrier/internal/delivery"
 	"github.com/6RUN0/mailcrier/internal/route"
 	"github.com/6RUN0/mailcrier/internal/spool"
@@ -345,16 +344,6 @@ func TestHeldUnreadable(t *testing.T) {
 	if code != 74 || !strings.Contains(inv.output(), `level=ERROR msg="held message unreadable" id=`+id) ||
 		len(c.service.got("a"))+len(c.service.got("b")) != 0 || len(c.ids(spool.HoldDir)) != 1 {
 		t.Errorf("-q = %d, hold %v; output:\n%s", code, c.ids(spool.HoldDir), inv.output())
-	}
-}
-
-// TestRouteHeldReadError pins that routeHeld tells an error of reading the
-// spool from one of parsing, which release counts differently.
-func TestRouteHeldReadError(t *testing.T) {
-	q := &queue{router: newRouter(&config.Config{Routes: []config.Route{{Targets: []string{"a"}}}}), targets: map[string]delivery.Target{"a": {ID: "a"}}}
-	_, _, err := q.routeHeld(nil, &spool.Entry{}, func() ([]byte, error) { return nil, errors.New("EIO") })
-	if !errors.Is(err, errHeldRead) {
-		t.Errorf("routeHeld() error = %v, want %v", err, errHeldRead)
 	}
 }
 

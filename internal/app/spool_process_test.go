@@ -35,7 +35,7 @@ const (
 // Modes of the spool helper process.
 const (
 	// helperKillAfterDone kills the process with SIGKILL right after the
-	// first sidecar write that records a delivered target.
+	// first sidecar write or entry removal that records a delivered target.
 	helperKillAfterDone = "kill-after-done"
 	// helperPauseAfterDone reports the first sidecar write that records a
 	// delivered target on fd 3 and waits, holding the entry, until fd 4

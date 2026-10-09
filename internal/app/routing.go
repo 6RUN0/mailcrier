@@ -3,8 +3,6 @@ package app
 import (
 	"bytes"
 	"context"
-	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"slices"
@@ -187,22 +185,18 @@ func (q *queue) target(name string) (delivery.Target, bool) {
 	return directTarget(q.direct.base, q.direct.options, chat), true
 }
 
-// errHeldRead wraps an error of reading a held message from the spool, as
-// opposed to parsing it: only the first makes -q exit 74.
-var errHeldRead = errors.New("held message not read")
-
 // routeHeld decides the targets of a held entry being released, raw its
 // stored message. Without rules and direct chats every target gets it and
 // the message is not read, so that one that cannot be read is released all
 // the same. Routing needs only the subject of the message, so its body is
-// not parsed. An error of raw wraps errHeldRead.
+// not parsed. The only error is the one of raw.
 func (q *queue) routeHeld(log *slog.Logger, e *spool.Entry, raw func() ([]byte, error)) ([]string, verdict, error) {
 	if !q.router.HasRules() && q.direct == nil {
 		return q.targetNames(), deliverTo, nil
 	}
 	data, err := raw()
 	if err != nil {
-		return nil, 0, fmt.Errorf("%w: %w", errHeldRead, err)
+		return nil, 0, err
 	}
 	names, v := q.decide(log, message.ParseSubject(data, storedOptions(e)), e.Envelope, true)
 	return names, v, nil

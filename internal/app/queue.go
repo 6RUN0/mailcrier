@@ -358,9 +358,9 @@ func (q *queue) release(rec *spool.Record) bool {
 	names, v, err := q.routeHeld(log, rec.Entry, rec.Message)
 	switch {
 	case err != nil:
-		// As in deliverEntry: a spool that cannot be read makes -q exit
-		// 74, a message that does not parse does not.
-		q.hasIOError = q.hasIOError || errors.Is(err, errHeldRead)
+		// A spool that cannot be read makes -q exit 74; routing parses
+		// only the subject, which does not fail.
+		q.hasIOError = true
 		log.Error("held message unreadable", "err", err)
 		return false
 	case v == suppressed:

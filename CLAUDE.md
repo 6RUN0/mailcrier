@@ -304,16 +304,17 @@ with "build constraints exclude all Go files".
   without spool, routes or suppression, and exits by `probeExitCode`
   (0, 69, 75), the only place of 75.
 - `internal/app/queue.go`: own message (write-ahead, deliver, record each
-  result, remove), `hold/` on a rejected configuration or without a route
-  (`hold` takes the reason), queue runs (`hold/` released first, then
-  `queue/`, oldest first), `mailq`, `--status`. Errors stored in sidecars
-  pass through the redactor. `internal/app/routing.go`: `queue.decide`
-  runs after `buildTargets` and before the spool: suppression (0, nothing
-  spooled), direct chats, routes; no target gives `hold/` with
-  `no route` and 64. `release` and `releaseInto` decide again through
-  `routeHeld`, which reads the message only when there are rules or
-  `telegram_direct`, and then only its subject (`message.ParseSubject`,
-  checked against `Read` in `FuzzRead`); warnings of a repeated decision go to debug, as
+  result but the one that finishes the entry, which removes it), `hold/` on
+  a rejected configuration or without a route (`hold` takes the reason),
+  queue runs (`hold/` released first, then `queue/`, oldest first),
+  `mailq`, `--status`. Errors stored in sidecars pass through the
+  redactor. `internal/app/routing.go`: `queue.decide` runs after
+  `buildTargets` and before the spool: suppression (0, nothing spooled),
+  direct chats, routes; no target gives `hold/` with `no route` and 64.
+  `release` and `releaseInto` decide again through `routeHeld`, which
+  reads the message only when there are rules or `telegram_direct`, and
+  then only its subject (`message.ParseSubject`, checked against `Read`
+  in `FuzzRead`); warnings of a repeated decision go to debug, as
   `drainOwn` runs `hold/` after every call. `queue.target` builds the copy
   `<chat>@telegram` of the `telegram_direct` target (`directTarget`) on
   every lookup, so a queued copy takes the configuration of its retry.
