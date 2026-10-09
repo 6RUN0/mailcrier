@@ -59,8 +59,8 @@ func TestReadmeCheckConfigOutput(t *testing.T) {
 		t.Fatal("README has no example of --check-config")
 	}
 	inv := &invocation{config: example[1], args: []string{"--check-config"}, creds: plainUser, stdin: iotest.ErrReader(errors.New("stdin read"))}
-	if code := inv.run(t); code != 0 {
-		t.Fatalf("Run() = %d, want 0; output:\n%s", code, inv.output())
+	if code := inv.run(t); code != 78 {
+		t.Fatalf("Run() = %d, want 78 for the error of the example; output:\n%s", code, inv.output())
 	}
 	if got := inv.stderr.String(); got != example[2] {
 		t.Errorf("stderr\n%s\nREADME\n%s", got, example[2])

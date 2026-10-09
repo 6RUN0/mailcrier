@@ -1068,8 +1068,11 @@ with 78, and adds warnings about what loads but may not work as meant.
 The errors and warnings go to stderr, one per line, and a last line counts
 them; stdout stays empty. A call stops at the first error: after an error
 in the file nothing else is reported, after an error of a target (a
-template that does not parse, an unknown shoutrrr service) the warnings
-about the file still are. The exit status is 78 with an error and 0
+template that does not parse, an unknown shoutrrr service, an ntfy URL
+without topic) the warnings about the file still are. An error of a
+target is at the line of its key; a template from `template_file` is
+named by the path of that file, and the line after it is a line of that
+file. The exit status is 78 with an error and 0
 otherwise, warnings included. Run it as root after each change of the
 configuration: root gets the group of a setgid binary like any other
 user, so the checks of permissions below run.
@@ -1084,17 +1087,22 @@ preset = "slack-webhook"
 type = "discord"
 url = "https://discord.com/api/webhooks/456/def"
 
+[target.phone]
+type = "ntfy"
+url = "https://ntfy.example.org/"
+
 [[route]]
 subject = "*backup*"
-targets = ["ops"]
+targets = ["ops", "phone"]
 ```
 
 <!-- rumdl-disable MD013 -->
 ```text
+error: /etc/mailcrier.conf:12:1: target "phone": URL has no topic
 warning: /etc/mailcrier.conf:4:1: target "ops": preset "slack-webhook" on a Discord host does not disable mentions, use type "discord"
 warning: /etc/mailcrier.conf:6:9: target "backup": no route names this target
-warning: /etc/mailcrier.conf:10:3: routes have no rule without conditions: a message no rule matches is held and the call exits 64, or the message is lost with the spool off
-/etc/mailcrier.conf: 0 errors, 3 warnings
+warning: /etc/mailcrier.conf:14:3: routes have no rule without conditions: a message no rule matches is held and the call exits 64, or the message is lost with the spool off
+/etc/mailcrier.conf: 1 error, 3 warnings
 ```
 <!-- rumdl-enable MD013 -->
 

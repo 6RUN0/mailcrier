@@ -770,6 +770,9 @@ func hookProcess(d Deps, log *slog.Logger) hook.Process {
 // buildTargets maps configured targets to senders and templates, in name
 // order so that logs do not depend on map iteration. All targets share
 // client, which carries the request timeout, and the exec targets hooks.
+// An error is the *config.Error at the key of the target that failed; a
+// template from template_file is named by the path of the file, so that
+// the line in its error is a line of that file.
 func buildTargets(cfg *config.Config, client *http.Client, hooks hook.Process) ([]delivery.Target, error) {
 	var targets []delivery.Target
 	for _, name := range cfg.TargetNames() {
@@ -788,7 +791,7 @@ func buildTargets(cfg *config.Config, client *http.Client, hooks hook.Process) (
 		case config.TypeNtfy:
 			topic, err := ntfy.New(ntfy.Options{URL: target.URL, Client: client})
 			if err != nil {
-				return nil, fmt.Errorf("target %q: %w", name, err)
+				return nil, cfg.TargetError(name, err, "url", "url_file")
 			}
 			sender, format = topic, text.FormatNtfy
 		case config.TypeHTTP:
@@ -806,7 +809,7 @@ func buildTargets(cfg *config.Config, client *http.Client, hooks hook.Process) (
 			}
 			sender = webhook.New(webhook.Options{URL: target.URL, Method: target.Method, Format: format, Fields: fields, Client: client})
 			var err error
-			if request, err = parseRequest(name, target); err != nil {
+			if request, err = parseRequest(cfg, name, target); err != nil {
 				return nil, err
 			}
 		case config.TypeExec:
@@ -818,15 +821,15 @@ func buildTargets(cfg *config.Config, client *http.Client, hooks hook.Process) (
 		case config.TypeShoutrrr:
 			service, err := shoutrrr.New(shoutrrr.Options{URL: target.URL, Client: client})
 			if err != nil {
-				return nil, fmt.Errorf("target %q: %w", name, err)
+				return nil, cfg.TargetError(name, err, "url", "url_file")
 			}
 			sender, format = service, text.FormatPlain
 		default:
-			return nil, fmt.Errorf("target %q: type %q is not implemented", name, target.Type)
+			return nil, cfg.TargetError(name, fmt.Errorf("type %q is not implemented", target.Type), "type")
 		}
 		builtin, err := render.Builtin(format)
 		if err != nil {
-			return nil, fmt.Errorf("target %q: %w", name, err)
+			return nil, cfg.TargetError(name, err)
 		}
 		tmpl, fallback := builtin, (*render.Template)(nil)
 		switch {
@@ -834,8 +837,12 @@ func buildTargets(cfg *config.Config, client *http.Client, hooks hook.Process) (
 			// A GET carries no body, so there is no text to render.
 			tmpl = nil
 		case target.Template != "":
-			if tmpl, err = render.Parse(name, target.Template, format); err != nil {
-				return nil, fmt.Errorf("target %q: %w", name, err)
+			templateName := name
+			if target.TemplateFile != "" {
+				templateName = target.TemplateFile
+			}
+			if tmpl, err = render.Parse(templateName, target.Template, format); err != nil {
+				return nil, cfg.TargetError(name, err, "template", "template_file")
 			}
 			fallback = builtin
 		}
@@ -857,17 +864,19 @@ func telegramOptions(target config.Target, client *http.Client) telegram.Options
 }
 
 // parseRequest parses the templates of the path, query and headers of an
-// http target; nil when it has none. A template is named after the target
-// and its key, such as "api.headers.Authorization", which the errors
-// quote with the line.
-func parseRequest(name string, target config.Target) (*delivery.RequestTemplates, error) {
+// http target of cfg; nil when it has none. A template is named after the
+// target and its key, such as "api.headers.Authorization", which the
+// errors quote with the line in the template; the error is at the key in
+// the file.
+func parseRequest(cfg *config.Config, name string, target config.Target) (*delivery.RequestTemplates, error) {
 	if target.Path == "" && len(target.Query) == 0 && len(target.Headers) == 0 {
 		return nil, nil
 	}
 	parse := func(key, source string) (*render.Template, error) {
 		tmpl, err := render.ParsePart(name+"."+key, source)
 		if err != nil {
-			return nil, fmt.Errorf("target %q: %w", name, err)
+			table, _, _ := strings.Cut(key, ".")
+			return nil, cfg.TargetError(name, err, key, table)
 		}
 		return tmpl, nil
 	}

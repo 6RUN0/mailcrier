@@ -109,6 +109,29 @@ type Config struct {
 	Routes []Route `toml:"route"`
 	// Suppressions are the [[suppress]] rules in file order.
 	Suppressions []Suppression `toml:"suppress"`
+
+	// path and keys locate the keys of the file for TargetError; empty in
+	// a Config not made by Load.
+	path string
+	keys keyIndex
+}
+
+// TargetError returns err, found after loading, such as a template that
+// does not parse, as the *Error of the target name at the first of keys
+// the file sets, or at the table of the target: the operator gets the
+// line of the file, as for an error of Load. A key of a table of the
+// target is dotted, such as "headers.Authorization".
+func (c *Config) TargetError(name string, err error, keys ...string) *Error {
+	path := []string{"target", name}
+	for _, key := range keys {
+		if keyPath := append([]string{"target", name}, strings.Split(key, ".")...); c.keys.has(keyPath...) {
+			path = keyPath
+			break
+		}
+	}
+	cfgErr := c.keys.errorf(path, "target %q: %v", name, err)
+	cfgErr.Path = c.path
+	return cfgErr
 }
 
 // Route is one [[route]] table. Each condition is a glob or, with the
@@ -397,6 +420,7 @@ func loadWithKeys(fsys fs.FS, path string) (*Config, keyIndex, error) {
 		err.Path = "/" + path
 		return nil, nil, err
 	}
+	cfg.path, cfg.keys = "/"+path, keys
 	return cfg, keys, nil
 }
 

@@ -23,6 +23,9 @@ func TestManPageListsKeys(t *testing.T) {
 		"target": `.Li "[target.NAME]"`, "route": `.Li "[[route]]"`, "suppress": `.Li "[[suppress]]"`,
 	}
 	for _, field := range reflect.VisibleFields(reflect.TypeFor[Config]()) {
+		if !field.IsExported() {
+			continue
+		}
 		key := field.Tag.Get("toml")
 		want, ok := tables[key]
 		if !ok {

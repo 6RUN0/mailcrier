@@ -86,7 +86,7 @@ func TestCheckConfig(t *testing.T) {
 			t.Fatalf("Run() = %d, want 78; output:\n%s", code, inv.output())
 		}
 		lines := strings.Split(strings.TrimSuffix(inv.stderr.String(), "\n"), "\n")
-		if len(lines) != 3 || !strings.HasPrefix(lines[0], `error: /etc/mailcrier.conf: target "dc": `) ||
+		if len(lines) != 3 || lines[0] != `error: /etc/mailcrier.conf:4:1: target "dc": template: dc:1: missing value for if` ||
 			!strings.HasPrefix(lines[1], "warning: /etc/mailcrier.conf:5:3: routes have no rule without conditions") || lines[2] != "/etc/mailcrier.conf: 1 error, 1 warning" {
 			t.Errorf("stderr:\n%s", inv.stderr.String())
 		}
@@ -265,7 +265,12 @@ func TestCheckConfigRoadmapItems(t *testing.T) {
 		{"url-not-http", checkConfigCase{doc: "[target.dc]\ntype = \"discord\"\nurl = \"ftp://example.org/x\"\n", want: 78,
 			line: `/etc/mailcrier.conf:3:1: target "dc": value of key "url" is not an absolute http or https URL`}},
 		{"template-parse-error", checkConfigCase{doc: "[target.dc]\ntype = \"discord\"\nurl = \"https://example.org/x\"\ntemplate = \"{{ if }}\"\n", want: 78,
-			line: `error: /etc/mailcrier.conf: target "dc": `}},
+			line: `error: /etc/mailcrier.conf:4:1: target "dc": template: dc:1: missing value for if`}},
+		{"template-file-parse-error", checkConfigCase{doc: "[target.dc]\ntype = \"discord\"\nurl = \"https://example.org/x\"\n\ntemplate_file = \"/etc/mailcrier.d/dc.tmpl\"\n",
+			files: fstest.MapFS{"etc/mailcrier.d/dc.tmpl": {Data: []byte("first line\n{{ if }}\n")}}, want: 78,
+			line: `error: /etc/mailcrier.conf:5:1: target "dc": template: /etc/mailcrier.d/dc.tmpl:2: missing value for if`}},
+		{"header-template-parse-error", checkConfigCase{doc: "[target.api]\ntype = \"http\"\nurl = \"https://example.org/x\"\npreset = \"generic-json\"\n[target.api.headers]\nX-Run = \"{{ if }}\"\n", want: 78,
+			line: `error: /etc/mailcrier.conf:6:1: target "api": template: api.headers.X-Run:1: missing value for if`}},
 		{"slack-webhook-on-discord", checkConfigCase{doc: "[target.x]\ntype = \"http\"\nurl = \"https://discord.com/api/webhooks/1/a/slack\"\npreset = \"slack-webhook\"\n",
 			line: `/etc/mailcrier.conf:4:1: target "x": preset "slack-webhook" on a Discord host does not disable mentions`}},
 		{"routes-all-with-conditions", checkConfigCase{doc: tg + "[[route]]\nsubject = \"*\"\ntargets = [\"tg\"]\n", line: `/etc/mailcrier.conf:5:3: routes have no rule without conditions`}},
