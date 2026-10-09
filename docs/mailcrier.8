@@ -853,7 +853,7 @@ naming a target that is not configured, or either with
 or
 .Ev MAILCRIER_CONFIG
 from a caller the setgid bit applies to; or no route selects a target, and
-the message is held.
+the message is held or lost with the spool off.
 .It 66
 Standard input cannot be read.
 .It 69
@@ -864,10 +864,12 @@ a target rejected the sample message.
 .It 70
 Internal error.
 .It 73
-A target failed temporarily and the spool entry could not be created: the
-directory is missing or not writable, or a limit is reached.
+A target failed temporarily, or a message to be held could not be held,
+and the spool entry could not be created: the directory is missing or not
+writable, or a limit is reached.
 .It 74
-A target failed temporarily and the spool entry could not be written,
+A target failed temporarily, or a message to be held could not be held,
+and the spool entry could not be written,
 .Fl q
 could not read the spool, or
 .Fl -status
@@ -880,7 +882,8 @@ is queued.
 .It 77
 A service mode requested by a caller without the right to it.
 .It 78
-The configuration cannot be read or is invalid; a message is held.
+The configuration cannot be read or is invalid; a message is held, or
+lost with the spool off.
 .Fl -check-config
 found an error, or
 .Fl -probe

@@ -49,6 +49,7 @@ const (
 	exitNoInput     = 66
 	exitUnavailable = 69
 	exitSoftware    = 70
+	exitCantCreate  = 73
 	exitIOErr       = 74
 	exitTempFail    = 75
 	exitNoPerm      = 77
@@ -260,15 +261,14 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 	var cfg *config.Config
 	rescue = func() {
 		q, openErr := newQueue(d, log, redactor, spoolSettings(d, cfg), nil)
-		q.hold(msg, env, receivedAt, openErr, reasonInternal)
+		_ = q.hold(msg, env, receivedAt, openErr, reasonInternal)
 	}
 	cfg, err = config.Load(d.ConfigFS, configPath)
 	if err != nil {
 		log.Error("configuration rejected, message not delivered", "err", err)
 		rescue = nil
 		q, openErr := newQueue(d, log, redactor, spoolSettings(d, nil), nil)
-		q.hold(msg, env, receivedAt, openErr, reasonConfig)
-		return exitConfig
+		return holdExitCode(q.hold(msg, env, receivedAt, openErr, reasonConfig), exitConfig)
 	}
 	registerSecrets(redactor, cfg)
 	if cfg.General.SyslogTag != config.DefaultSyslogTag {
@@ -280,8 +280,7 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 		log.Error("configuration rejected, message not delivered", "err", err)
 		rescue = nil
 		q, openErr := newQueue(d, log, redactor, spoolSettings(d, cfg), nil)
-		q.hold(msg, env, receivedAt, openErr, reasonConfig)
-		return exitConfig
+		return holdExitCode(q.hold(msg, env, receivedAt, openErr, reasonConfig), exitConfig)
 	}
 	q, openErr := newQueue(d, log, redactor, spoolSettings(d, cfg), targets)
 	q.router, q.direct = newRouter(cfg), newDirectChats(cfg, targets, &client)
@@ -294,8 +293,7 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 		case noRoute:
 			log.Warn("no route for message")
 			rescue = nil
-			q.hold(msg, env, receivedAt, openErr, reasonNoRoute)
-			return exitUsage
+			return holdExitCode(q.hold(msg, env, receivedAt, openErr, reasonNoRoute), exitUsage)
 		}
 		data := render.NewData(msg, env, bcc)
 		data.Hostname, data.ReceivedAt, data.Strings = d.Hostname, receivedAt, q.notices
@@ -311,6 +309,19 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 	// own budget: a failed service must not delay the next message. A
 	// panic above skips the queue run.
 	q.drainOwn(ctx)
+	return code
+}
+
+// holdExitCode returns code when the message is held or the spool is off,
+// and otherwise 73 or 74, as for a temporary failure without a spool
+// entry: the caller must keep a message the spool does not have.
+func holdExitCode(state delivery.Queue, code int) int {
+	switch state {
+	case delivery.QueueNotCreated:
+		return exitCantCreate
+	case delivery.QueueNotWritten:
+		return exitIOErr
+	}
 	return code
 }
 

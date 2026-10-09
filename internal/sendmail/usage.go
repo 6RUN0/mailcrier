@@ -74,13 +74,16 @@ Exit status:
       rejected it and it is queued for those that failed temporarily; or a
       suppress rule matched; or a mode succeeded
   64  usage error, or no route selects a target and the message is held
+      or lost with the spool off
   66  standard input cannot be read
   69  no target accepted the message and one rejected it, or all failed
       temporarily with the spool off; --probe: a target rejected it
   70  internal error
-  73  a target failed temporarily and no spool entry could be created
-  74  a target failed temporarily and the spool entry could not be written,
-      -q could not read the spool, or --status found no spool directory
+  73  a target failed temporarily, or a message to be held was not held,
+      and no spool entry could be created
+  74  a target failed temporarily, or a message to be held was not held,
+      and the spool entry could not be written, -q could not read the
+      spool, or --status found no spool directory
   75  --probe only: a target failed temporarily, none rejected
   77  --check-config or --probe by a setgid caller other than the mailcrier
       user

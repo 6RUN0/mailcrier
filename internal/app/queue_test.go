@@ -926,6 +926,35 @@ func TestHold(t *testing.T) {
 			t.Errorf("hold %v, failed %v, want the entry failed", c.ids(spool.HoldDir), c.ids(spool.FailedDir))
 		}
 	})
+	t.Run("not-held-exits-73", func(t *testing.T) {
+		for _, config := range []string{"[target.a]\ntype = \"http\"\n", routeRootToA} {
+			c := newSpoolCase(t)
+			c.dir = filepath.Join(c.dir, "missing")
+			c.config = config
+			code, inv := c.sendInput("To: alice\nSubject: x\n\nb\n")
+			if code != 73 || !strings.Contains(inv.output(), `level=ERROR msg="message lost, not held"`) {
+				t.Errorf("Run() = %d, want 73 for a message not held; output:\n%s", code, inv.output())
+			}
+		}
+	})
+	t.Run("not-written-exits-74", func(t *testing.T) {
+		if os.Geteuid() == 0 {
+			t.Skip("root ignores directory modes")
+		}
+		c := newSpoolCase(t)
+		if _, err := spool.Open(c.dir); err != nil {
+			t.Fatal(err)
+		}
+		holdDir := filepath.Join(c.dir, spool.HoldDir)
+		if err := os.Chmod(holdDir, 0o500); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(holdDir, 0o770) })
+		c.config = "[target.a]\ntype = \"http\"\n"
+		if code, inv := c.send("lost", elevatedUser); code != 74 || len(c.ids(spool.TmpDir)) != 0 {
+			t.Errorf("Run() = %d, tmp %v, want 74 and nothing left; output:\n%s", code, c.ids(spool.TmpDir), inv.output())
+		}
+	})
 	t.Run("rejected-target-holds", func(t *testing.T) {
 		c := newSpoolCase(t)
 		c.config = "[target.x]\ntype = \"shoutrrr\"\nurl = \"nosuch://example.org\"\n"

@@ -143,14 +143,9 @@ func (q *queue) deliverOwn(ctx context.Context, targets []delivery.Target, msg *
 			entry := spool.NewEntry(spool.NewID(q.d.Now()), q.d.Credentials.UID, q.d.Now(), data.ReceivedAt, env, names)
 			rec, spoolErr = q.sp.Create(spool.QueueDir, entry, msg.Raw, q.quota(entry.OwnerUID))
 		}
-		switch {
-		case spoolErr == nil:
-			state = delivery.Queued
+		state = queueState(spoolErr)
+		if spoolErr == nil {
 			q.log.Debug("message queued ahead of delivery", "id", rec.ID())
-		case errors.Is(spoolErr, spool.ErrWrite):
-			state = delivery.QueueNotWritten
-		default:
-			state = delivery.QueueNotCreated
 		}
 	}
 	results := q.send(ctx, targets, env, data, msg.Attachments, msg.Raw, rec)
@@ -285,11 +280,13 @@ func (q *queue) finish(rec *spool.Record) {
 
 // hold puts a message into hold/ for reason: its configuration was
 // rejected, or its rules select no target. A queue run takes it once the
-// configuration loads again and routes it.
-func (q *queue) hold(msg *message.Message, env message.Envelope, receivedAt time.Time, openErr error, reason string) {
+// configuration loads again and routes it. It returns Queued when the
+// message is held, QueueOff with the spool off, and otherwise why the
+// entry is missing.
+func (q *queue) hold(msg *message.Message, env message.Envelope, receivedAt time.Time, openErr error, reason string) delivery.Queue {
 	if q.settings.Dir == "" {
 		q.log.Error("message lost, spool off")
-		return
+		return delivery.QueueOff
 	}
 	err := openErr
 	if err == nil {
@@ -299,10 +296,24 @@ func (q *queue) hold(msg *message.Message, env message.Envelope, receivedAt time
 		if rec, err = q.sp.Create(spool.HoldDir, entry, msg.Raw, q.quota(entry.OwnerUID)); err == nil {
 			q.log.Warn("message held", "id", rec.ID())
 			_ = rec.Close()
-			return
+			return delivery.Queued
 		}
 	}
 	q.log.Error("message lost, not held", "err", err)
+	return queueState(err)
+}
+
+// queueState returns the state of a spool entry for which Create, or Open
+// before it, returned err.
+func queueState(err error) delivery.Queue {
+	switch {
+	case err == nil:
+		return delivery.Queued
+	case errors.Is(err, spool.ErrWrite):
+		return delivery.QueueNotWritten
+	default:
+		return delivery.QueueNotCreated
+	}
 }
 
 // runLimits bound one queue run.

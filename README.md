@@ -875,6 +875,10 @@ preset = "generic-json"
   message, see "Routes and suppression". When the valid file names a
   `dir` other than the default, `-q` also moves what `hold/` of the
   default directory keeps into that queue. `hold_ttl` bounds the wait.
+  A message to be held, for a rejected configuration or without a route,
+  whose entry cannot be created or written (`message lost, not held`)
+  exits 73 or 74 instead of 78 or 64, as a temporary failure without a
+  spool entry does: the caller must keep it.
 - Each call runs the queue for at most `drain_budget` and
   `drain_max_messages` entries after delivering its own message, only for
   the entries of its caller's uid, and not at all while another call of the
@@ -1172,8 +1176,8 @@ option: `-f --probe` names a sender.
 | `--probe`: every target took the sample message, if only with `template=fallback` | 0 |
 | no target accepted it and one rejected it, or all failed temporarily with the spool off | 69 |
 | `--probe`: a target rejected the sample message | 69 |
-| a target failed temporarily and the spool entry could not be created: directory missing or not writable, or a limit reached | 73 |
-| a target failed temporarily and the spool entry could not be written; `-q` or `--status` could not read the spool, `mailq` a spool that exists | 74 |
+| a target failed temporarily, or a message to be held (rejected configuration, no route) was not held, and the spool entry could not be created: directory missing or not writable, or a limit reached | 73 |
+| a target failed temporarily, or a message to be held was not held, and the spool entry could not be written; `-q` or `--status` could not read the spool, `mailq` a spool that exists | 74 |
 | `--probe` only: a target failed temporarily and none rejected the sample message; nothing is queued | 75 |
 | usage error: `-f` or `-r` without a value, a line break in the sender, the full name or a recipient, `-bs`, `--config` without a value; stdin is not read | 64 |
 | `--check-config` with an argument, `--probe` naming no configured target, or either from an elevated caller with `--config` or `MAILCRIER_CONFIG` | 64 |
@@ -1181,7 +1185,7 @@ option: `-f --probe` names a sender.
 | stdin cannot be read | 66 |
 | panic in the main goroutine (a bug; the record `panic, call ended` carries the value and the stack, redacted) | 70 |
 | `--probe` or `--check-config` from an elevated caller other than root and the `mailcrier` user | 77 |
-| for a call with a message: the configuration cannot be read, parsed or validated, defines no targets, or holds a template that does not parse; the message is held | 78 |
+| for a call with a message: the configuration cannot be read, parsed or validated, defines no targets, or holds a template that does not parse; the message is held, or lost with the spool off | 78 |
 | `--check-config` found an error, or `--probe` cannot use the configuration; nothing is held | 78 |
 
 The targets are sent to at the same time. A panic while rendering or

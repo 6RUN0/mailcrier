@@ -314,6 +314,9 @@ with "build constraints exclude all Go files".
   redactor. `internal/app/routing.go`: `queue.decide` runs after
   `buildTargets` and before the spool: suppression (0, nothing spooled),
   direct chats, routes; no target gives `hold/` with `no route` and 64.
+  `hold` returns the `delivery.Queue` of its entry: a message not held
+  exits 73/74 (`holdExitCode`), not 78 or 64; with the spool off it keeps
+  78 or 64.
   `release` and `releaseInto` decide again through `routeHeld`, which
   reads the message only when there are rules or `telegram_direct`, and
   then only its subject (`message.ParseSubject`, checked against `Read`
