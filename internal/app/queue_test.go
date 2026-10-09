@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"net/http"
 	"os"
@@ -340,6 +341,85 @@ func TestSpoolInternalError(t *testing.T) {
 		}
 		if strings.Contains(inv.output(), secretToken) {
 			t.Errorf("output contains the token:\n%s", inv.output())
+		}
+		if want := `msg="target failed" target=hook class=perm err="panic: unexpected request to ***" stack="goroutine `; !strings.Contains(inv.output(), want) {
+			t.Errorf("output lacks %q:\n%s", want, inv.output())
+		}
+	})
+}
+
+// panickingFS fails the way a bug in reading the configuration would.
+type panickingFS struct{}
+
+func (panickingFS) Open(string) (fs.File, error) {
+	panic("bug in the file system")
+}
+
+// TestRunPanic covers a panic in the main goroutine of a call with a
+// message: the record carries the value and the stack, redacted; the queue
+// run after the message is skipped; and a message read but not yet in the
+// spool is held with the reason internal error.
+func TestRunPanic(t *testing.T) {
+	t.Run("T-TPL-12/panic-record-redacted", func(t *testing.T) {
+		dir := t.TempDir()
+		inv := &invocation{
+			config: httpTargetConfig("https://hooks.example.org/hook/" + secretToken), spoolDir: dir,
+			stdin: strings.NewReader("Subject: t\n\nb\n"),
+			deliver: func(context.Context, []delivery.Target, message.Envelope, render.Data, []message.Attachment) []delivery.Result {
+				panic("unexpected request to https://hooks.example.org/hook/" + secretToken)
+			},
+		}
+		if code := inv.run(t); code != 70 {
+			t.Fatalf("Run() = %d, want 70; output:\n%s", code, inv.output())
+		}
+		output := inv.output()
+		if !strings.Contains(output, `level=ERROR msg="panic, call ended" panic="unexpected request to ***" stack="goroutine `) {
+			t.Errorf("output lacks the redacted panic with its stack:\n%s", output)
+		}
+		if strings.Contains(output, secretToken) {
+			t.Errorf("output contains the token:\n%s", output)
+		}
+		c := &spoolCase{t: t, dir: dir}
+		if queued, held := c.ids(spool.QueueDir), c.ids(spool.HoldDir); len(queued) != 1 || len(held) != 0 {
+			t.Errorf("queue/ = %v, hold/ = %v, want the entry written ahead and nothing held", queued, held)
+		}
+	})
+	t.Run("queue-run-skipped", func(t *testing.T) {
+		c := newSpoolCase(t)
+		c.service.reply("a", delivery.Temp)
+		c.send("old", elevatedUser)
+		c.clock.advance(time.Minute)
+		inv := c.invocation(elevatedUser, nil)
+		inv.stdin = strings.NewReader("Subject: new\n\nbody\n")
+		inv.deliver = func(ctx context.Context, targets []delivery.Target, env message.Envelope, d render.Data, files []message.Attachment) []delivery.Result {
+			if d.Subject == "new" {
+				panic("bug in the delivery")
+			}
+			return c.service.deliver(ctx, targets, env, d, files)
+		}
+		if code := inv.run(t); code != 70 {
+			t.Fatalf("Run() = %d, want 70; output:\n%s", code, inv.output())
+		}
+		if got := c.service.got("a"); !slices.Equal(got, []string{"old"}) {
+			t.Errorf("a got %v, want the queued message untouched by the call that panicked", got)
+		}
+	})
+	t.Run("message-held", func(t *testing.T) {
+		c := newSpoolCase(t)
+		inv := c.invocation(elevatedUser, nil)
+		inv.configFS = panickingFS{}
+		inv.stdin = strings.NewReader("Subject: kept\n\nbody\n")
+		if code := inv.run(t); code != 70 {
+			t.Fatalf("Run() = %d, want 70; output:\n%s", code, inv.output())
+		}
+		if !strings.Contains(inv.output(), `panic="bug in the file system"`) || !strings.Contains(inv.output(), `level=WARN msg="message held"`) {
+			t.Errorf("output lacks the panic and the held message:\n%s", inv.output())
+		}
+		if e := c.entry(spool.HoldDir); e.Reason != reasonInternal {
+			t.Errorf("held entry = %+v, want reason internal error", e)
+		}
+		if code, inv := c.queueRun(rootCaller); code != 0 || len(c.ids(spool.HoldDir)) != 0 || !slices.Equal(c.service.got("a"), []string{"kept"}) {
+			t.Errorf("-q = %d, hold/ %v, a got %v; output:\n%s", code, c.ids(spool.HoldDir), c.service.got("a"), inv.output())
 		}
 	})
 }

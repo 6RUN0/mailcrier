@@ -10,6 +10,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/6RUN0/mailcrier/internal/redact"
 )
 
 // secretToken is the part of a webhook URL that must never reach a log.
@@ -146,6 +148,19 @@ func TestRunKeepsTokenOutOfLogs(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestStackText pins that the stack of a panic is cut to maxStackLength
+// after the redaction: cut first, a secret across the cut would lose its
+// tail and no longer match, leaving its head in the log.
+func TestStackText(t *testing.T) {
+	redactor := &redact.Redactor{}
+	redactor.Add(secretToken)
+	stack := strings.Repeat("x", maxStackLength-5) + secretToken + strings.Repeat("y", 100)
+	got := stackText(redactor, []byte(stack))
+	if len(got) != maxStackLength || strings.Contains(got, secretToken[:5]) || !strings.HasSuffix(got, "***"+strings.Repeat("y", 2)) {
+		t.Errorf("stackText() = ...%q (%d bytes)", got[len(got)-20:], len(got))
 	}
 }
 

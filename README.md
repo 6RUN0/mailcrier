@@ -1179,23 +1179,28 @@ option: `-f --probe` names a sender.
 | `--check-config` with an argument, `--probe` naming no configured target, or either from an elevated caller with `--config` or `MAILCRIER_CONFIG` | 64 |
 | no route selects a target; the message is held, or lost with the spool off | 64 |
 | stdin cannot be read | 66 |
-| panic in the main goroutine (a bug; the redacted record in the log carries the details) | 70 |
+| panic in the main goroutine (a bug; the record `panic, call ended` carries the value and the stack, redacted) | 70 |
 | `--probe` or `--check-config` from an elevated caller other than root and the `mailcrier` user | 77 |
 | for a call with a message: the configuration cannot be read, parsed or validated, defines no targets, or holds a template that does not parse; the message is held | 78 |
 | `--check-config` found an error, or `--probe` cannot use the configuration; nothing is held | 78 |
 
 The targets are sent to at the same time. A panic while rendering or
 sending for one target (a bug) fails that target permanently, logged
-redacted as `target failed`, and the others still deliver. Its spool
-entry is not removed: once no target of the message is pending it moves
-to `failed/` with the reason `internal error` (`message failed`), where
-`mailq` shows the target with `internal="panic: ..."` until `failed_ttl`
-deletes it; a retry would repeat the bug. A panic on one entry of a queue
-run is logged as `panic in queue run` with the id and the stack, moves
-that entry to `failed/` the same way, and the run goes on with the next
-one; `-q` then exits 70. A panic in any
-other goroutine ends the process with the Go runtime's own report on
-stderr and status 2; that report is not redacted. A target that failed is
+redacted as `target failed` with the field `stack`, and the others still
+deliver. Its spool entry is not removed: once no target of the message
+is pending it moves to `failed/` with the reason `internal error`
+(`message failed`), where `mailq` shows the target with
+`internal="panic: ..."` until `failed_ttl` deletes it; a retry would
+repeat the bug. A panic on one entry of a queue run is logged as `panic
+in queue run` with the id and the stack, moves that entry to `failed/`
+the same way, and the run goes on with the next one; `-q` then exits 70.
+Any other panic in the main goroutine is logged as `panic, call ended`
+and exits 70 without the queue run of the call; a message read and not
+yet written to the spool goes to `hold/` with the reason `internal
+error`, which a queue run routes like any held message. The stack in
+these records is cut to 4 KiB, as syslog daemons cut a long record. A
+panic in any other goroutine ends the process with the Go runtime's own
+report on stderr and status 2; that report is not redacted. A target that failed is
 logged as `target failed`; a temporary failure is also logged as
 `message queued for target` or `message queued`, or, without a spool
 entry, as `message lost for target` when another target accepted the

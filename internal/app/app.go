@@ -152,14 +152,22 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 		return slog.New(redactor.Handler(d.NewLogger(tag).Handler())).With("call", call)
 	}
 	log := newLogger(config.DefaultSyslogTag)
+	// rescue holds the message once it is read and until the spool has it
+	// or the call disposed of it; nil otherwise.
+	var rescue func()
 	// A panic value may quote a request URL; logging it through the
 	// redactor keeps the token out, which the runtime's own crash report
 	// would not.
 	defer func() {
-		if value := recover(); value != nil {
-			log.Error("panic, message not delivered", "panic", value)
-			code = exitSoftware
+		value := recover()
+		if value == nil {
+			return
 		}
+		log.Error("panic, call ended", "panic", value, "stack", stackText(redactor, debug.Stack()))
+		if rescue != nil {
+			rescue()
+		}
+		code = exitSoftware
 	}()
 	client := *d.HTTP
 	if d.ReexecErr != nil {
@@ -238,9 +246,15 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 		log.Warn(w)
 	}
 	log.Info("message received", "size", msg.Size, "recipients", len(env.Recipients))
-	cfg, err := config.Load(d.ConfigFS, configPath)
+	var cfg *config.Config
+	rescue = func() {
+		q, openErr := newQueue(d, log, redactor, spoolSettings(d, cfg), nil)
+		q.hold(msg, env, receivedAt, openErr, reasonInternal)
+	}
+	cfg, err = config.Load(d.ConfigFS, configPath)
 	if err != nil {
 		log.Error("configuration rejected, message not delivered", "err", err)
+		rescue = nil
 		q, openErr := newQueue(d, log, redactor, spoolSettings(d, nil), nil)
 		q.hold(msg, env, receivedAt, openErr, reasonConfig)
 		return exitConfig
@@ -253,6 +267,7 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 	targets, err := buildTargets(cfg, &client, hookProcess(d, log))
 	if err != nil {
 		log.Error("configuration rejected, message not delivered", "err", err)
+		rescue = nil
 		q, openErr := newQueue(d, log, redactor, spoolSettings(d, cfg), nil)
 		q.hold(msg, env, receivedAt, openErr, reasonConfig)
 		return exitConfig
@@ -260,23 +275,32 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 	q, openErr := newQueue(d, log, redactor, spoolSettings(d, cfg), targets)
 	q.router, q.direct = newRouter(cfg), newDirectChats(cfg, targets, &client)
 	q.deadline, q.notices = cfg.General.Deadline.Duration, notices(cfg.Strings)
+	code = func() int {
+		names, v := q.decide(log, msg.Subject, env, false)
+		switch v {
+		case suppressed:
+			return exitOK
+		case noRoute:
+			log.Warn("no route for message")
+			rescue = nil
+			q.hold(msg, env, receivedAt, openErr, reasonNoRoute)
+			return exitUsage
+		}
+		data := render.NewData(msg, env, bcc)
+		data.Hostname, data.ReceivedAt, data.Strings = d.Hostname, receivedAt, q.notices
+		deliverCtx, cancel := context.WithTimeout(ctx, q.deadline)
+		defer cancel()
+		// deliverOwn writes the entry before anything else, and a panic
+		// after that leaves it in queue/.
+		rescue = nil
+		return q.deliverOwn(deliverCtx, q.selectTargets(names), msg, env, data, openErr)
+	}()
+	rescue = nil
 	// The own message goes first, the caller's queue after it, within its
-	// own budget: a failed service must not delay the next message.
-	defer q.drainOwn(ctx)
-	names, v := q.decide(log, msg.Subject, env, false)
-	switch v {
-	case suppressed:
-		return exitOK
-	case noRoute:
-		log.Warn("no route for message")
-		q.hold(msg, env, receivedAt, openErr, reasonNoRoute)
-		return exitUsage
-	}
-	data := render.NewData(msg, env, bcc)
-	data.Hostname, data.ReceivedAt, data.Strings = d.Hostname, receivedAt, q.notices
-	deliverCtx, cancel := context.WithTimeout(ctx, q.deadline)
-	defer cancel()
-	return q.deliverOwn(deliverCtx, q.selectTargets(names), msg, env, data, openErr)
+	// own budget: a failed service must not delay the next message. A
+	// panic above skips the queue run.
+	q.drainOwn(ctx)
+	return code
 }
 
 // catchSignals applies d.CatchSignals to ctx when it is set.
@@ -527,9 +551,10 @@ func selectConfigPath(d Deps, inv sendmail.Invocation, log *slog.Logger) (string
 }
 
 // logResult records the outcome of one target. For a failure class is
-// temp or perm, status the HTTP status when the service answered and
-// retry_after the delay it asked for.
-func logResult(log *slog.Logger, r delivery.Result) {
+// temp or perm, status the HTTP status when the service answered,
+// retry_after the delay it asked for and, after a panic, stack the stack
+// of the goroutine, redacted with redactor.
+func logResult(log *slog.Logger, redactor *redact.Redactor, r delivery.Result) {
 	if r.IsTruncated {
 		log.Info("text truncated for target", "target", r.TargetID)
 	}
@@ -564,7 +589,12 @@ func logResult(log *slog.Logger, r delivery.Result) {
 	if deliveryErr != nil && deliveryErr.RetryAfter > 0 {
 		attrs = append(attrs, "retry_after", deliveryErr.RetryAfter)
 	}
-	log.Error("target failed", append(attrs, "err", r.Err)...)
+	attrs = append(attrs, "err", r.Err)
+	var panicErr *backend.PanicError
+	if errors.As(r.Err, &panicErr) {
+		attrs = append(attrs, "stack", stackText(redactor, panicErr.Stack))
+	}
+	log.Error("target failed", attrs...)
 }
 
 // minHeaderSecret is the shortest header value, or credential after an

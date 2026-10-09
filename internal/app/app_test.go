@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -41,6 +42,8 @@ type invocation struct {
 	creds   Credentials
 	environ []string
 	files   fstest.MapFS
+	// configFS replaces config and files when set.
+	configFS fs.FS
 	// execs records the Exec calls, which all fail; replacedEnv is the
 	// environment passed to ReplaceEnv.
 	execs       []execCall
@@ -106,13 +109,17 @@ func (inv *invocation) run(t testing.TB) int {
 	if now == nil {
 		now = func() time.Time { return testNow }
 	}
+	var configFS fs.FS = fsys
+	if inv.configFS != nil {
+		configFS = inv.configFS
+	}
 	deps := Deps{
 		NewLogger: func(tag string) *slog.Logger {
 			buf := &bytes.Buffer{}
 			inv.logs[tag] = buf
 			return slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 		},
-		ConfigFS:     fsys,
+		ConfigFS:     configFS,
 		ConfigPath:   SystemConfigPath,
 		HTTP:         client,
 		Hostname:     "host1.example.org",

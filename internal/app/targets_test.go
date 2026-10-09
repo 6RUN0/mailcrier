@@ -237,7 +237,7 @@ func TestLogTextRejected(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var b strings.Builder
-			logResult(slog.New(slog.NewTextHandler(&b, nil)), tc.result)
+			logResult(slog.New(slog.NewTextHandler(&b, nil)), &redact.Redactor{}, tc.result)
 			got := b.String()
 			if !strings.Contains(got, tc.want) {
 				t.Errorf("log %q, want %q", got, tc.want)

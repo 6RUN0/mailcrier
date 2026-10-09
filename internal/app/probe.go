@@ -59,7 +59,7 @@ func runProbe(ctx context.Context, d Deps, log *slog.Logger, newLogger func(tag 
 		results = d.deliver(sendCtx, selected, env, data, msg.Attachments)
 	}
 	for _, r := range results {
-		logResult(log, r)
+		logResult(log, redactor, r)
 		_, _ = fmt.Fprintln(d.Stdout, probeLine(redactor, r))
 	}
 	log.Info("probe sent", "targets", len(selected))
