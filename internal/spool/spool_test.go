@@ -146,6 +146,35 @@ func TestCreateFailures(t *testing.T) {
 	})
 }
 
+// TestCreateSidecarNotWritten pins that a sidecar the file system refuses
+// to take is a write error, exit status 74, as for the message: a full
+// disk must not read as a missing directory. RLIMIT_FSIZE below the size
+// of the sidecar fails its write with EFBIG, as ENOSPC would; the Go
+// runtime ignores the SIGXFSZ that comes with it.
+func TestCreateSidecarNotWritten(t *testing.T) {
+	sp := openSpool(t)
+	var limit syscall.Rlimit
+	if err := syscall.Getrlimit(syscall.RLIMIT_FSIZE, &limit); err != nil {
+		t.Fatal(err)
+	}
+	small := limit
+	small.Cur = 64
+	if err := syscall.Setrlimit(syscall.RLIMIT_FSIZE, &small); err != nil {
+		t.Fatal(err)
+	}
+	e := NewEntry(NewID(testNow), 1000, testNow, testNow, message.Envelope{}, []string{"a"})
+	_, err := sp.Create(QueueDir, e, []byte("x"), Quota{})
+	if err := syscall.Setrlimit(syscall.RLIMIT_FSIZE, &limit); err != nil {
+		t.Fatal(err)
+	}
+	if !errors.Is(err, ErrWrite) || errors.Is(err, ErrCreate) || !errors.Is(err, syscall.EFBIG) {
+		t.Errorf("Create() error = %v, want ErrWrite with EFBIG", err)
+	}
+	if got := names(t, sp, TmpDir); len(got) != 0 {
+		t.Errorf("tmp/ = %v, want the files removed", got)
+	}
+}
+
 // lockDir makes dir read-only for the test and restores it afterwards,
 // so that TempDir can remove it.
 func lockDir(t *testing.T, dir string) {

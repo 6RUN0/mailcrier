@@ -218,7 +218,8 @@ func createStep(step string) {
 // a lock that every call would wait for, which a stopped process could
 // hold forever: the last call admitted counted after every other admitted
 // entry was reserved. Near a limit two parallel calls may both be refused
-// where one would fit. Errors wrap ErrCreate, or ErrQuota.
+// where one would fit. Errors wrap ErrCreate, ErrQuota, or ErrWrite when
+// the sidecar cannot be written.
 func (s *Spool) reserve(e *Entry, size int64, sidecar []byte, quota Quota) (message, entry *os.File, err error) {
 	tmpMessage, tmpEntry := s.path(TmpDir, e.ID+messageSuffix), s.path(TmpDir, e.ID+entrySuffix)
 	message, err = createFile(tmpMessage, os.O_EXCL)
@@ -244,8 +245,9 @@ func (s *Spool) reserve(e *Entry, size int64, sidecar []byte, quota Quota) (mess
 	if err != nil {
 		return fail(ErrCreate, err)
 	}
+	// A full disk fails this write as it fails that of the message.
 	if _, err := entry.Write(sidecar); err != nil {
-		return fail(ErrCreate, err)
+		return fail(ErrWrite, err)
 	}
 	usage, err := s.Usage()
 	if err != nil {
