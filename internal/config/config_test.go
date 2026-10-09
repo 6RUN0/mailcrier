@@ -2,7 +2,9 @@ package config
 
 import (
 	"errors"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -628,11 +630,24 @@ func TestLoadMissingFile(t *testing.T) {
 	}
 }
 
-// readmeConfigHeading marks the README section whose TOML blocks use the
-// current configuration schema.
-const readmeConfigHeading = "## Configuration"
-
 var tomlBlock = regexp.MustCompile("(?s)```toml\n(.*?)```")
+
+// userDocs returns the paths of README.md and every page under docs/, the
+// documents whose TOML blocks use the current configuration schema.
+func userDocs(t *testing.T) []string {
+	t.Helper()
+	docs := []string{"../../README.md"}
+	err := filepath.WalkDir("../../docs", func(path string, entry fs.DirEntry, err error) error {
+		if err == nil && !entry.IsDir() && strings.HasSuffix(path, ".md") {
+			docs = append(docs, path)
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return docs
+}
 
 // TestLoadChatID pins that chat_id takes the integer form of the Bot API
 // examples as well as a string, and yields the same chat.
@@ -658,39 +673,29 @@ func TestLoadTrimsChannel(t *testing.T) {
 	}
 }
 
-func TestReadmeExamplesLoad(t *testing.T) {
-	readme, err := os.ReadFile("../../README.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	section := sectionAfter(string(readme), readmeConfigHeading)
-	blocks := tomlBlock.FindAllStringSubmatch(section, -1)
-	if len(blocks) == 0 {
-		t.Fatalf("README section %q has no toml block", readmeConfigHeading)
-	}
+// TestDocExamplesLoad loads every TOML block of the user documentation, so
+// that an example a reader copies is a valid configuration.
+func TestDocExamplesLoad(t *testing.T) {
 	secrets := fstest.MapFS{}
 	for _, name := range []string{"etc/mailcrier.d/api.url", "etc/mailcrier.d/telegram.token", "etc/mailcrier.d/discord.url", "etc/mailcrier.d/slack.token", "etc/mailcrier.d/ntfy.url", "etc/mailcrier.d/mm.url", "etc/mailcrier.d/bus.url"} {
 		secrets[name] = &fstest.MapFile{Data: []byte("https://hooks.example.org/in/secret\n")}
 	}
-	for i, block := range blocks {
-		if _, err := load(t, block[1], secrets); err != nil {
-			t.Errorf("README toml block %d: %v", i+1, err)
+	found := 0
+	for _, path := range userDocs(t) {
+		doc, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, block := range tomlBlock.FindAllStringSubmatch(string(doc), -1) {
+			found++
+			if _, err := load(t, block[1], secrets); err != nil {
+				t.Errorf("%s: toml block %d: %v", path, i+1, err)
+			}
 		}
 	}
-}
-
-// sectionAfter returns the text from the heading line to the next heading of
-// the same level.
-func sectionAfter(doc, heading string) string {
-	start := strings.Index(doc, "\n"+heading+"\n")
-	if start < 0 {
-		return ""
+	if found == 0 {
+		t.Fatal("the documentation has no toml block")
 	}
-	rest := doc[start+len(heading)+2:]
-	if end := strings.Index(rest, "\n## "); end >= 0 {
-		return rest[:end]
-	}
-	return rest
 }
 
 func TestLoadTimeLimits(t *testing.T) {

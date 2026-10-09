@@ -149,7 +149,7 @@ with "build constraints exclude all Go files".
   getopt-style short flags from the `shortFlags` table, long options before
   `--` only, usage errors exit 64 before stdin is read.
   `Invocation.Envelope` builds sender and recipients. The flag table is
-  repeated in README, `docs/mailcrier.8` and `--help` (`sendmail.Usage`);
+  repeated in `docs/cli.md`, `docs/mailcrier.8` and `--help` (`sendmail.Usage`);
   change all four together. `TestUsage*` check `Usage` against the parser
   tables and the exit statuses of the manual page, and its layout.
 - `internal/message.Read` returns the message without Bcc and Resent-Bcc,
@@ -367,12 +367,13 @@ with "build constraints exclude all Go files".
   `internal/app/testdata/callers/<name>.txtar`. A table test whose rows
   carry case IDs calls `t.Run("<ID>/<slug>", row.check)` per row, because
   `TestIDsCovered` reads only literals in the `Run` call.
-- `TestReadmeExamplesLoad` loads the TOML blocks of the README section
-  "Configuration" with `config.Load`. `TestReadmeTemplatesParse` parses
-  every README TOML block that sets a template; `TestReadmeCheckConfigOutput`
-  runs `--check-config` on the example under "Checking the configuration"
-  and compares stderr with the text block after it, so a changed finding
-  text needs the README edited.
+- The user documentation is `README.md` (the index) and the
+  pages under `docs/` (`releasing.md` is for the maintainer).
+  `TestDocExamplesLoad` loads every TOML block of them with `config.Load`;
+  `TestDocTemplatesParse` builds every block that sets a template;
+  `TestDocCheckConfigOutput` runs `--check-config` on the first TOML block
+  of `docs/checking.md` and compares stderr with the text block after it,
+  so a changed finding text needs that page edited.
 - `TestFormerNameGone` fails when a tracked path or file carries the former
   name of the program in any case; the only exception is the fork line
   under the README title, once. It needs its own git work tree, whose top

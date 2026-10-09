@@ -47,7 +47,7 @@ var selinuxDomains = map[string][]string{
 // service without NoNewPrivileges into sendmail_t; under NoNewPrivileges the
 // transition is refused and the call stays in initrc_t, as with postfix.
 // The queue service runs as the user mailcrier, so its hook has the group
-// mailcrier (README, "Ids" of the exec target); every other hook must not.
+// mailcrier (docs/targets/exec.md, "Ids"); every other hook must not.
 var hookDomains = []struct {
 	subject, domain string
 	isService       bool
