@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"runtime/debug"
 	"slices"
 	"strings"
 	"sync"
@@ -194,12 +195,13 @@ func (q *queue) deliverOwn(ctx context.Context, targets []delivery.Target, msg *
 // as soon as the target is finished. raw is the kept input of the
 // message, for a target that sends it as a file. donePanic is a panic of
 // the recording in the goroutine of a target: the results it left
-// unrecorded are recorded again here, where a repeated panic reaches the
-// recover of the caller.
+// unrecorded are recorded again here, each applied to the entry once. When
+// that panics too, the state cannot be written, and the entry moves to
+// failed/ at once rather than send its targets again on the next run.
 func (q *queue) send(ctx context.Context, targets []delivery.Target, env message.Envelope, data render.Data, files []message.Attachment, raw []byte, rec *spool.Record) (results []delivery.Result, donePanic *backend.PanicError) {
-	// recorded holds the targets whose result reached the entry, applied
-	// and written or its write failure logged.
-	recorded := map[string]bool{}
+	// applied holds the targets whose result is in the entry; recorded
+	// those whose entry was written, or its write failure logged, after.
+	applied, recorded := map[string]bool{}, map[string]bool{}
 	record := func(r delivery.Result) {
 		q.mu.Lock()
 		defer q.mu.Unlock()
@@ -207,7 +209,10 @@ func (q *queue) send(ctx context.Context, targets []delivery.Target, env message
 		if rec == nil {
 			return
 		}
-		q.apply(rec.Entry, r)
+		if !applied[r.TargetID] {
+			q.apply(rec.Entry, r)
+			applied[r.TargetID] = true
+		}
 		// The entry of the last result is removed, or moved to failed/,
 		// at once: a Save just before would cost a sync. On failure Save
 		// records the result, and finish tries again.
@@ -218,14 +223,14 @@ func (q *queue) send(ctx context.Context, targets []delivery.Target, env message
 			}
 			return
 		}
-		err := rec.Save()
-		recorded[r.TargetID] = true
-		if err != nil {
+		if err := rec.Save(); err != nil {
 			q.hasIOError = true
 			q.unsaved[rec.ID()] = true
 			q.log.Error("spool entry not updated", "id", rec.ID(), "target", r.TargetID, "err", err)
+			recorded[r.TargetID] = true
 			return
 		}
+		recorded[r.TargetID] = true
 		if q.d.spoolSaved != nil {
 			q.d.spoolSaved(rec.Entry)
 		}
@@ -238,12 +243,34 @@ func (q *queue) send(ctx context.Context, targets []delivery.Target, env message
 		return results, nil
 	}
 	results, donePanic = delivery.DeliverEach(ctx, targets, data, files, raw, record)
+	if donePanic == nil || rec == nil {
+		return results, donePanic
+	}
 	for _, r := range results {
-		if donePanic != nil && rec != nil && !recorded[r.TargetID] {
-			record(r)
+		if recorded[r.TargetID] {
+			continue
+		}
+		if again := recordRecovering(record, r); again != nil {
+			q.log.Error("panic in recording a result", append([]any{"id", rec.ID(), "target", r.TargetID}, panicAttrs(q.redactor, again)...)...)
+			if rec.Area != spool.FailedDir {
+				q.fail(rec, reasonInternal)
+			}
+			break
 		}
 	}
 	return results, donePanic
+}
+
+// recordRecovering calls record with r and returns its panic, nil for
+// none.
+func recordRecovering(record func(delivery.Result), r delivery.Result) (panicErr *backend.PanicError) {
+	defer func() {
+		if value := recover(); value != nil {
+			panicErr = &backend.PanicError{Value: value, Stack: debug.Stack()}
+		}
+	}()
+	record(r)
+	return nil
 }
 
 // apply records the result of one target in e. The error is stored
@@ -740,7 +767,7 @@ func (q *queue) deliverEntry(ctx context.Context, rec *spool.Record) bool {
 	}
 	if donePanic != nil {
 		// send recorded every result, so the entry keeps its pending
-		// targets; only a repeated panic fails it, see recoverEntry.
+		// targets; a repeated panic there moved it to failed/.
 		q.notePanic(log, donePanic)
 	}
 	return true

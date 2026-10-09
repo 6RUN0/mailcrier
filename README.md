@@ -1311,15 +1311,18 @@ after a call leaves the exit status of the call to its own message, as
 with any other error of that run.
 A panic while the result of one target is recorded in the spool loses no
 result: every target is logged and recorded once all finished, the entry
-keeps its pending targets, and the call or `-q` exits 70. Any other
-panic in the main goroutine is logged as `panic, call ended` and exits
-70 without the queue run of the call; a message read and not yet written
-to the spool goes to `hold/` with the reason `internal error`, which a
-queue run routes like any held message. The stack in these records is
-cut to 4 KiB, as syslog daemons cut a long record. A panic in any other
-goroutine ends the process with the Go runtime's own report on stderr
-and status 2; that report is not redacted. A target that failed is
-logged as `target failed`, or `target failed, retry queued` when the
+keeps its pending targets, and the call or `-q` exits 70. When the
+second recording panics too (`panic in recording a result`), the state
+cannot be written, and the entry moves to `failed/` with the reason
+`internal error` at once, so that no target gets the message twice. Any
+other panic in the main goroutine is logged as `panic, call ended` and
+exits 70 without the queue run of the call; a message read and not yet
+written to the spool goes to `hold/` with the reason `internal error`,
+which a queue run routes like any held message. The stack in these
+records is cut to 4 KiB, as syslog daemons cut a long record. A panic in
+any other goroutine ends the process with the Go runtime's own report on
+stderr and status 2; that report is not redacted. A target that failed
+is logged as `target failed`, or `target failed, retry queued` when the
 spool retries it; a temporary failure is also logged as `message queued
 for target` or `message queued`, or, without a spool entry, as `message
 lost for target` when another target accepted the message and as

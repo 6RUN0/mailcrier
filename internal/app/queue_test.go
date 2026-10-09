@@ -1,7 +1,6 @@
 package app
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -586,45 +585,122 @@ func (errSender) Caps() backend.Caps { return backend.Caps{} }
 
 func (s errSender) Send(context.Context, backend.Payload) error { return s.err }
 
-// TestSendRecordsAfterCallbackPanic pins that a result whose recording
-// panicked in the goroutine of its target is recorded once more after the
-// targets finished: target b, rejected, ends failed, and the entry, which
-// no target waits for any more, is removed.
+// textAlwaysErr is an error whose text always panics.
+type textAlwaysErr struct{}
+
+func (textAlwaysErr) Error() string { panic("bug in the error text") }
+
+// panicOnceHandler panics at the first record with message msg, as a bug
+// in a step that logs would.
+type panicOnceHandler struct {
+	slog.Handler
+	msg    string
+	isDone *atomic.Bool
+}
+
+func (h panicOnceHandler) Handle(ctx context.Context, r slog.Record) error {
+	if r.Message == h.msg && h.isDone.CompareAndSwap(false, true) {
+		panic("bug in logging " + h.msg)
+	}
+	return h.Handler.Handle(ctx, r)
+}
+
+func (h panicOnceHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return panicOnceHandler{h.Handler.WithAttrs(attrs), h.msg, h.isDone}
+}
+
+func (h panicOnceHandler) WithGroup(name string) slog.Handler {
+	return panicOnceHandler{h.Handler.WithGroup(name), h.msg, h.isDone}
+}
+
+// TestSendRecordsAfterCallbackPanic pins what send does with a result whose
+// recording panicked in the goroutine of its target: it records it once
+// more after the targets finished, applies it to the entry only once, and
+// moves the entry to failed/ when the recording panics again.
 func TestSendRecordsAfterCallbackPanic(t *testing.T) {
-	settings := config.DefaultSpool()
-	settings.Dir = t.TempDir()
 	tmpl, err := render.Builtin(text.FormatPlain)
 	if err != nil {
 		t.Fatal(err)
 	}
-	targets := []delivery.Target{
-		{ID: "a", Sender: errSender{}, Template: tmpl},
-		{ID: "b", Sender: errSender{err: textOnceErr{reads: &atomic.Int32{}}}, Template: tmpl},
-	}
-	var logs strings.Builder
-	q, err := newQueue(Deps{Now: func() time.Time { return testNow }}, slog.New(slog.NewTextHandler(&logs, nil)), &redact.Redactor{}, settings, targets)
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw := []byte("Subject: t\n\nbody\n")
-	msg, bcc, _, err := message.Read(bytes.NewReader(raw), message.ReadOptions{MaxSize: message.MaxSize, ReceivedAt: testNow})
-	if err != nil {
-		t.Fatal(err)
-	}
-	entry := spool.NewEntry(spool.NewID(testNow), 1000, testNow, testNow, message.Envelope{}, []string{"a", "b"})
-	rec, err := q.sp.Create(spool.QueueDir, entry, msg.Raw, spool.Quota{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = rec.Close() }()
-	data := render.NewData(msg, message.Envelope{}, bcc)
-	data.Strings = render.DefaultStrings()
-	_, donePanic := q.send(context.Background(), targets, message.Envelope{}, data, nil, msg.Raw, rec)
-	if donePanic == nil || donePanic.Value != "bug in the error text" {
-		t.Fatalf("send() panic = %#v, want the panic of recording b", donePanic)
-	}
-	if b := rec.Entry.Targets["b"]; b.State != spool.Failed || b.LastError != "unavailable" || q.sp.Has(spool.QueueDir, rec.ID()) {
-		t.Errorf("b = %+v, entry in queue/ %v; want b failed and the entry removed", b, q.sp.Has(spool.QueueDir, rec.ID()))
+	unavailable := &backend.Error{Class: backend.Temporary, Err: errors.New("unavailable")}
+	for _, tc := range []struct {
+		name    string
+		targets []delivery.Target
+		// panicMsg makes the first record with that message panic.
+		panicMsg string
+		// isTmpReadOnly makes every write of the sidecar fail.
+		isTmpReadOnly bool
+		check         func(t *testing.T, q *queue, rec *spool.Record, logs string)
+	}{
+		{name: "recorded-again", targets: []delivery.Target{
+			{ID: "a", Sender: errSender{}, Template: tmpl},
+			{ID: "b", Sender: errSender{err: textOnceErr{reads: &atomic.Int32{}}}, Template: tmpl},
+		}, check: func(t *testing.T, q *queue, rec *spool.Record, _ string) {
+			if b := rec.Entry.Targets["b"]; b.State != spool.Failed || b.LastError != "unavailable" || q.sp.Has(spool.QueueDir, rec.ID()) {
+				t.Errorf("b = %+v, entry in queue/ %v; want b failed and the entry removed", b, q.sp.Has(spool.QueueDir, rec.ID()))
+			}
+		}},
+		{name: "applied-once", targets: []delivery.Target{
+			{ID: "b", Sender: errSender{err: unavailable}, Template: tmpl},
+		}, panicMsg: "spool entry not updated", isTmpReadOnly: true, check: func(t *testing.T, _ *queue, rec *spool.Record, _ string) {
+			if b := rec.Entry.Targets["b"]; b.State != spool.Pending || b.Attempts != 1 {
+				t.Errorf("b = %+v, want pending after one attempt", b)
+			}
+		}},
+		{name: "repeated-panic-fails-entry", targets: []delivery.Target{
+			{ID: "a", Sender: errSender{}, Template: tmpl},
+			{ID: "b", Sender: errSender{err: textAlwaysErr{}}, Template: tmpl},
+		}, check: func(t *testing.T, _ *queue, rec *spool.Record, logs string) {
+			if rec.Area != spool.FailedDir || rec.Entry.Reason != reasonInternal || rec.Entry.Targets["a"].State != spool.Done {
+				t.Errorf("entry in %s = %+v, a = %+v; want failed/ with reason internal error, a done", rec.Area, rec.Entry, rec.Entry.Targets["a"])
+			}
+			if !strings.Contains(logs, `msg="panic in recording a result"`) {
+				t.Errorf("log lacks the second panic:\n%s", logs)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.isTmpReadOnly && os.Geteuid() == 0 {
+				t.Skip("root writes into a read-only directory")
+			}
+			settings := config.DefaultSpool()
+			settings.Dir = t.TempDir()
+			var logs strings.Builder
+			var handler slog.Handler = slog.NewTextHandler(&logs, nil)
+			if tc.panicMsg != "" {
+				handler = panicOnceHandler{handler, tc.panicMsg, &atomic.Bool{}}
+			}
+			q, err := newQueue(Deps{Now: func() time.Time { return testNow }}, slog.New(handler), &redact.Redactor{}, settings, tc.targets)
+			if err != nil {
+				t.Fatal(err)
+			}
+			msg, bcc, _, err := message.Read(strings.NewReader("Subject: t\n\nbody\n"), message.ReadOptions{MaxSize: message.MaxSize, ReceivedAt: testNow})
+			if err != nil {
+				t.Fatal(err)
+			}
+			names := make([]string, len(tc.targets))
+			for i, target := range tc.targets {
+				names[i] = target.ID
+			}
+			rec, err := q.sp.Create(spool.QueueDir, spool.NewEntry(spool.NewID(testNow), 1000, testNow, testNow, message.Envelope{}, names), msg.Raw, spool.Quota{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = rec.Close() }()
+			if tc.isTmpReadOnly {
+				tmp := filepath.Join(settings.Dir, spool.TmpDir)
+				if err := os.Chmod(tmp, 0o500); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = os.Chmod(tmp, 0o700) })
+			}
+			data := render.NewData(msg, message.Envelope{}, bcc)
+			data.Strings = render.DefaultStrings()
+			if _, donePanic := q.send(context.Background(), tc.targets, message.Envelope{}, data, nil, msg.Raw, rec); donePanic == nil {
+				t.Fatal("send() reported no panic of the recording")
+			}
+			tc.check(t, q, rec, logs.String())
+		})
 	}
 }
 

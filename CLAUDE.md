@@ -273,8 +273,9 @@ with "build constraints exclude all Go files".
   `DeliverEach` also hands each result to a callback as its target
   finishes (the spool marks `Done` there); a panic of the callback comes
   back beside the results, `queue.send` records again what it left
-  unrecorded, the own message raises it after logging the results, and a
-  queue run logs it and keeps the entry.
+  unrecorded (applying each result once; a second panic moves the entry
+  to `failed/`), the own message raises it after logging the results, and
+  a queue run logs it and keeps the entry.
   `ExitCode(results, queue)` is the exit status matrix, rules in order:
   Temp without a spool entry 73/74, any OK 0, any Perm 69, Temp queued 0,
   else 69.
