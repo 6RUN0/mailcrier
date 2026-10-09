@@ -46,6 +46,8 @@ type invocation struct {
 	files   fstest.MapFS
 	// configFS replaces config and files when set.
 	configFS fs.FS
+	// wrapLog wraps the handler of every logger when set.
+	wrapLog func(slog.Handler) slog.Handler
 	// catchSignals is Deps.CatchSignals.
 	catchSignals func(ctx context.Context) (context.Context, context.CancelFunc)
 	// execs records the Exec calls, which all fail; replacedEnv is the
@@ -133,7 +135,11 @@ func (inv *invocation) run(t testing.TB) int {
 			}
 			buf := &bytes.Buffer{}
 			inv.logs[tag] = buf
-			return slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+			var handler slog.Handler = slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})
+			if inv.wrapLog != nil {
+				handler = inv.wrapLog(handler)
+			}
+			return slog.New(handler)
 		},
 		ConfigFS:     configFS,
 		ConfigPath:   SystemConfigPath,

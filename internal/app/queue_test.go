@@ -376,6 +376,24 @@ func (panickingFS) Open(string) (fs.File, error) {
 	panic("bug in the file system")
 }
 
+// panicErrorHandler panics at every error record, as a broken log would.
+type panicErrorHandler struct{ slog.Handler }
+
+func (h panicErrorHandler) Handle(ctx context.Context, r slog.Record) error {
+	if r.Level >= slog.LevelError {
+		panic("bug in the log")
+	}
+	return h.Handler.Handle(ctx, r)
+}
+
+func (h panicErrorHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return panicErrorHandler{h.Handler.WithAttrs(attrs)}
+}
+
+func (h panicErrorHandler) WithGroup(name string) slog.Handler {
+	return panicErrorHandler{h.Handler.WithGroup(name)}
+}
+
 // TestRunPanic covers a panic in the main goroutine of a call with a
 // message: the record carries the value and the stack, redacted; the queue
 // run after the message is skipped; and a message read but not yet in the
@@ -465,6 +483,24 @@ func TestRunPanic(t *testing.T) {
 		}
 		if !strings.Contains(inv.output(), `level=ERROR msg="panic while handling a panic"`) {
 			t.Errorf("output lacks the second panic:\n%s", inv.output())
+		}
+	})
+	t.Run("T-TPL-12/broken-log", func(t *testing.T) {
+		c := newSpoolCase(t)
+		inv := c.invocation(elevatedUser, nil)
+		inv.stdin = strings.NewReader("Subject: kept\n\nbody\n")
+		inv.catchSignals = func(context.Context) (context.Context, context.CancelFunc) {
+			panic("bug before the envelope " + secretToken)
+		}
+		inv.wrapLog = func(h slog.Handler) slog.Handler { return panicErrorHandler{h} }
+		if code := inv.run(t); code != 70 {
+			t.Fatalf("Run() = %d, want 70; output:\n%s", code, inv.output())
+		}
+		if e := c.entry(spool.HoldDir); e.Reason != reasonInternal {
+			t.Errorf("held entry = %+v, want reason internal error", e)
+		}
+		if got := inv.stderr.String(); got != "mailcrier: panic while handling a panic\n" {
+			t.Errorf("stderr = %q, want the constant notice alone", got)
 		}
 	})
 	t.Run("message-held", func(t *testing.T) {

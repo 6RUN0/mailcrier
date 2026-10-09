@@ -70,6 +70,14 @@ func stackText(redactor *redact.Redactor, stack []byte) string {
 	return text
 }
 
+// callRecovering calls f and reports whether it panicked; the panic ends
+// there.
+func callRecovering(f func()) (hasPanicked bool) {
+	defer func() { hasPanicked = recover() != nil }()
+	f()
+	return false
+}
+
 // panicAttrs returns the fields of the record of a recovered panic, its
 // value and its stack: those of the goroutine where it happened when
 // delivery raised it again as a *backend.PanicError.
@@ -178,16 +186,14 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 			return
 		}
 		code = exitSoftware
-		// A second panic, while this one is logged or the message held,
-		// would make the runtime print the first value unredacted.
-		defer func() {
-			if recover() != nil {
-				log.Error("panic while handling a panic")
-			}
-		}()
-		log.Error("panic, call ended", panicAttrs(redactor, value)...)
-		if rescue != nil {
-			rescue()
+		// The message is held first, so that a broken log cannot lose it.
+		// A second panic, in holding or logging, would make the runtime
+		// print the first value unredacted: it is caught, and when the log
+		// cannot take its notice either, a constant goes to stderr.
+		hasSecondPanic := rescue != nil && callRecovering(rescue)
+		hasSecondPanic = callRecovering(func() { log.Error("panic, call ended", panicAttrs(redactor, value)...) }) || hasSecondPanic
+		if hasSecondPanic && callRecovering(func() { log.Error("panic while handling a panic") }) {
+			_, _ = io.WriteString(d.Stderr, "mailcrier: panic while handling a panic\n")
 		}
 	}()
 	client := *d.HTTP
