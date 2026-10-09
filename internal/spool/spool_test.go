@@ -42,7 +42,7 @@ func create(t *testing.T, sp *Spool, area string, owner int, raw string) *Entry 
 // names lists the files of an area.
 func names(t *testing.T, sp *Spool, area string) []string {
 	t.Helper()
-	entries, err := os.ReadDir(filepath.Join(sp.Dir(), area))
+	entries, err := os.ReadDir(filepath.Join(sp.dir, area))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestCreateLayout(t *testing.T) {
 	})
 	t.Run("T-ADJ-23/group-only-modes", func(t *testing.T) {
 		for _, area := range []string{TmpDir, QueueDir, HoldDir, FailedDir, LocksDir} {
-			info, err := os.Stat(filepath.Join(sp.Dir(), area))
+			info, err := os.Stat(filepath.Join(sp.dir, area))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -76,7 +76,7 @@ func TestCreateLayout(t *testing.T) {
 			}
 		}
 		for _, name := range names(t, sp, QueueDir) {
-			info, err := os.Stat(filepath.Join(sp.Dir(), QueueDir, name))
+			info, err := os.Stat(filepath.Join(sp.dir, QueueDir, name))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -122,14 +122,14 @@ func TestCreateFailures(t *testing.T) {
 	}
 	t.Run("T-MTA-36/tmp-not-writable", func(t *testing.T) {
 		sp := openSpool(t)
-		lockDir(t, filepath.Join(sp.Dir(), TmpDir))
+		lockDir(t, filepath.Join(sp.dir, TmpDir))
 		if _, err := sp.Create(QueueDir, e(), []byte("x"), Quota{}); !errors.Is(err, ErrCreate) || errors.Is(err, ErrWrite) {
 			t.Errorf("Create() error = %v, want ErrCreate", err)
 		}
 	})
 	t.Run("T-MTA-36/queue-not-writable", func(t *testing.T) {
 		sp := openSpool(t)
-		lockDir(t, filepath.Join(sp.Dir(), QueueDir))
+		lockDir(t, filepath.Join(sp.dir, QueueDir))
 		if _, err := sp.Create(QueueDir, e(), []byte("x"), Quota{}); !errors.Is(err, ErrWrite) {
 			t.Errorf("Create() error = %v, want ErrWrite", err)
 		}
@@ -228,7 +228,7 @@ func TestLockAfterRemovalByHolder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opened, err := os.Open(filepath.Join(sp.Dir(), QueueDir, e.ID+".eml"))
+	opened, err := os.Open(filepath.Join(sp.dir, QueueDir, e.ID+".eml"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +250,7 @@ func TestLockAfterRemovalByHolder(t *testing.T) {
 func TestLockOrphanMessage(t *testing.T) {
 	sp := openSpool(t)
 	e := create(t, sp, QueueDir, 1000, "x")
-	if err := os.Remove(filepath.Join(sp.Dir(), QueueDir, e.ID+".json")); err != nil {
+	if err := os.Remove(filepath.Join(sp.dir, QueueDir, e.ID+".json")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := sp.Lock(QueueDir, e.ID); !errors.Is(err, ErrGone) {
@@ -264,7 +264,7 @@ func TestLockOrphanMessage(t *testing.T) {
 func TestLockUnknownVersion(t *testing.T) {
 	sp := openSpool(t)
 	e := create(t, sp, QueueDir, 1000, "x")
-	path := filepath.Join(sp.Dir(), QueueDir, e.ID+".json")
+	path := filepath.Join(sp.dir, QueueDir, e.ID+".json")
 	if err := os.WriteFile(path, []byte(`{"version":2}`), 0o660); err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +291,7 @@ func TestList(t *testing.T) {
 		_ = rec.Close()
 		want = append(want, e.ID)
 	}
-	if err := os.WriteFile(filepath.Join(sp.Dir(), QueueDir, "stray.eml"), nil, 0o660); err != nil {
+	if err := os.WriteFile(filepath.Join(sp.dir, QueueDir, "stray.eml"), nil, 0o660); err != nil {
 		t.Fatal(err)
 	}
 	got, err := sp.List(QueueDir)
@@ -330,7 +330,7 @@ func TestLockRun(t *testing.T) {
 func TestRemoveStale(t *testing.T) {
 	sp := openSpool(t)
 	for name, age := range map[string]time.Duration{"old.eml": 2 * time.Hour, "new.eml": 30 * time.Minute} {
-		path := filepath.Join(sp.Dir(), TmpDir, name)
+		path := filepath.Join(sp.dir, TmpDir, name)
 		if err := os.WriteFile(path, nil, 0o660); err != nil {
 			t.Fatal(err)
 		}
@@ -353,7 +353,7 @@ func TestUsage(t *testing.T) {
 	create(t, sp, HoldDir, 1000, "123")
 	create(t, sp, QueueDir, 0, "1")
 	create(t, sp, FailedDir, 1000, "not counted")
-	if err := os.WriteFile(filepath.Join(sp.Dir(), TmpDir, "1-0000000000000000.eml"), []byte("1234567"), 0o660); err != nil {
+	if err := os.WriteFile(filepath.Join(sp.dir, TmpDir, "1-0000000000000000.eml"), []byte("1234567"), 0o660); err != nil {
 		t.Fatal(err)
 	}
 	usage, err := sp.Usage()
@@ -479,9 +479,9 @@ func TestCreateQuotaParallel(t *testing.T) {
 func TestCreateNotHeldUp(t *testing.T) {
 	sp := openSpool(t)
 	for _, path := range []string{
-		filepath.Join(sp.Dir(), TmpDir, "1-00000000000000aa.eml"),
-		filepath.Join(sp.Dir(), LocksDir, "drain-1000.lock"),
-		filepath.Join(sp.Dir(), LocksDir, "quota.lock"),
+		filepath.Join(sp.dir, TmpDir, "1-00000000000000aa.eml"),
+		filepath.Join(sp.dir, LocksDir, "drain-1000.lock"),
+		filepath.Join(sp.dir, LocksDir, "quota.lock"),
 	} {
 		file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o660)
 		if err != nil {
@@ -516,7 +516,7 @@ func TestCreateNotHeldUp(t *testing.T) {
 func TestSaveOverRemnant(t *testing.T) {
 	sp := openSpool(t)
 	e := create(t, sp, QueueDir, 1000, "x")
-	if err := os.WriteFile(filepath.Join(sp.Dir(), TmpDir, e.ID+".next.json"), []byte("{"), 0o660); err != nil {
+	if err := os.WriteFile(filepath.Join(sp.dir, TmpDir, e.ID+".next.json"), []byte("{"), 0o660); err != nil {
 		t.Fatal(err)
 	}
 	rec, err := sp.Lock(QueueDir, e.ID)
@@ -564,7 +564,7 @@ func TestRemoveStaleOrphans(t *testing.T) {
 	sp := openSpool(t)
 	old := testNow.Add(-2 * time.Hour)
 	write := func(area, name string, mtime time.Time) string {
-		path := filepath.Join(sp.Dir(), area, name)
+		path := filepath.Join(sp.dir, area, name)
 		if err := os.WriteFile(path, []byte("{}"), 0o660); err != nil {
 			t.Fatal(err)
 		}
@@ -578,7 +578,7 @@ func TestRemoveStaleOrphans(t *testing.T) {
 		write(area, "1-00000000000000aa.json", old)
 		write(area, "1-00000000000000bb.json", testNow)
 	}
-	queueSidecar := filepath.Join(sp.Dir(), QueueDir, kept.ID+".json")
+	queueSidecar := filepath.Join(sp.dir, QueueDir, kept.ID+".json")
 	if err := os.Chtimes(queueSidecar, old, old); err != nil {
 		t.Fatal(err)
 	}
@@ -641,12 +641,12 @@ func TestLockNoFollow(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := "1-00000000000000ee"
-	for _, link := range []string{filepath.Join(sp.Dir(), QueueDir, id+".eml"), filepath.Join(sp.Dir(), LocksDir, "drain-1000.lock")} {
+	for _, link := range []string{filepath.Join(sp.dir, QueueDir, id+".eml"), filepath.Join(sp.dir, LocksDir, "drain-1000.lock")} {
 		if err := os.Symlink(target, link); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(sp.Dir(), QueueDir, id+".json"), []byte(`{"version":1,"id":"`+id+`"}`), 0o660); err != nil {
+	if err := os.WriteFile(filepath.Join(sp.dir, QueueDir, id+".json"), []byte(`{"version":1,"id":"`+id+`"}`), 0o660); err != nil {
 		t.Fatal(err)
 	}
 	if rec, err := sp.Lock(QueueDir, id); err == nil {
@@ -672,10 +672,10 @@ func fillQueue(b *testing.B) *Spool {
 		if err != nil {
 			b.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(sp.Dir(), QueueDir, e.ID+".eml"), benchMessage, 0o660); err != nil {
+		if err := os.WriteFile(filepath.Join(sp.dir, QueueDir, e.ID+".eml"), benchMessage, 0o660); err != nil {
 			b.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(sp.Dir(), QueueDir, e.ID+".json"), data, 0o660); err != nil {
+		if err := os.WriteFile(filepath.Join(sp.dir, QueueDir, e.ID+".json"), data, 0o660); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -731,7 +731,7 @@ func TestUsageSeesMovingEntries(t *testing.T) {
 			}
 			// Written without Create: its fsyncs would make the test slow.
 			for name, content := range map[string][]byte{e.ID + ".json": data, e.ID + ".eml": []byte("x")} {
-				if err := os.WriteFile(filepath.Join(sp.Dir(), HoldDir, name), content, 0o660); err != nil {
+				if err := os.WriteFile(filepath.Join(sp.dir, HoldDir, name), content, 0o660); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -875,7 +875,7 @@ func TestCreateFailureRemovesMessage(t *testing.T) {
 func TestCreateReplacesOrphanSidecar(t *testing.T) {
 	sp := openSpool(t)
 	e := NewEntry(NewID(testNow), 1000, testNow, testNow, message.Envelope{}, []string{"a"})
-	if err := os.WriteFile(filepath.Join(sp.Dir(), QueueDir, e.ID+".json"), []byte("{}"), 0o660); err != nil {
+	if err := os.WriteFile(filepath.Join(sp.dir, QueueDir, e.ID+".json"), []byte("{}"), 0o660); err != nil {
 		t.Fatal(err)
 	}
 	rec, err := sp.Create(QueueDir, e, []byte("x"), Quota{})

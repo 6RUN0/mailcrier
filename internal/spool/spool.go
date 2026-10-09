@@ -110,11 +110,6 @@ func OpenExisting(dir string) (*Spool, error) {
 	return &Spool{dir: dir}, nil
 }
 
-// Dir returns the spool directory.
-func (s *Spool) Dir() string {
-	return s.dir
-}
-
 func (s *Spool) path(area, name string) string {
 	return filepath.Join(s.dir, area, name)
 }
