@@ -4,6 +4,27 @@ Where mailcrier logs, the fields and texts of its records, and what it
 masks in them. Reading the log to find a message that did not arrive:
 [Checking the configuration](checking.md).
 
+## Finding a message
+
+A caller such as cron shows no error of mailcrier, so the log is where a
+message that did not arrive is traced. The records carry the tag of
+`syslog_tag`, `mailcrier` by default, and debug records are written as
+well:
+
+```sh
+journalctl -t mailcrier --since today      # systemd with journald
+grep mailcrier /var/log/mail.log           # Debian, Ubuntu with rsyslog
+grep mailcrier /var/log/maillog            # RHEL, Rocky with rsyslog
+```
+
+The records of one call share the field `call`. A delivered message gives
+`message received` and one `target delivered` per target; `message routed`
+(debug) lists the `targets` the routes chose, `message suppressed` names
+the `[[suppress]]` rule that dropped it, `message held` the `reason` it
+waits in `hold/`, and `target failed` the `err` of a target. `mailq` lists
+what the spool still keeps, see
+[Spool and queue](spool.md#listing-the-queue).
+
 ## Where the records go
 
 Logging goes to syslog, facility `mail`, under `syslog_tag`; the records

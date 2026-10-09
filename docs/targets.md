@@ -28,3 +28,28 @@ exit status 78. A file over it is listed with the `not_sent` notice and not
 sent, and a cut text whose full text exceeds it ends with the
 `truncated_size` notice. A value above the limit of the service is taken as
 it is, and the service rejects a bigger file.
+
+## Limits
+
+The limits of each service, as the page of its type gives them; `max_text`
+and `max_file_size` replace them per target, see
+[Long messages](long-messages.md).
+
+| Type | Text | Files |
+|---|---|---|
+| `telegram` | 4096 characters | 10, at most 50 MB each |
+| `discord` | 2000 UTF-16 units | 10, at most 20 MiB each and 25 MiB together |
+| `slack` | 40000 UTF-16 units | 10, no size limit |
+| `ntfy` | 4096 bytes | 10, at most 15 MiB each (ntfy.sh: 2 MB) |
+| `http` | `slack-webhook` 40000 UTF-16 units, `mattermost` and `generic-json` none | none |
+| `exec` | the message itself on stdin | none |
+| `shoutrrr` | none of mailcrier's, the service cuts | none |
+
+## Failures
+
+Each target fails on its own; the others still deliver. Status 429, 5xx
+and any answer with a `Retry-After` header are temporary failures, which
+the spool retries; any other failure is permanent and is not retried.
+A timeout of `http_timeout` or `deadline` is temporary as well, see
+[Timeouts and proxy](configuration.md#timeouts-and-proxy); the rules of a
+type that differ from these are on its page.

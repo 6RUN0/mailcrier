@@ -193,7 +193,10 @@ with "build constraints exclude all Go files".
   `allowedKeys`, which lists only implemented keys, required ones in
   `requiredKeys`; a new key goes into `docs/mailcrier.8` in the same
   change (`TestManPageListsKeys`; `TestManPageListsOptions` does the same
-  for the flags of `sendmail`). `Error.Path` is the absolute path,
+  for the flags of `sendmail`), a new target key also into the table
+  "Target keys" of `docs/configuration.md`, whose types and required
+  types `TestKeyReferenceMatchesSchema` compares with both maps.
+  `Error.Path` is the absolute path,
   `"/" + path` of `ConfigFS`, also inside the texts of file errors
   (`fileErrorText`). `config.Check` is `Load` plus `Warning`s with
   positions (files readable by all, files and directories the group of

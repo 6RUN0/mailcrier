@@ -2,8 +2,8 @@
 
 What every run reads, how the file is checked, and the settings of
 `[general]` and `[strings]`. The keys of each destination are under
-[Targets](targets.md), the queue under [Spool and queue](spool.md), the
-log under [Logging](logging.md).
+[Targets](targets.md) and in [Target keys](#target-keys), the queue under
+[Spool and queue](spool.md), the log under [Logging](logging.md).
 
 The program reads `/etc/mailcrier.conf`, a TOML file. Every run parses the
 file strictly: an unknown key, a key that the target type does not use,
@@ -11,6 +11,22 @@ or an invalid value rejects the file, the message is not delivered but
 held in the spool (see [Spool and queue](spool.md)), and the exit status
 is 78. A package installs an example without targets, so until targets
 are configured every message is held with status 78; that is expected.
+
+## Terms
+
+| Term | Meaning |
+|---|---|
+| target | one `[target.<name>]` table: a destination of the messages, see [Targets](targets.md) |
+| route | a `[[route]]` rule that chooses the targets of a message, see [Routes and suppression](routing.md) |
+| suppress rule | a `[[suppress]]` rule that drops a message, neither sent nor spooled |
+| direct chat | a recipient `<chat>@telegram` that names a Telegram chat, see [Direct chats](routing.md#direct-chats) |
+| spool | the directory `/var/spool/mailcrier` where a message waits until every target has it, see [Spool and queue](spool.md) |
+| entry | one message in the spool: `<id>.eml`, the message, and `<id>.json`, its state per target, also called the sidecar |
+| area | a subdirectory of the spool: `tmp/` while written, `queue/` waiting for a retry, `hold/` waiting for a configuration that loads or a route, `failed/` given up, `locks/` |
+| queue run | a pass over the spool that retries due targets: after each call for the entries of its user, and `mailcrier -q` from the timer or cron every 5 minutes |
+| temporary failure | a failure the queue retries: a timeout, a lost connection, status 429 or 5xx, an answer with `Retry-After`, exit status 75 of a hook |
+| permanent failure | any other failure, never retried: a wrong token or chat, a rejected request, a redirect |
+| setgid-elevated | a call of a user other than root that got the group `mailcrier` from the setgid bit of the binary, see [Privileges](privileges.md) |
 
 ## Examples
 
@@ -85,3 +101,37 @@ preset = "generic-json"
 - Proxy environment variables (`HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY`)
   are honoured without elevation and ignored by a setgid-elevated process.
 - The file mode creation mask is always `007`.
+
+## Target keys
+
+Every key a `[target.<name>]` table takes. A key a type does not take
+rejects the file with exit status 78, as does a required key that is
+missing; the token or URL is given as exactly one of the key and its
+`_file` form.
+
+| Key | Types | Required by | Value | Default |
+|---|---|---|---|---|
+| `type` | all | all | `telegram`, `discord`, `slack`, `ntfy`, `http`, `exec` or `shoutrrr` | |
+| `token` | `telegram`, `slack` | | the bot token; or `token_file` | |
+| `token_file` | `telegram`, `slack` | | absolute path of a file holding the token | |
+| `url` | `discord`, `ntfy`, `http`, `shoutrrr` | | absolute `http` or `https` URL, for `shoutrrr` a service URL; or `url_file` | |
+| `url_file` | `discord`, `ntfy`, `http`, `shoutrrr` | | absolute path of a file holding the URL | |
+| `chat_id` | `telegram` | `telegram` | integer, or a non-blank string such as `"@channel"` | |
+| `message_thread_id` | `telegram` | | integer, the forum topic | |
+| `disable_notification` | `telegram` | | `true` or `false` | `false` |
+| `channel` | `slack`, `http` | `slack` | non-blank string; for `http` only with `preset = "mattermost"` | |
+| `preset` | `http` | | `mattermost`, `slack-webhook` or `generic-json`; or a template | |
+| `method` | `http` | | `POST`, `GET`, `PUT` or `PATCH` | `POST` |
+| `username` | `http` | | string, only with `preset = "mattermost"` | |
+| `headers` | `http` | | table of header name and value template | |
+| `path` | `http` | | template appended to the path of the URL | |
+| `query` | `http` | | table of query name and value template | |
+| `argv` | `exec` | `exec` | list of strings, the first an absolute path | |
+| `timeout` | `exec` | | positive Go duration | `"30s"` |
+| `on_long` | `telegram`, `discord`, `slack`, `ntfy` | | `file`, `truncate` or `blockquote` | `file` |
+| `long_file` | `telegram`, `discord`, `slack`, `ntfy` | | `text` or `eml` | `text` |
+| `max_text` | `telegram`, `discord`, `slack`, `ntfy`, `http` | | positive integer, in the unit of the service | the limit of the service |
+| `max_lines` | `telegram`, `discord`, `slack`, `ntfy`, `http` | | positive integer, lines of the body | none |
+| `max_file_size` | `telegram`, `discord`, `slack`, `ntfy` | | positive integer, bytes | the limit of the service |
+| `template` | `telegram`, `discord`, `slack`, `ntfy`, `http`, `shoutrrr` | | Go `text/template` | the built-in one |
+| `template_file` | `telegram`, `discord`, `slack`, `ntfy`, `http`, `shoutrrr` | | absolute path of a file holding the template | |

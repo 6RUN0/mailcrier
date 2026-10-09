@@ -31,3 +31,18 @@ under [Privileges](privileges.md).
   and the files left in `tmp/` are deleted after an hour. Killed after
   that, the entry stays in `queue/`, and every retry renders it again
   until `queue_ttl` moves it to `failed/`.
+
+## Checklist
+
+What a container needs besides the points above, each described where it
+belongs:
+
+- The log: without `/dev/log` the records go to stderr, and PHP-FPM passes
+  them on only with `catch_workers_output = yes`, see
+  [Logging](logging.md#where-the-records-go).
+- The queue: without a cron daemon or timer only the calls themselves run
+  it; `mailcrier -q` from a scheduler such as supercronic retries the rest,
+  see [Spool and queue](spool.md#queue-runs).
+- A complete example with the spool on a volume and secrets in
+  `/run/secrets`:
+  [`packaging/examples/container.conf`](../packaging/examples/container.conf).
