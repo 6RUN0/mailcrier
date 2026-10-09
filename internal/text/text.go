@@ -441,12 +441,12 @@ func TruncateBytes(s string, n int) string {
 	return s[:n]
 }
 
-// wordWindow is how many characters CutAtWord gives up at most to end at
+// WordWindow is how many characters CutAtWord gives up at most to end at
 // a word boundary.
-const wordWindow = 100
+const WordWindow = 100
 
 // CutAtWord returns s cut to at most n characters. When s is longer, the
-// cut moves back to the last white space among the final wordWindow
+// cut moves back to the last white space among the final WordWindow
 // characters, if there is one, so that no word is split; the white space
 // itself is dropped.
 func CutAtWord(s string, n int) string {
@@ -455,7 +455,7 @@ func CutAtWord(s string, n int) string {
 		return s
 	}
 	rest := prefix
-	for range wordWindow {
+	for range WordWindow {
 		r, size := utf8.DecodeLastRuneInString(rest)
 		if size == 0 {
 			break

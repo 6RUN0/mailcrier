@@ -587,3 +587,60 @@ func TestWhole(t *testing.T) {
 		}
 	}
 }
+
+// TestFitKeepsTheLongestBody pins that bounding the search over the body
+// by the limit keeps the body Fit would keep searching all of it: the
+// longest whose rendering fits, found here by trying every length. The
+// template from the configuration writes only the last lines of the body,
+// so that the rendering does not grow past a few lines.
+func TestFitKeepsTheLongestBody(t *testing.T) {
+	check := func(tmpl *Template, body string, limit int, measure func(string) int) func(*testing.T) {
+		return func(t *testing.T) {
+			d := fitData(body)
+			out, truncated, err := Fit(tmpl, d, limit, measure)
+			if err != nil || !truncated {
+				t.Fatalf("truncated = %v, err = %v", truncated, err)
+			}
+			want := ""
+			for kept := utf8.RuneCountInString(body); kept >= 0; kept-- {
+				d.Body = withNotice(text.CutAtWord(body, kept), d.Strings.Truncated)
+				if candidate, err := tmpl.Execute(d); err == nil && measure(candidate) <= limit {
+					want = candidate
+					break
+				}
+			}
+			if out != want {
+				t.Errorf("Fit gave\n%q\nthe longest body that fits gives\n%q", out, want)
+			}
+		}
+	}
+	telegram, err := Builtin(text.FormatTelegramHTML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tail, err := Parse("tail", "{{ tail 10 .Body }}", text.FormatPlain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Run("telegram-html", check(telegram, strings.Repeat("word & <x> ", 500), 300, text.MeasureTelegramHTML))
+	t.Run("user-template-with-tail", check(tail, strings.Repeat(strings.Repeat("y", 99)+"\n", 50), 500, text.RuneCount))
+}
+
+// TestFitSearchesBodyMeasuredAsNothing pins the check of the bound of the
+// body search: a measure that takes tag-like text of the body for markup
+// counts it as nothing, so a body that starts with far more such text
+// than the limit still keeps the text after it.
+func TestFitSearchesBodyMeasuredAsNothing(t *testing.T) {
+	tmpl, err := Builtin(text.FormatTelegramMarkdownV2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := strings.Repeat("<x>", 3000) + strings.Repeat("visible ", 1000)
+	out, truncated, err := Fit(tmpl, fitData(body), 300, text.MeasureTelegramHTML)
+	if err != nil || !truncated {
+		t.Fatalf("truncated = %v, err = %v", truncated, err)
+	}
+	if n := strings.Count(out, "visible"); n < 20 {
+		t.Errorf("%d words after the tags kept, want the limit filled: %q", n, out)
+	}
+}

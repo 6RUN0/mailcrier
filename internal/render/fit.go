@@ -42,7 +42,11 @@ var strictFormats = map[text.Format]bool{
 //     the built-in templates replace by the NoSubject notice.
 //
 // Each step is a binary search over the number of attachments or
-// characters kept: at most about log2 of that number renderings. The body
+// characters kept: at most about log2 of that number renderings. A search
+// over the body keeps at most limit plus text.WordWindow plus one
+// characters when the rendering of that many is over the limit, which it
+// is unless the measure counts characters of the body as nothing: a body
+// of megabytes costs renderings of about the limit. The body
 // is cut before escaping, so a cut never splits an entity, and the
 // rendering is measured after escaping, because escaping grows the text by
 // a factor that depends on the characters. The search relies on the
@@ -109,18 +113,33 @@ func FitLines(t *Template, d Data, limit, maxLines int, measure func(string) int
 		d.Body = withNotice(text.CutAtWord(body, kept), d.Strings.Truncated)
 		return render()
 	}
+	// bound is a number of body characters past which no rendering fits
+	// when a measure counts each character as one unit or more, even after
+	// text.CutAtWord gives up its window; 0 or less when the sum overflows.
+	bound := limit + text.WordWindow + 1
+	searchBody := func() (string, bool, error) {
+		total := utf8.RuneCountInString(body)
+		if bound > 0 && total > bound {
+			// Checked rather than assumed: a measure that counts
+			// tag-like text of the body as nothing fits far more.
+			if _, fits, err := renderBody(bound); err == nil && !fits {
+				total = bound
+			}
+		}
+		return longestFit(total, renderBody)
+	}
 	if len(attachments) > 0 {
 		if best, found, err := longestFit(len(attachments), renderAttachments); err != nil || found {
 			return best, true, err
 		}
 		keepAttachments(len(attachments))
 	}
-	if best, found, err := longestFit(utf8.RuneCountInString(body), renderBody); err != nil || found {
+	if best, found, err := searchBody(); err != nil || found {
 		return best, true, err
 	}
 	if len(attachments) > 0 {
 		keepAttachments(0)
-		if best, found, err := longestFit(utf8.RuneCountInString(body), renderBody); err != nil || found {
+		if best, found, err := searchBody(); err != nil || found {
 			return best, true, err
 		}
 	}
