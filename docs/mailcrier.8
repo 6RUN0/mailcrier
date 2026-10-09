@@ -913,9 +913,13 @@ A service mode requested by a caller without the right to it.
 The configuration cannot be read or is invalid; a message is held, or
 lost with the spool off.
 .Fl -check-config
-found an error, or
+found an error,
 .Fl -probe
-cannot use the configuration; nothing is held.
+cannot use the configuration, or
+.Fl q
+ran with it and only moved expired entries to
+.Pa failed/ ;
+nothing is held.
 .El
 .Sh EXAMPLES
 A minimal configuration that sends to one Telegram chat, with the token in

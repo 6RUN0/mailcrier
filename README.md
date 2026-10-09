@@ -121,8 +121,9 @@ setgid bit. Consequences:
 - `rpm -V mailcrier` reports `.M....G..  /usr/sbin/mailcrier` and `apk audit
   --check-permissions` reports `M usr/sbin/mailcrier`; that is expected.
 - During an upgrade, between unpacking and the script, a call of a user
-  other than root cannot read the configuration: it exits 78 and the
-  message is lost, since `hold/` is not writable for that user either.
+  other than root cannot read the configuration, and `hold/` is not
+  writable for that user either: the message is lost (`message lost, not
+  held`) and the call exits 73.
 - `rpm --setperms`, `rpm --setugids`, `rpm --restore`, an install or
   upgrade with `--noscripts`, `apk fix` and `apk add --no-scripts` remove
   the bit for good, with the same result for every such call until it is
@@ -738,9 +739,10 @@ targets = ["mm"]
   recipients, never the addresses. When no rule matches at all and no
   recipient is a direct chat, the message is held in `hold/` with the
   reason `no route`, the log records `no route for message` (warning), and
-  the call exits 64; with the spool off, or the entry not written, the
-  message is lost (`message lost, spool off` or `message lost, not held`)
-  with the same status. A queue run checks a held message against the
+  the call exits 64. With the spool off the message is lost (`message
+  lost, spool off`) with the same status; when its entry cannot be created
+  or written it is lost as well (`message lost, not held`), and the call
+  exits 73 or 74. A queue run checks a held message against the
   rules of the moment and queues it once they select a target; until then
   it stays, counted in the limits of the spool, and moves to `failed/`
   after `hold_ttl`. Until then every later call of the same user and
@@ -893,7 +895,11 @@ preset = "generic-json"
   A message to be held, for a rejected configuration or without a route,
   whose entry cannot be created or written (`message lost, not held`)
   exits 73 or 74 instead of 78 or 64, as a temporary failure without a
-  spool entry does: the caller must keep it.
+  spool entry does: the message is not kept. Whether it is tried again is
+  up to the caller: cron, PHP `mail()` and most scripts tell no exit status
+  from another, while an MTA that runs mailcrier as a pipe transport
+  defers only on 75 (Postfix) or on 75 and 73 (Exim) and bounces on the
+  others.
 - Each call runs the queue for at most `drain_budget` and
   `drain_max_messages` entries after delivering its own message, only for
   the entries of its caller's uid, and not at all while another call of the
@@ -1029,7 +1035,9 @@ preset = "generic-json"
   until `queue_ttl` moves it to `failed/`.
 - On a host with the setgid install, a caller running under
   `NoNewPrivileges=yes` or `RestrictSUIDSGID=yes` does not get the group:
-  the configuration is unreadable and the call exits 78.
+  neither the configuration nor the spool is accessible to a caller other
+  than root, the message is lost (`message lost, not held`) and the call
+  exits 73.
 
 ### Checking the configuration
 
@@ -1207,7 +1215,7 @@ option: `-f --probe` names a sender.
 | no target accepted it and one rejected it, or all failed temporarily with the spool off | 69 |
 | `--probe`: a target rejected the sample message | 69 |
 | a target failed temporarily, or a message to be held (rejected configuration, no route) was not held, and the spool entry could not be created: directory missing or not writable, or a limit reached | 73 |
-| a target failed temporarily, or a message to be held was not held, and the spool entry could not be written; `-q` or `--status` could not read the spool, `mailq` a spool that exists, or found it not writable; `mailq` or `--status` could not write their output | 74 |
+| a target failed temporarily, or a message to be held was not held, and the spool entry could not be written; `-q` or `--status` could not read the spool, `mailq` a spool that exists; `-q` or `--status` found it not writable; `mailq` or `--status` could not write their output | 74 |
 | `--probe` only: a target failed temporarily and none rejected the sample message; nothing is queued | 75 |
 | usage error: `-f` or `-r` without a value, a line break in the sender, the full name or a recipient, `-bs`, `--config` without a value; stdin is not read | 64 |
 | `--check-config` with an argument, `--probe` naming no configured target, or either from an elevated caller with `--config` or `MAILCRIER_CONFIG` | 64 |
@@ -1216,7 +1224,7 @@ option: `-f --probe` names a sender.
 | panic in the main goroutine (a bug; the record `panic, call ended` carries the value and the stack, redacted) | 70 |
 | `--probe` or `--check-config` from an elevated caller other than root and the `mailcrier` user | 77 |
 | for a call with a message: the configuration cannot be read, parsed or validated, defines no targets, or holds a template that does not parse; the message is held, or lost with the spool off | 78 |
-| `--check-config` found an error, or `--probe` cannot use the configuration; nothing is held | 78 |
+| `--check-config` found an error, `--probe` cannot use the configuration, or `-q` ran with a rejected configuration and only expired entries; nothing is held | 78 |
 
 The targets are sent to at the same time. A panic while rendering or
 sending for one target (a bug) fails that target permanently, logged

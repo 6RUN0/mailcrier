@@ -89,7 +89,8 @@ Exit status:
   77  --check-config or --probe by a setgid caller other than the mailcrier
       user
   78  the configuration cannot be read or is invalid; a message being sent
-      is held, --check-config, --probe and -q hold nothing
+      is held, or lost with the spool off; --check-config, --probe and -q
+      hold nothing, -q only moves expired entries to failed/
 
 The manual: man 8 mailcrier.
 `
