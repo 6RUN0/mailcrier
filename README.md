@@ -980,6 +980,17 @@ preset = "generic-json"
   `[spool] dir` names another, must exist and be writable by the caller (a
   volume, when queued messages must survive the container); without it a
   temporary failure exits 73, and `dir = ""` turns the spool off.
+- Memory of one call, as the peak of its cgroup (Docker, `--cpus=1`, amd64,
+  Go 1.27.2): a message of up to 100 KiB takes under 15 MB, and 20 such
+  calls at once took 58 MB together. A message of 10 MiB, the most that
+  is read, takes up to about 40 MB for an `exec` target, about 100 MB
+  with one Telegram target, about 200 MB with 3 and about 420 MB with 10:
+  each target with a text limit renders the whole body. Calls at the same
+  time add up. A call the kernel kills for memory exits 137 to its
+  caller. Killed while the spool entry is written, the message is lost,
+  and the files left in `tmp/` are deleted after an hour. Killed after
+  that, the entry stays in `queue/`, and every retry renders it again
+  until `queue_ttl` moves it to `failed/`.
 - On a host with the setgid install, a caller running under
   `NoNewPrivileges=yes` or `RestrictSUIDSGID=yes` does not get the group:
   the configuration is unreadable and the call exits 78.
