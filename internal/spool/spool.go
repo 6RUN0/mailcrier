@@ -12,6 +12,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // Areas of the spool directory. An entry lives in one of queue, hold and
@@ -108,6 +110,33 @@ func OpenExisting(dir string) (*Spool, error) {
 		return nil, fmt.Errorf("%s is not a directory", dir)
 	}
 	return &Spool{dir: dir}, nil
+}
+
+// CheckWritable returns an error naming the first directory a new entry
+// needs that this process cannot write: an area, the spool directory in
+// place of a missing area, or the file system when it is mounted
+// read-only. It creates nothing, so the listing modes may call it. The
+// check uses the effective ids, those of the group of a setgid binary.
+func (s *Spool) CheckWritable() error {
+	var stat unix.Statfs_t
+	if err := unix.Statfs(s.dir, &stat); err != nil {
+		return &fs.PathError{Op: "statfs", Path: s.dir, Err: err}
+	}
+	// faccessat without faccessat2, before Linux 5.8 or under an old
+	// seccomp profile, checks the mode bits only.
+	if stat.Flags&unix.ST_RDONLY != 0 {
+		return &fs.PathError{Op: "access", Path: s.dir, Err: unix.EROFS}
+	}
+	for _, area := range []string{TmpDir, QueueDir, HoldDir, FailedDir, LocksDir} {
+		path := s.path(area, "")
+		if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
+			path = s.dir
+		}
+		if err := unix.Faccessat(unix.AT_FDCWD, path, unix.W_OK|unix.X_OK, unix.AT_EACCESS); err != nil {
+			return &fs.PathError{Op: "access", Path: path, Err: err}
+		}
+	}
+	return nil
 }
 
 func (s *Spool) path(area, name string) string {

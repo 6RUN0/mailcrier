@@ -366,6 +366,17 @@ func runQueueMode(ctx context.Context, d Deps, log *slog.Logger, newLogger func(
 		}
 		return exitIOErr
 	}
+	// A run on a spool it cannot write would deliver entries and fail to
+	// record it, and deliver them again on the next run.
+	if q.sp != nil {
+		if err := q.sp.CheckWritable(); err != nil {
+			log.Error("spool not writable, queue not run", "err", err)
+			if cfg == nil {
+				return exitConfig
+			}
+			return exitIOErr
+		}
+	}
 	// A message held while the file was rejected went to the default
 	// directory; a file with a dir of its own would never see it.
 	if cfg != nil && d.SpoolDir != "" && settings.Dir != d.SpoolDir {
@@ -418,7 +429,18 @@ func listSpool(d Deps, log *slog.Logger, dir string, mode sendmail.Mode) int {
 	if mode == sendmail.ListQueue {
 		return q.listQueue(d.Stdout)
 	}
-	return q.status(d.Stdout)
+	// Monitoring reads the counts of a spool that takes no new entry as
+	// healthy unless the status says otherwise.
+	var writeErr error
+	if q.sp != nil {
+		if writeErr = q.sp.CheckWritable(); writeErr != nil {
+			log.Warn("spool not writable", "err", writeErr)
+		}
+	}
+	if code := q.status(d.Stdout); code != exitOK || writeErr == nil {
+		return code
+	}
+	return exitIOErr
 }
 
 // notices returns the built-in notices with the configured ones in place.

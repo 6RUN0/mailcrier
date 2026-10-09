@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -172,6 +173,33 @@ func TestCreateSidecarNotWritten(t *testing.T) {
 	}
 	if got := names(t, sp, TmpDir); len(got) != 0 {
 		t.Errorf("tmp/ = %v, want the files removed", got)
+	}
+}
+
+// TestCheckWritable pins the directories CheckWritable looks at: each
+// area, and the spool directory for an area that is missing.
+func TestCheckWritable(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory modes")
+	}
+	sp := openSpool(t)
+	if err := sp.CheckWritable(); err != nil {
+		t.Errorf("CheckWritable() error = %v, want nil", err)
+	}
+	lockDir(t, filepath.Join(sp.dir, LocksDir))
+	if err := sp.CheckWritable(); !errors.Is(err, fs.ErrPermission) || !strings.Contains(err.Error(), LocksDir) {
+		t.Errorf("CheckWritable() error = %v, want locks/ not writable", err)
+	}
+	bare, err := OpenExisting(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := bare.CheckWritable(); err != nil {
+		t.Errorf("CheckWritable() without areas error = %v, want nil", err)
+	}
+	lockDir(t, bare.dir)
+	if err := bare.CheckWritable(); !errors.Is(err, fs.ErrPermission) {
+		t.Errorf("CheckWritable() without areas error = %v, want the directory not writable", err)
 	}
 }
 

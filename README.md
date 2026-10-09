@@ -936,8 +936,12 @@ preset = "generic-json"
   exist lists as `queue is empty`. `--status` prints one logfmt line for
   monitoring,
   `queued=1 held=0 failed=0 tmp=0 bytes=1432 oldest_age_seconds=75`, and
-  exits 74 when the directory does not exist. Neither creates anything in
-  the spool.
+  exits 74 when the directory does not exist, and also, after printing the
+  line, when this process cannot write one of its areas or the file
+  system is read-only (`spool not writable`). Neither creates anything in
+  the spool. `-q` on such a spool exits 74 without a run (`spool not
+  writable, queue not run`): it would deliver entries it cannot record
+  and deliver them again on the next run.
 
 ### Options, privileges and containers
 
@@ -1189,7 +1193,7 @@ option: `-f --probe` names a sender.
 | no target accepted it and one rejected it, or all failed temporarily with the spool off | 69 |
 | `--probe`: a target rejected the sample message | 69 |
 | a target failed temporarily, or a message to be held (rejected configuration, no route) was not held, and the spool entry could not be created: directory missing or not writable, or a limit reached | 73 |
-| a target failed temporarily, or a message to be held was not held, and the spool entry could not be written; `-q` or `--status` could not read the spool, `mailq` a spool that exists; `mailq` or `--status` could not write their output | 74 |
+| a target failed temporarily, or a message to be held was not held, and the spool entry could not be written; `-q` or `--status` could not read the spool, `mailq` a spool that exists, or found it not writable; `mailq` or `--status` could not write their output | 74 |
 | `--probe` only: a target failed temporarily and none rejected the sample message; nothing is queued | 75 |
 | usage error: `-f` or `-r` without a value, a line break in the sender, the full name or a recipient, `-bs`, `--config` without a value; stdin is not read | 64 |
 | `--check-config` with an argument, `--probe` naming no configured target, or either from an elevated caller with `--config` or `MAILCRIER_CONFIG` | 64 |

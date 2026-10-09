@@ -498,6 +498,33 @@ func TestSpoolNotAvailable(t *testing.T) {
 	})
 }
 
+// TestSpoolNotWritable pins that --status and -q report a spool that
+// takes no new entry: --status prints its counts and exits 74, -q exits
+// 74 without a run, which could deliver entries it cannot record.
+func TestSpoolNotWritable(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory modes")
+	}
+	c := newSpoolCase(t)
+	c.service.reply("a", delivery.Temp)
+	c.send("s", elevatedUser)
+	queueDir := filepath.Join(c.dir, spool.QueueDir)
+	if err := os.Chmod(queueDir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(queueDir, 0o770) })
+	c.clock.advance(time.Hour)
+	want := `msg="spool not writable" err="access ` + queueDir + `: permission denied"`
+	code, inv := c.queueRun(serviceCaller, "--status")
+	if code != 74 || !strings.HasPrefix(inv.stdout.String(), "queued=1 ") || !strings.Contains(inv.output(), `level=WARN `+want) {
+		t.Errorf("--status = %d, stdout %q, want 74 and the counts; output:\n%s", code, inv.stdout.String(), inv.output())
+	}
+	want = `level=ERROR msg="spool not writable, queue not run" err="access ` + queueDir + `: permission denied"`
+	if code, inv := c.queueRun(serviceCaller); code != 74 || !strings.Contains(inv.output(), want) || len(c.service.got("a")) != 1 {
+		t.Errorf("-q = %d, a got %v, want 74 and no run; output:\n%s", code, c.service.got("a"), inv.output())
+	}
+}
+
 // TestQueueRun covers -q over entries queued by earlier calls.
 func TestQueueRun(t *testing.T) {
 	t.Run("T-ADJ-18/due-entries-delivered-others-wait", func(t *testing.T) {
