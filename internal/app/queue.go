@@ -621,6 +621,9 @@ func (q *queue) releaseOtherHold(owner int) *spool.Spool {
 		}
 		func() {
 			defer q.recoverEntry(other, rec)
+			if q.d.entryLocked != nil {
+				q.d.entryLocked(id)
+			}
 			q.releaseInto(rec)
 		}()
 		_ = rec.Close()
@@ -636,7 +639,7 @@ func (q *queue) releaseOtherHold(owner int) *spool.Spool {
 // process may be delivering it, and only the held one is removed.
 func (q *queue) releaseInto(rec *spool.Record) {
 	id := rec.ID()
-	if q.sp.Has(spool.QueueDir, id) || q.sp.Has(spool.HoldDir, id) || q.sp.Has(spool.FailedDir, id) {
+	if q.hasEntry(id) {
 		q.removeReleased(rec, "held message already released")
 		return
 	}
@@ -812,9 +815,20 @@ func (q *queue) recoverEntry(sp *spool.Spool, rec *spool.Record) {
 		return
 	}
 	q.notePanic(q.log.With("id", rec.ID()), value)
-	if rec.Area != spool.FailedDir && sp.Has(rec.Area, rec.ID()) {
+	switch {
+	case rec.Area == spool.FailedDir, !sp.Has(rec.Area, rec.ID()):
+	case sp != q.sp && q.hasEntry(rec.ID()):
+		// The copy here is the message released; the held one is only
+		// left over, and failing it would report a message that goes out.
+		q.removeReleased(rec, "held message already released")
+	default:
 		q.fail(rec, reasonInternal)
 	}
+}
+
+// hasEntry reports whether an area of this spool holds the entry id.
+func (q *queue) hasEntry(id string) bool {
+	return q.sp.Has(spool.QueueDir, id) || q.sp.Has(spool.HoldDir, id) || q.sp.Has(spool.FailedDir, id)
 }
 
 // notePanic logs a panic on one entry of a queue run, which makes -q
@@ -892,6 +906,9 @@ func (q *queue) clean(sp *spool.Spool) {
 		}
 		func() {
 			defer q.recoverEntry(sp, rec)
+			if q.d.entryLocked != nil {
+				q.d.entryLocked(id)
+			}
 			if now.Sub(rec.Entry.FailedAt) > q.settings.FailedTTL.Duration {
 				if err := rec.Remove(); err != nil {
 					q.hasIOError = true

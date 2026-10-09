@@ -1974,3 +1974,89 @@ func TestListQueueUnreadable(t *testing.T) {
 		})
 	}
 }
+
+// TestQueueRunPanicSteps covers a panic on one entry in the steps of a
+// queue run other than delivery and release: the deletion from failed/
+// and the release from hold/ of the default directory. Each fails that
+// entry alone, and a held entry already copied into this spool is only
+// removed there.
+func TestQueueRunPanicSteps(t *testing.T) {
+	panicOn := func(id string) func(string) {
+		return func(locked string) {
+			if locked == id {
+				panic("bug in the step")
+			}
+		}
+	}
+	ownIDs := func(t *testing.T, dir, area string) []string {
+		t.Helper()
+		sp, err := spool.Open(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids, err := sp.List(area)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ids
+	}
+	t.Run("clean", func(t *testing.T) {
+		c := newSpoolCase(t)
+		for _, subject := range []string{"one", "two"} {
+			c.service.reply("a", delivery.Temp)
+			c.send(subject, elevatedUser)
+		}
+		c.clock.advance(7*24*time.Hour + time.Second)
+		c.queueRun(rootCaller)
+		failed := c.ids(spool.FailedDir)
+		if len(failed) != 2 {
+			t.Fatalf("failed/ = %v, want both expired", failed)
+		}
+		c.clock.advance(31 * 24 * time.Hour)
+		inv := c.invocation(rootCaller, []string{"-q"})
+		inv.entryLocked = panicOn(failed[0])
+		if code := inv.run(t); code != 70 || !strings.Contains(inv.output(), `msg="panic in queue run" id=`+failed[0]) {
+			t.Fatalf("-q = %d; output:\n%s", code, inv.output())
+		}
+		if got := c.ids(spool.FailedDir); !slices.Equal(got, failed[:1]) {
+			t.Errorf("failed/ = %v, want the entry that panicked alone", got)
+		}
+	})
+	t.Run("default-hold", func(t *testing.T) {
+		c := newSpoolCase(t)
+		own := t.TempDir()
+		c.config = "[spool]\ndir = \"" + own + "\"\n\n[target.a]\ntype = \"http\"\n"
+		c.send("held", elevatedUser)
+		held := c.ids(spool.HoldDir)
+		c.config = "[spool]\ndir = \"" + own + "\"\n\n" + twoTargets
+		inv := c.invocation(rootCaller, []string{"-q"})
+		inv.entryLocked = panicOn(held[0])
+		if code := inv.run(t); code != 70 || !strings.Contains(inv.output(), `msg="panic in queue run" id=`+held[0]) {
+			t.Fatalf("-q = %d; output:\n%s", code, inv.output())
+		}
+		if e := c.entry(spool.FailedDir); e.ID != held[0] || e.Reason != reasonInternal {
+			t.Errorf("default failed/ entry = %+v, want %v with reason internal error", e, held)
+		}
+	})
+	t.Run("default-hold-copied", func(t *testing.T) {
+		c := newSpoolCase(t)
+		own := t.TempDir()
+		c.config = "[spool]\ndir = \"" + own + "\"\n\n[target.a]\ntype = \"http\"\n"
+		c.send("held", elevatedUser)
+		c.config = "[spool]\ndir = \"" + own + "\"\n\n" + twoTargets
+		c.clock.advance(7*24*time.Hour + time.Second)
+		// The expired copy is written here, and the record of its failure
+		// panics before the held one is removed.
+		inv := c.invocation(rootCaller, []string{"-q"})
+		inv.wrapLog = func(h slog.Handler) slog.Handler { return panicOnceHandler{h, "message failed", &atomic.Bool{}} }
+		if code := inv.run(t); code != 70 {
+			t.Fatalf("-q = %d, want 70; output:\n%s", code, inv.output())
+		}
+		if held, failed := c.ids(spool.HoldDir), c.ids(spool.FailedDir); len(held) != 0 || len(failed) != 0 {
+			t.Errorf("default hold/ %v, failed/ %v; want the held entry removed as released", held, failed)
+		}
+		if copies := ownIDs(t, own, spool.FailedDir); len(copies) != 1 {
+			t.Errorf("own failed/ = %v, want the copy", copies)
+		}
+	})
+}
