@@ -54,17 +54,21 @@ var (
 	ErrQuota = fmt.Errorf("%w: quota exceeded", ErrCreate)
 )
 
+// ErrOpen means the spool directory or one of its areas could not be
+// opened or made; an error of Open wraps it, and ErrCreate as well.
+var ErrOpen = errors.New("spool directory not opened")
+
 // openError is an error of Open: it is ErrCreate, since no entry can be
-// created, but its text is the cause alone, such as "stat /var/spool/
-// mailcrier: no such file or directory", which the caller logs under a
-// message of its own about the directory.
+// created, and ErrOpen, but its text is the cause alone, such as "stat
+// /var/spool/mailcrier: no such file or directory", which the caller logs
+// under a message of its own about the directory.
 type openError struct {
 	err error
 }
 
 func (e *openError) Error() string { return e.err.Error() }
 
-func (e *openError) Unwrap() []error { return []error{ErrCreate, e.err} }
+func (e *openError) Unwrap() []error { return []error{ErrCreate, ErrOpen, e.err} }
 
 // Errors of Lock and LockRun.
 var (
@@ -146,8 +150,14 @@ func (s *Spool) CheckWritable() error {
 	}
 	for _, area := range []string{TmpDir, QueueDir, HoldDir, FailedDir, LocksDir} {
 		path := s.path(area, "")
-		if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
+		info, err := os.Lstat(path)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
 			path = s.dir
+		case err == nil && !info.IsDir():
+			// faccessat would report a file without the execute bit as
+			// EACCES, which hides the cause.
+			return &fs.PathError{Op: "access", Path: path, Err: unix.ENOTDIR}
 		}
 		if err := unix.Faccessat(unix.AT_FDCWD, path, unix.W_OK|unix.X_OK, unix.AT_EACCESS); err != nil {
 			return &fs.PathError{Op: "access", Path: path, Err: err}

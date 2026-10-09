@@ -795,6 +795,8 @@ with
 when the built-in template stood in for a failed one.
 Exits 0 when every target took the message, 69 when one rejected it, 75
 when one failed temporarily and none rejected it.
+A configuration it cannot use goes to standard error as
+.Li mailcrier: Ns Ar error .
 .El
 .Pp
 Of several mode options the last one wins.
@@ -808,7 +810,20 @@ or with
 it lists the queue: every entry with the state of each target for root, the
 .Li mailcrier
 user and a caller without the setgid bit, the numbers alone for everyone
-else; a spool directory that does not exist lists as empty.
+else; a spool directory that does not exist lists as empty, a spool turned
+off as
+.Li spool off .
+.Pp
+When
+.Fl q ,
+.Nm mailq
+or
+.Fl -status
+fails, or lists under a rejected configuration, standard error gets one
+line per cause besides the record in the log, such as
+.Li mailcrier: spool not opened: stat /var/spool/mailcrier: no such file or directory ;
+a setgid-elevated caller gets the message without the cause, and without
+syslog only the records go there.
 .Sh ENVIRONMENT
 .Bl -tag -width Ds
 .It Ev MAILCRIER_CONFIG

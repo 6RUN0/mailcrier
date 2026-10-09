@@ -269,7 +269,14 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 	var cfg *config.Config
 	var env message.Envelope
 	var own *queue
+	// received logs the message once; the handler of a panic before the
+	// file is loaded logs it too, so that the held message has its record.
+	var received func(log *slog.Logger)
+	isReceived := false
 	rescue = func() {
+		if !isReceived && received != nil {
+			received(log)
+		}
 		if own != nil && own.isOwnTaken {
 			return
 		}
@@ -283,10 +290,14 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 	// anything the calling job printed. The Message-ID, when present,
 	// links the records to the message.
 	msgAttrs := messageAttrs(msg)
+	// callLog is log without the message, for the queue run after it,
+	// whose records are about other entries.
+	callLog := log
 	log = log.With(msgAttrs...)
 	// The message is logged under the syslog tag of the file, when it
 	// loads: a filter on that tag sees the whole call from here on.
-	received := func(log *slog.Logger) {
+	received = func(log *slog.Logger) {
+		isReceived = true
 		for _, w := range readWarnings {
 			if w == message.WarningTruncated {
 				log.Warn(w, "size", msg.Size, "max_size", message.MaxSize)
@@ -299,20 +310,23 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 	cfg, err = config.Load(d.ConfigFS, configPath)
 	if err != nil {
 		received(log)
-		log.Error("configuration rejected, message not delivered", "err", err)
+		// The record of hold that follows says whether the message waits
+		// in hold/ for a file that loads or is lost.
+		log.Error("configuration rejected", "err", err)
 		rescue = nil
 		q, openErr := newQueue(d, log, redactor, spoolSettings(d, nil), nil)
 		return holdExitCode(q.hold(msg, env, receivedAt, openErr, reasonConfig), exitConfig)
 	}
 	registerSecrets(redactor, cfg)
 	if cfg.General.SyslogTag != config.DefaultSyslogTag {
-		log = newLogger(cfg.General.SyslogTag).With(msgAttrs...)
+		callLog = newLogger(cfg.General.SyslogTag)
+		log = callLog.With(msgAttrs...)
 	}
 	received(log)
 	client.Timeout = cfg.General.HTTPTimeout.Duration
 	targets, err := buildTargets(cfg, &client, hookProcess(d, log))
 	if err != nil {
-		log.Error("configuration rejected, message not delivered", "err", err)
+		log.Error("configuration rejected", "err", err)
 		rescue = nil
 		q, openErr := newQueue(d, log, redactor, spoolSettings(d, cfg), nil)
 		return holdExitCode(q.hold(msg, env, receivedAt, openErr, reasonConfig), exitConfig)
@@ -341,6 +355,7 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 	// The own message goes first, the caller's queue after it, within its
 	// own budget: a failed service must not delay the next message. A
 	// panic above skips the queue run.
+	q.log = callLog
 	q.drainOwn(ctx)
 	return code
 }
@@ -570,10 +585,11 @@ var lostReasons = map[delivery.Queue]string{
 	delivery.QueueOff: "spool off", delivery.QueueNotCreated: "spool entry not created", delivery.QueueNotWritten: "spool entry not written",
 }
 
-// logOutcome adds the records for the message as a whole: what was
-// queued for a later attempt and what was lost, once: a message lost
-// gets no "message not delivered" besides.
-func logOutcome(log *slog.Logger, results []delivery.Result, state delivery.Queue) {
+// logOutcome adds the records for the message as a whole: why it is not
+// in the spool, spoolErr, what was queued for a later attempt and what
+// was lost. A message lost is one record, "message lost" with the cause,
+// without "message not spooled" or "message not delivered" besides.
+func logOutcome(log *slog.Logger, results []delivery.Result, state delivery.Queue, spoolErr error) {
 	var delivered, temporary, rejected []string
 	for _, r := range results {
 		switch r.Status {
@@ -586,6 +602,21 @@ func logOutcome(log *slog.Logger, results []delivery.Result, state delivery.Queu
 		}
 	}
 	isAllTemporary := len(temporary) > 0 && len(temporary) == len(results)
+	reason := lostReasons[state]
+	if errors.Is(spoolErr, spool.ErrOpen) {
+		reason = "spool not opened"
+	}
+	isLost := state != delivery.Queued && isAllTemporary && len(delivered) == 0
+	if spoolErr != nil && !isLost {
+		// Without a temporary failure nothing needed the entry. The error
+		// tells a directory not opened from an entry not created or not
+		// written.
+		level := slog.LevelWarn
+		if len(temporary) > 0 {
+			level = slog.LevelError
+		}
+		log.Log(context.Background(), level, "message not spooled", "err", spoolErr)
+	}
 	switch {
 	case state == delivery.Queued && isAllTemporary:
 		log.Warn("message queued", "targets", temporary)
@@ -595,10 +626,14 @@ func logOutcome(log *slog.Logger, results []delivery.Result, state delivery.Queu
 		}
 	case len(delivered) > 0 || (state != delivery.QueueOff && !isAllTemporary):
 		for _, name := range temporary {
-			log.Error("message lost for target", "target", name, "reason", lostReasons[state])
+			log.Error("message lost for target", "target", name, "reason", reason)
 		}
 	case isAllTemporary:
-		log.Error("message lost", "reason", lostReasons[state], "targets", temporary)
+		attrs := []any{"reason", reason, "targets", temporary}
+		if spoolErr != nil {
+			attrs = append(attrs, "err", spoolErr)
+		}
+		log.Error("message lost", attrs...)
 		return
 	}
 	if len(delivered) == 0 && delivery.ExitCode(results, state) == exitUnavailable {
@@ -943,28 +978,29 @@ func parseRequest(cfg *config.Config, name string, target config.Target) (*deliv
 	if target.Path == "" && len(target.Query) == 0 && len(target.Headers) == 0 {
 		return nil, nil
 	}
-	parse := func(key, source string) (*render.Template, error) {
-		tmpl, err := render.ParsePart(name+"."+key, source)
+	// The path of the key in the file is kept in parts: a header name may
+	// hold a dot.
+	parse := func(source string, key ...string) (*render.Template, error) {
+		tmpl, err := render.ParsePart(name+"."+strings.Join(key, "."), source)
 		if err != nil {
-			table, _, _ := strings.Cut(key, ".")
-			return nil, cfg.TargetError(name, err, key, table)
+			return nil, cfg.TargetPathError(name, err, key...)
 		}
 		return tmpl, nil
 	}
 	request := &delivery.RequestTemplates{Query: map[string]*render.Template{}, Headers: map[string]*render.Template{}}
 	var err error
 	if target.Path != "" {
-		if request.Path, err = parse("path", target.Path); err != nil {
+		if request.Path, err = parse(target.Path, "path"); err != nil {
 			return nil, err
 		}
 	}
 	for key, source := range target.Query {
-		if request.Query[key], err = parse("query."+key, source); err != nil {
+		if request.Query[key], err = parse(source, "query", key); err != nil {
 			return nil, err
 		}
 	}
 	for key, source := range target.Headers {
-		if request.Headers[key], err = parse("headers."+key, source); err != nil {
+		if request.Headers[key], err = parse(source, "headers", key); err != nil {
 			return nil, err
 		}
 	}

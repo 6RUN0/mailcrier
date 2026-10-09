@@ -260,11 +260,16 @@ preset = "generic-json"
   header template failed, see "Templates".
   Records about a spool entry carry its `id`, the name `mailq` lists,
   from the moment the message is written to the spool: those of the
-  call and its targets and `hook output` too. `message held`, `message
-  lost` and `message failed` carry `reason`, `message failed` also `area`
-  (the spool directory the entry left) and `targets` (those that still
-  waited), `message lost` and `message not delivered` the `targets`
-  concerned; a lost message gets `message lost` alone. Headers and body
+  call and its targets and `hook output` too; the queue run after a
+  call does not carry the `msgid` of the message of the call.
+  `message held`, `message lost` and `message failed` carry `reason`,
+  `message failed` also `area` (`queue` or `hold`, the area of the spool
+  the entry left) and `targets` (those that still waited), `message lost`
+  and `message not delivered` the `targets` concerned. A lost message
+  gets `message lost` alone, with `err` when the spool failed, such as
+  `reason="spool not opened" err="stat /var/spool/mailcrier: no such
+  file or directory"`; a message held after `configuration rejected`
+  gets `message held`, and goes out once the file loads. Headers and body
   of the message are never logged, nor is the response body of a
   service.
 - Tokens and URLs, including the content of `*_file`, are replaced by `***`
@@ -1012,7 +1017,10 @@ preset = "generic-json"
   `hold/` of the default directory keeps when the file names another
   `dir`, which `-q` moves into that queue; `bytes` and `tmp` stay those
   of the `dir`, and a default directory the caller cannot read gives the
-  warning `default spool not listed` and the rest of the output. Under a
+  warning `default spool not listed` and the rest of the output; `-q`
+  then leaves that directory alone, with the same warning and exit
+  status 0, as a user without the setgid bit beside the spool of the
+  packages cannot have held anything there. Under a
   rejected configuration they show the `dir` of the file when it parses
   and only its targets are rejected, since a call holds its message
   there, the default directory otherwise, and log `spool listed under a

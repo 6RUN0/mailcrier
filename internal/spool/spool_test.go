@@ -1000,3 +1000,19 @@ func TestCreateReplacesOrphanSidecar(t *testing.T) {
 		t.Errorf("Peek() = %+v, %v, want the new sidecar", got, err)
 	}
 }
+
+// TestCheckWritableNotADirectory pins the cause for an area that is a
+// file: not a directory, where faccessat alone says permission denied.
+func TestCheckWritableNotADirectory(t *testing.T) {
+	sp := openSpool(t)
+	locks := filepath.Join(sp.dir, LocksDir)
+	if err := os.Remove(locks); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(locks, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := sp.CheckWritable(); err == nil || err.Error() != "access "+locks+": not a directory" {
+		t.Errorf("CheckWritable() error = %v, want %s not a directory", err, locks)
+	}
+}

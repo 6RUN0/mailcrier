@@ -269,6 +269,8 @@ func TestCheckConfigRoadmapItems(t *testing.T) {
 		{"template-file-parse-error", checkConfigCase{doc: "[target.dc]\ntype = \"discord\"\nurl = \"https://example.org/x\"\n\ntemplate_file = \"/etc/mailcrier.d/dc.tmpl\"\n",
 			files: fstest.MapFS{"etc/mailcrier.d/dc.tmpl": {Data: []byte("first line\n{{ if }}\n")}}, want: 78,
 			line: `error: /etc/mailcrier.conf:5:1: target "dc": template: /etc/mailcrier.d/dc.tmpl:2: missing value for if`}},
+		{"dotted-header-template-parse-error", checkConfigCase{doc: "[target.api]\ntype = \"http\"\nurl = \"https://example.org/x\"\npreset = \"generic-json\"\n\n[target.api.headers]\nX-Id = \"1\"\n\"X.Run\" = \"{{ if }}\"\n", want: 78,
+			line: `error: /etc/mailcrier.conf:8:1: target "api": template: api.headers.X.Run:1: missing value for if`}},
 		{"header-template-parse-error", checkConfigCase{doc: "[target.api]\ntype = \"http\"\nurl = \"https://example.org/x\"\npreset = \"generic-json\"\n[target.api.headers]\nX-Run = \"{{ if }}\"\n", want: 78,
 			line: `error: /etc/mailcrier.conf:6:1: target "api": template: api.headers.X-Run:1: missing value for if`}},
 		{"slack-webhook-on-discord", checkConfigCase{doc: "[target.x]\ntype = \"http\"\nurl = \"https://discord.com/api/webhooks/1/a/slack\"\npreset = \"slack-webhook\"\n",

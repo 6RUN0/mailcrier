@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/fstest"
 
 	"github.com/6RUN0/mailcrier/internal/backend"
 	"github.com/6RUN0/mailcrier/internal/backend/hook"
@@ -325,5 +326,19 @@ func TestRegisterTemplateSecrets(t *testing.T) {
 		if got := redactor.String(tc.line); strings.Contains(got, "secret") {
 			t.Errorf("url %s, path %s: redacted = %q", tc.url, tc.path, got)
 		}
+	}
+}
+
+// TestBuildTargetsErrorWrapsCause pins that the *config.Error of a target
+// keeps its cause for errors.As, here the error of a template.
+func TestBuildTargetsErrorWrapsCause(t *testing.T) {
+	cfg, err := config.Load(fstest.MapFS{"etc/mailcrier.conf": {Data: []byte("[target.dc]\ntype = \"discord\"\nurl = \"https://example.org/x\"\ntemplate = \"{{ .Subject | nosuch }}\"\n")}}, "etc/mailcrier.conf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = buildTargets(cfg, http.DefaultClient, hook.Process{})
+	var cfgErr *config.Error
+	if !errors.As(err, &cfgErr) || cfgErr.Line != 4 || errors.Unwrap(err) == nil || !strings.Contains(errors.Unwrap(err).Error(), "nosuch") {
+		t.Errorf("buildTargets() error = %v, want a *config.Error at line 4 that wraps the template error", err)
 	}
 }

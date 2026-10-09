@@ -175,17 +175,7 @@ func (q *queue) deliverOwn(ctx context.Context, targets []delivery.Target, msg *
 	if rec != nil {
 		q.finish(rec)
 	}
-	if spoolErr != nil {
-		// Without a temporary failure nothing needed the entry. The error
-		// tells a directory not opened from an entry not created or not
-		// written.
-		level := slog.LevelWarn
-		if slices.ContainsFunc(results, func(r delivery.Result) bool { return r.Status == delivery.Temp }) {
-			level = slog.LevelError
-		}
-		q.log.Log(ctx, level, "message not spooled", "err", spoolErr)
-	}
-	logOutcome(log, results, state)
+	logOutcome(log, results, state, spoolErr)
 	if donePanic != nil {
 		// Recorded and logged, the results are safe; the call ends as on
 		// any panic, without its queue run.
@@ -458,6 +448,10 @@ func (q *queue) logStop(ctx context.Context, delivered int, limits runLimits) {
 		q.log.Info("queue run stopped", "delivered", delivered, "err", cause)
 		return
 	}
+	if limits.maxMessages > 0 && delivered >= limits.maxMessages {
+		q.log.Info("queue run message limit reached", "delivered", delivered, "max_messages", limits.maxMessages)
+		return
+	}
 	q.log.Info("queue run budget spent", "delivered", delivered, "budget", limits.budget)
 }
 
@@ -467,7 +461,16 @@ func (q *queue) lock(area, id string, owner int) *spool.Record {
 	if owner >= 0 {
 		// OwnerUID never changes, so reading it without the lock is safe.
 		e, err := q.sp.Peek(area, id)
-		if err != nil || e.OwnerUID != owner {
+		if err != nil {
+			// The owner of an unreadable entry is unknown, so it may be
+			// another user's: the run of root or of the service, which
+			// takes every entry, reports it.
+			if !errors.Is(err, fs.ErrNotExist) {
+				q.log.Debug("spool entry skipped, unreadable", "id", id, "area", area, "err", err)
+			}
+			return nil
+		}
+		if e.OwnerUID != owner {
 			return nil
 		}
 	}
@@ -597,7 +600,7 @@ func (q *queue) markNoRoute(log *slog.Logger, e *spool.Entry) bool {
 // spools may be on different file systems, so the entry is written here
 // first and removed there after: a crash in between repeats the delivery
 // rather than losing it. It returns the other spool, nil when it cannot
-// be opened.
+// be opened or its hold/ listed.
 func (q *queue) releaseOtherHold(owner int) *spool.Spool {
 	other, err := spool.OpenExisting(q.otherHold)
 	if err != nil {
@@ -608,8 +611,12 @@ func (q *queue) releaseOtherHold(owner int) *spool.Spool {
 	}
 	ids, err := other.List(spool.HoldDir)
 	if err != nil {
+		// A caller that cannot list it, a user without the setgid bit
+		// beside the spool of the packages, cannot have held anything
+		// there either, and its other areas are not the caller's to
+		// clean: nil keeps clean off them, and -q off exit status 74.
 		q.log.Warn("default spool not listed", "err", err)
-		return other
+		return nil
 	}
 	for _, id := range ids {
 		if owner >= 0 {

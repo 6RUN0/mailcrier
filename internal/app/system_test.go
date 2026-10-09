@@ -149,9 +149,9 @@ func TestFallbackLoggerElevated(t *testing.T) {
 	}
 	logger := newFallbackLogger("mailcrier", dial, newStderrLog(&stderr, true)).With("call", "0123")
 	logger.Info("message received", "size", 10)
-	logger.Error("configuration rejected, message not delivered", "err", "etc/mailcrier.conf:3:1: target \"hook\"")
+	logger.Error("configuration rejected", "err", "etc/mailcrier.conf:3:1: target \"hook\"")
 	logger.Error("target failed", "target", "hook", "status", 502)
-	want := "mailcrier: syslog unavailable, logging to stderr\nmailcrier: configuration rejected, message not delivered\nmailcrier: target failed\n"
+	want := "mailcrier: syslog unavailable, logging to stderr\nmailcrier: configuration rejected\nmailcrier: target failed\n"
 	if got := stderr.String(); got != want {
 		t.Errorf("stderr =\n%s\nwant\n%s", got, want)
 	}

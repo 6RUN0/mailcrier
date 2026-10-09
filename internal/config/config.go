@@ -119,18 +119,22 @@ type Config struct {
 // TargetError returns err, found after loading, such as a template that
 // does not parse, as the *Error of the target name at the first of keys
 // the file sets, or at the table of the target: the operator gets the
-// line of the file, as for an error of Load. A key of a table of the
-// target is dotted, such as "headers.Authorization".
+// line of the file, as for an error of Load. The *Error wraps err.
 func (c *Config) TargetError(name string, err error, keys ...string) *Error {
-	path := []string{"target", name}
 	for _, key := range keys {
-		if keyPath := append([]string{"target", name}, strings.Split(key, ".")...); c.keys.has(keyPath...) {
-			path = keyPath
-			break
+		if c.keys.has("target", name, key) {
+			return c.TargetPathError(name, err, key)
 		}
 	}
-	cfgErr := c.keys.errorf(path, "target %q: %v", name, err)
-	cfgErr.Path = c.path
+	return c.TargetPathError(name, err)
+}
+
+// TargetPathError is TargetError at the key path below the table of the
+// target, such as "headers", "X.Trace" for a header whose name holds a
+// dot, or at the nearest part of it the file sets.
+func (c *Config) TargetPathError(name string, err error, path ...string) *Error {
+	cfgErr := c.keys.errorf(append([]string{"target", name}, path...), "target %q: %v", name, err)
+	cfgErr.Path, cfgErr.Err = c.path, err
 	return cfgErr
 }
 
@@ -391,7 +395,13 @@ type Error struct {
 	Line, Column int
 	// Msg describes the problem.
 	Msg string
+	// Err is the cause of an error found after loading, see TargetError;
+	// nil for an error of Load, whose Msg quotes no value.
+	Err error
 }
+
+// Unwrap returns Err.
+func (e *Error) Unwrap() error { return e.Err }
 
 // Error returns "path:line:column: message", without the position when it
 // is unknown.

@@ -526,6 +526,11 @@ func TestRunPanic(t *testing.T) {
 		if !strings.Contains(inv.output(), `panic="bug in the file system"`) || !strings.Contains(inv.output(), `level=WARN msg="message held"`) {
 			t.Errorf("output lacks the panic and the held message:\n%s", inv.output())
 		}
+		// The panic came before the file loaded, where the call logs the
+		// message; the handler logs it in its place.
+		if !strings.Contains(inv.output(), `level=INFO msg="message received" size=`) {
+			t.Errorf("output lacks the message:\n%s", inv.output())
+		}
 		if e := c.entry(spool.HoldDir); e.Reason != reasonInternal {
 			t.Errorf("held entry = %+v, want reason internal error", e)
 		}
@@ -765,10 +770,11 @@ func TestSpoolNotAvailable(t *testing.T) {
 		if code != 73 || len(c.service.got("a")) != 1 {
 			t.Fatalf("Run() = %d, sent %v, want 73 after a direct attempt; output:\n%s", code, c.service.got("a"), inv.output())
 		}
-		for _, want := range []string{`level=ERROR msg="message not spooled" err="stat ` + c.dir + `: no such file or directory"`, `msg="message lost"`} {
-			if !strings.Contains(inv.output(), want) {
-				t.Errorf("output lacks %s:\n%s", want, inv.output())
-			}
+		// One record says what was lost and why: the directory, not an
+		// entry nobody tried.
+		want := `level=ERROR msg="message lost" reason="spool not opened" targets="[a b]" err="stat ` + c.dir + `: no such file or directory"`
+		if !strings.Contains(inv.output(), want) || strings.Count(inv.output(), `level=ERROR msg="message `) != 1 {
+			t.Errorf("output lacks %s alone:\n%s", want, inv.output())
 		}
 	})
 	t.Run("missing-directory-delivered-exits-0", func(t *testing.T) {
@@ -1152,9 +1158,13 @@ func TestQueueRunClock(t *testing.T) {
 		c.service.reply("a", delivery.Temp)
 		c.send("other user", elevated(1001))
 		c.clock.advance(time.Minute)
-		c.send("four", elevatedUser)
+		_, inv := c.send("four", elevatedUser)
 		if got := c.service.got("a")[4:]; !slices.Equal(got, []string{"four", "one", "two"}) {
 			t.Errorf("a got %v, want the own message, then two of the caller's entries", got)
+		}
+		// The limit of messages ended the run, not its time.
+		if !strings.Contains(inv.output(), `msg="queue run message limit reached" delivered=2 max_messages=2`) {
+			t.Errorf("output:\n%s", inv.output())
 		}
 	})
 	t.Run("drain-budget", func(t *testing.T) {
@@ -1329,6 +1339,10 @@ func TestHold(t *testing.T) {
 		e := c.entry(spool.HoldDir)
 		if code != 78 || !strings.Contains(inv.output(), `level=WARN msg="message held" id=`+e.ID+` reason="configuration rejected"`) {
 			t.Fatalf("Run() = %d, want 78; output:\n%s", code, inv.output())
+		}
+		// The message is not lost, so no record claims it.
+		if !strings.Contains(inv.output(), `level=ERROR msg="configuration rejected" err="/etc/mailcrier.conf:`) || strings.Contains(inv.output(), "not delivered") {
+			t.Errorf("output:\n%s", inv.output())
 		}
 		if e.OwnerUID != 1000 || len(e.Targets) != 0 || e.Reason != reasonConfig {
 			t.Errorf("held entry = %+v", e)
@@ -1686,6 +1700,30 @@ func TestListHoldOfDefaultSpool(t *testing.T) {
 		if code != 0 || !strings.HasPrefix(inv.stdout.String(), "queued=0 held=0 ") ||
 			!strings.Contains(inv.output(), `level=WARN msg="default spool not listed" err=`) {
 			t.Errorf("--status = %d, stdout %q, want the own counts and a warning; output:\n%s", code, inv.stdout.String(), inv.output())
+		}
+	})
+	t.Run("default-spool-unreadable-queue-run-exits-0", func(t *testing.T) {
+		if os.Geteuid() == 0 {
+			t.Skip("root ignores directory modes")
+		}
+		// A user without the setgid bit with a dir of its own, beside the
+		// spool of the packages it cannot read.
+		c := newSpoolCase(t)
+		own := t.TempDir()
+		if _, err := spool.Open(c.dir); err != nil {
+			t.Fatal(err)
+		}
+		for _, area := range []string{spool.HoldDir, spool.TmpDir, spool.FailedDir} {
+			dir := filepath.Join(c.dir, area)
+			if err := os.Chmod(dir, 0o300); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Chmod(dir, 0o770) })
+		}
+		c.config = "[spool]\ndir = \"" + own + "\"\n\n" + twoTargets
+		code, inv := c.queueRun(plainUser)
+		if code != 0 || !strings.Contains(inv.output(), `level=WARN msg="default spool not listed" err=`) || strings.Contains(inv.output(), "level=ERROR") {
+			t.Errorf("-q = %d, want 0 and one warning; output:\n%s", code, inv.output())
 		}
 	})
 	t.Run("rejected-targets-list-own-dir", func(t *testing.T) {
@@ -2131,4 +2169,26 @@ func TestSpoolMoveToFailed(t *testing.T) {
 			t.Errorf("failed entry = %+v, want reason expired", e)
 		}
 	})
+}
+
+// TestDrainLogsWithoutCallMessage pins that the records of the queue run
+// after a call are about the entries it takes: they carry the id of the
+// held entry it releases, not the Message-ID of the message of the call.
+func TestDrainLogsWithoutCallMessage(t *testing.T) {
+	c := newSpoolCase(t)
+	c.config = "[target.a]\ntype = \"http\"\n"
+	if code, _ := c.send("held", elevatedUser); code != 78 {
+		t.Fatalf("Run() = %d, want 78", code)
+	}
+	held := c.ids(spool.HoldDir)[0]
+	c.config = twoTargets
+	code, inv := c.sendInput("Message-ID: <call@example.org>\nSubject: x\n\nb\n")
+	if code != 0 || !strings.Contains(inv.output(), `msg="held message released" id=`+held) {
+		t.Fatalf("Run() = %d; output:\n%s", code, inv.output())
+	}
+	for _, line := range strings.Split(inv.output(), "\n") {
+		if strings.Contains(line, "id="+held) && strings.Contains(line, "call@example.org") {
+			t.Errorf("record of the held entry carries the message of the call: %s", line)
+		}
+	}
 }

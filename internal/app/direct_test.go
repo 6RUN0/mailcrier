@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -154,7 +155,8 @@ func TestDirectChats(t *testing.T) {
 	t.Run("T-ADJ-57/invalid-and-not-allowed-are-plain", func(t *testing.T) {
 		bot := newFakeBot(t)
 		code, inv := bot.run(t, bot.directConfig(directGeneral, ""), "Subject: s\n\nb\n", "@telegram", "abc@telegram", "999@telegram")
-		out := inv.output()
+		// The time of a record may end in .999.
+		out := recordTime.ReplaceAllString(inv.output(), "")
 		if code != 0 || !slices.Equal(bot.chats(), []string{"777"}) || bot.webhookCount() != 1 ||
 			!strings.Contains(out, `level=WARN msg="direct address invalid" count=2`) || !strings.Contains(out, `level=WARN msg="direct chat not allowed" count=1`) ||
 			strings.Contains(out, "999") || strings.Contains(out, "abc") {
@@ -260,3 +262,7 @@ func TestDirectChatsQueued(t *testing.T) {
 		}
 	})
 }
+
+// recordTime is the time field of a log record, which tests drop before
+// they look for a number that must not appear.
+var recordTime = regexp.MustCompile(`time=\S+ `)
