@@ -26,10 +26,12 @@ var modeOptions = map[sendmail.Mode]string{sendmail.Probe: sendmail.OptionProbe,
 // elevated process ignores, so that the mode never reports on another
 // file than the caller named, and arguments of --check-config.
 func admitServiceMode(d Deps, log *slog.Logger, inv sendmail.Invocation) (code int, isAdmitted bool) {
+	// Each record comes before the line for the user, which ends stderr
+	// when the log goes there too.
 	option := modeOptions[inv.Mode]
 	if !d.Credentials.isPrivilegedCaller() {
-		_, _ = fmt.Fprintf(d.Stderr, "mailcrier: %s: permission denied\n", option)
 		log.Error("mode refused, caller not privileged", "option", option, "uid", d.Credentials.UID)
+		_, _ = fmt.Fprintf(d.Stderr, "mailcrier: %s: permission denied\n", option)
 		return exitNoPerm, false
 	}
 	if d.Credentials.isElevated() {
@@ -41,14 +43,14 @@ func admitServiceMode(d Deps, log *slog.Logger, inv sendmail.Invocation) (code i
 			source = sendmail.OptionConfig
 		}
 		if source != "" {
-			_, _ = fmt.Fprintf(d.Stderr, "mailcrier: %s is ignored for a setgid-elevated caller\n", source)
 			log.Error("configuration override refused", "option", option, "source", source)
+			_, _ = fmt.Fprintf(d.Stderr, "mailcrier: %s is ignored for a setgid-elevated caller\n", source)
 			return exitUsage, false
 		}
 	}
 	if inv.Mode == sendmail.CheckConfig && len(inv.Recipients) > 0 {
-		_, _ = fmt.Fprintf(d.Stderr, "mailcrier: %s takes no arguments\n", option)
 		log.Error("command line rejected", "err", option+" takes no arguments")
+		_, _ = fmt.Fprintf(d.Stderr, "mailcrier: %s takes no arguments\n", option)
 		return exitUsage, false
 	}
 	return exitOK, true
@@ -58,12 +60,14 @@ func admitServiceMode(d Deps, log *slog.Logger, inv sendmail.Invocation) (code i
 // builds its targets as a call does, adds the warnings of config.Check and
 // renders the sample message for every target without sending it. The
 // findings go to stderr, one per line, then a line with their numbers;
-// stdout stays empty. It exits 78 on an error, 0 otherwise.
+// stdout stays empty. It exits 78 on an error, 0 otherwise. The records
+// of the check come before the findings: without syslog they go to stderr
+// too, and the line with the numbers stays the last one.
 func runCheckConfig(ctx context.Context, d Deps, log *slog.Logger, newLogger func(tag string) *slog.Logger, redactor *redact.Redactor, client *http.Client, inv sendmail.Invocation) int {
 	configPath, err := selectConfigPath(d, inv, log)
 	if err != nil {
-		_, _ = fmt.Fprintf(d.Stderr, "error: %v\n", err)
 		log.Info("configuration checked", "errors", 1, "warnings", 0)
+		_, _ = fmt.Fprintf(d.Stderr, "error: %v\n", err)
 		return exitConfig
 	}
 	// The setgid bit gives the group through which every user other than
@@ -106,10 +110,10 @@ func runCheckConfig(ctx context.Context, d Deps, log *slog.Logger, newLogger fun
 	}
 	warningCount := len(lines) - errorCount
 	lines = append(lines, fmt.Sprintf("/%s: %d %s, %d %s", configPath, errorCount, plural(errorCount, "error"), warningCount, plural(warningCount, "warning")))
+	log.Info("configuration checked", "errors", errorCount, "warnings", warningCount)
 	for _, line := range lines {
 		_, _ = fmt.Fprintln(d.Stderr, redactor.String(line))
 	}
-	log.Info("configuration checked", "errors", errorCount, "warnings", warningCount)
 	if err != nil {
 		return exitConfig
 	}

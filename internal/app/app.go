@@ -200,8 +200,10 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 	}
 	inv, warnings, err := sendmail.Parse(d.Program, args)
 	if err != nil {
-		_, _ = fmt.Fprintf(d.Stderr, "mailcrier: %v\n", err)
+		// Without syslog the record goes to stderr as well; the line for
+		// the user comes last.
 		log.Error("command line rejected", "err", err)
+		_, _ = fmt.Fprintf(d.Stderr, "mailcrier: %v\n", err)
 		return exitUsage
 	}
 	for _, w := range warnings {
@@ -270,12 +272,17 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 	// links the records to the message.
 	msgAttrs := messageAttrs(msg)
 	log = log.With(msgAttrs...)
-	for _, w := range readWarnings {
-		log.Warn(w)
+	// The message is logged under the syslog tag of the file, when it
+	// loads: a filter on that tag sees the whole call from here on.
+	received := func(log *slog.Logger) {
+		for _, w := range readWarnings {
+			log.Warn(w)
+		}
+		log.Info("message received", "size", msg.Size, "recipients", len(env.Recipients))
 	}
-	log.Info("message received", "size", msg.Size, "recipients", len(env.Recipients))
 	cfg, err = config.Load(d.ConfigFS, configPath)
 	if err != nil {
+		received(log)
 		log.Error("configuration rejected, message not delivered", "err", err)
 		rescue = nil
 		q, openErr := newQueue(d, log, redactor, spoolSettings(d, nil), nil)
@@ -285,6 +292,7 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 	if cfg.General.SyslogTag != config.DefaultSyslogTag {
 		log = newLogger(cfg.General.SyslogTag).With(msgAttrs...)
 	}
+	received(log)
 	client.Timeout = cfg.General.HTTPTimeout.Duration
 	targets, err := buildTargets(cfg, &client, hookProcess(d, log))
 	if err != nil {

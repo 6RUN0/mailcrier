@@ -22,10 +22,12 @@ import (
 // The spool is not touched: a failed target is not queued, and the queue
 // is not run. It exits with probeExitCode.
 func runProbe(ctx context.Context, d Deps, log *slog.Logger, newLogger func(tag string) *slog.Logger, redactor *redact.Redactor, client *http.Client, inv sendmail.Invocation) int {
+	// Each record comes before the line for the user, as in
+	// runCheckConfig.
 	configPath, err := selectConfigPath(d, inv, log)
 	if err != nil {
-		_, _ = fmt.Fprintf(d.Stderr, "error: %v\n", err)
 		log.Error("configuration rejected", "err", err)
+		_, _ = fmt.Fprintf(d.Stderr, "error: %v\n", err)
 		return exitConfig
 	}
 	cfg, targets, log, err := loadTargets(d, log, newLogger, redactor, client, configPath, config.Load)
@@ -35,14 +37,14 @@ func runProbe(ctx context.Context, d Deps, log *slog.Logger, newLogger func(tag 
 		if !errors.As(err, &cfgErr) {
 			text = "/" + configPath + ": " + text
 		}
-		_, _ = fmt.Fprintln(d.Stderr, redactor.String("error: "+text))
 		log.Error("configuration rejected", "err", err)
+		_, _ = fmt.Fprintln(d.Stderr, redactor.String("error: "+text))
 		return exitConfig
 	}
 	selected, unknown := selectProbeTargets(targets, inv.Recipients)
 	if unknown != "" {
-		_, _ = fmt.Fprintf(d.Stderr, "mailcrier: %s: no target %q\n", sendmail.OptionProbe, unknown)
 		log.Error("probe target unknown", "target", unknown)
+		_, _ = fmt.Fprintf(d.Stderr, "mailcrier: %s: no target %q\n", sendmail.OptionProbe, unknown)
 		return exitUsage
 	}
 	msg, env, data, err := readSample(d, notices(cfg.Strings))

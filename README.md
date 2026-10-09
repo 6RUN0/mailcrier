@@ -214,13 +214,21 @@ preset = "generic-json"
   Telegram between tags and entities, with the open tags closed. What goes
   along with a cut text is set per target, see "Long messages".
 - Exit status: see "Exit status" below.
-- Logging goes to syslog, facility `mail`. Where no syslog socket exists (a
-  container without `/dev/log`) the records go to stderr, with time and
-  level, after one `syslog unavailable` warning; PHP-FPM passes the stderr
+- Logging goes to syslog, facility `mail`, under `syslog_tag`; the
+  records of a call before its file is loaded (a usage error, a file
+  that does not load) go under `mailcrier`. Where no syslog socket
+  exists (a container without `/dev/log`) the records go to stderr, with
+  time in UTC and level, after one `syslog unavailable` warning that
+  names the socket and the error; a daemon that stops taking records
+  sends the record that failed and every later one of the process there
+  too, after one `syslog write failed` warning. PHP-FPM passes the stderr
   of a worker to its own log only with `catch_workers_output = yes` in the
   pool configuration. A setgid-elevated process without syslog writes to
   stderr only `mailcrier: <message>` for warnings and errors, without
   fields, because its caller must not see what only the group may read.
+  On stderr the records come before the report of `--check-config` and
+  before the line of a usage error, so the last line is the one for the
+  user.
   Each record is a constant message with logfmt fields: `call` (16 hex
   digits, one value per invocation) on every record, `msgid` (the
   Message-ID header, cut to 256 bytes, absent when the message has none)

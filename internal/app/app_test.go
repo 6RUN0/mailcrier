@@ -9,9 +9,11 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"log/syslog"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -67,6 +69,8 @@ type invocation struct {
 	entryLocked func(id string)
 	// ctx is the context of Run, context.Background when nil.
 	ctx context.Context
+	// isSyslogDown makes the log go to stderr, as without a syslog socket.
+	isSyslogDown bool
 }
 
 // execCall is one attempt to replace the process image.
@@ -121,8 +125,12 @@ func (inv *invocation) run(t testing.TB) int {
 	if inv.stdoutWriter != nil {
 		stdout = inv.stdoutWriter
 	}
+	fallback := newStderrLog(&inv.stderr, inv.creds.isElevated())
 	deps := Deps{
 		NewLogger: func(tag string) *slog.Logger {
+			if inv.isSyslogDown {
+				return newFallbackLogger(tag, func(string) (*syslog.Writer, error) { return nil, errors.New("dial unixgram /dev/log: no such file") }, fallback)
+			}
 			buf := &bytes.Buffer{}
 			inv.logs[tag] = buf
 			return slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
@@ -260,6 +268,40 @@ func TestRunUsesConfiguredSyslogTag(t *testing.T) {
 	if !strings.Contains(inv.log("mailbot"), "target delivered") {
 		t.Errorf("delivery not logged under the configured tag; logs: %v", inv.logs)
 	}
+	// A filter on the tag sees the message itself too.
+	if !strings.Contains(inv.log("mailbot"), `msg="message received"`) || strings.Contains(inv.log("mailcrier"), "message received") {
+		t.Errorf("message received not under the configured tag alone:\n%s", inv.output())
+	}
+}
+
+// TestLogBeforeUserLine pins that without syslog the records on stderr
+// come before what the user reads there: the report of --check-config,
+// whose last line counts the findings, and the line of a usage error.
+func TestLogBeforeUserLine(t *testing.T) {
+	t.Run("check-config", func(t *testing.T) {
+		inv := &invocation{config: "[target.backup]\ntype = \"discord\"\nurl = \"https://example.org/x\"\n[[route]]\nsubject = \"*\"\ntargets = [\"backup\"]\n",
+			args: []string{"--check-config"}, creds: plainUser, stdin: iotest.ErrReader(errors.New("stdin read")), isSyslogDown: true}
+		if code := inv.run(t); code != 0 {
+			t.Fatalf("Run() = %d, want 0; stderr:\n%s", code, inv.stderr.String())
+		}
+		lines := strings.Split(strings.TrimSuffix(inv.stderr.String(), "\n"), "\n")
+		report := slices.IndexFunc(lines, func(line string) bool { return strings.HasPrefix(line, "warning: ") })
+		if report < 0 || lines[len(lines)-1] != "/etc/mailcrier.conf: 0 errors, 1 warning" ||
+			slices.ContainsFunc(lines[report:], func(line string) bool { return strings.Contains(line, "level=") }) ||
+			!slices.ContainsFunc(lines[:report], func(line string) bool { return strings.Contains(line, `msg="configuration checked"`) }) {
+			t.Errorf("stderr mixes the log into the report:\n%s", inv.stderr.String())
+		}
+	})
+	t.Run("usage", func(t *testing.T) {
+		inv := &invocation{args: []string{"-t", "-f"}, stdin: strings.NewReader(""), isSyslogDown: true}
+		if code := inv.run(t); code != 64 {
+			t.Fatalf("Run() = %d, want 64", code)
+		}
+		lines := strings.Split(strings.TrimSuffix(inv.stderr.String(), "\n"), "\n")
+		if len(lines) != 3 || lines[2] != "mailcrier: option -f requires a value" || !strings.Contains(lines[1], `msg="command line rejected"`) {
+			t.Errorf("stderr:\n%s", inv.stderr.String())
+		}
+	})
 }
 
 func TestRunRejectsConfiguration(t *testing.T) {

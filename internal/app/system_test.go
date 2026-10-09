@@ -6,6 +6,9 @@ import (
 	"log/slog"
 	"log/syslog"
 	"net"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -24,7 +27,7 @@ func TestSyslogHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = writer.Close() }()
-	logger := slog.New(newSyslogHandler(writer)).With("msgid", "m1")
+	logger := slog.New(newSyslogHandler(writer, newStderrLog(&bytes.Buffer{}, false))).With("msgid", "m1")
 
 	cases := []struct {
 		log      func(msg string, args ...any)
@@ -71,23 +74,68 @@ func pidOf(packet string) string {
 }
 
 // TestFallbackLoggerUsesStderr pins that a missing syslog daemon does not
-// stop the call: the records go to stderr, after one warning.
+// stop the call: the records go to stderr with the time in UTC, after one
+// warning that carries the fields of the logger, also when a logger with
+// another tag follows, which does not dial again.
 func TestFallbackLoggerUsesStderr(t *testing.T) {
 	var stderr bytes.Buffer
+	dials := 0
 	dial := func(string) (*syslog.Writer, error) {
-		return nil, errors.New("dial unix /dev/log: connect: no such file or directory")
+		dials++
+		return nil, errors.New("dial unixgram /dev/log: connect: no such file or directory")
 	}
-	logger := newFallbackLogger("mailcrier", dial, &stderr, false)
-	logger.Error("target failed", "target", "hook")
+	fallback := newStderrLog(&stderr, false)
+	newFallbackLogger("mailcrier", dial, fallback).With("call", "0123").Error("target failed", "target", "hook")
+	newFallbackLogger("ops", dial, fallback).With("call", "0123").Info("probe sent")
 	lines := strings.Split(strings.TrimSpace(stderr.String()), "\n")
-	if len(lines) != 2 {
-		t.Fatalf("stderr has %d lines, want the warning and the record:\n%s", len(lines), stderr.String())
+	if len(lines) != 3 || dials != 1 {
+		t.Fatalf("stderr has %d lines after %d dials, want the warning and two records after one:\n%s", len(lines), dials, stderr.String())
 	}
-	if !strings.Contains(lines[0], `level=WARN msg="syslog unavailable, logging to stderr" err="dial unix /dev/log`) {
+	utc := regexp.MustCompile(`^time=\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z `)
+	if !utc.MatchString(lines[0]) || !strings.Contains(lines[0], `level=WARN msg="syslog unavailable, logging to stderr" call=0123 err="dial unixgram /dev/log`) {
 		t.Errorf("warning line = %q", lines[0])
 	}
-	if !strings.Contains(lines[1], `level=ERROR msg="target failed" target=hook`) {
+	if !strings.Contains(lines[1], `level=ERROR msg="target failed" call=0123 target=hook`) {
 		t.Errorf("record line = %q", lines[1])
+	}
+}
+
+// TestSyslogWriteFailure pins that a syslog daemon that stops taking
+// records loses none: the record that failed goes to stderr after one
+// warning, and so do the records after it.
+func TestSyslogWriteFailure(t *testing.T) {
+	socket := filepath.Join(t.TempDir(), "log")
+	conn, err := net.ListenPacket("unixgram", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer, err := syslog.Dial("unixgram", socket, syslog.LOG_MAIL|syslog.LOG_INFO, "mailcrier")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = writer.Close() }()
+	var stderr bytes.Buffer
+	logger := slog.New(newSyslogHandler(writer, newStderrLog(&stderr, false))).With("call", "0123")
+	logger.Info("message received")
+	if packet := readPacket(t, conn); !strings.Contains(packet, `msg="message received" call=0123`) {
+		t.Fatalf("packet %q", packet)
+	}
+	// The daemon goes away: the write fails, and so does the dial that
+	// log/syslog tries once more.
+	_ = conn.Close()
+	if err := os.Remove(socket); err != nil {
+		t.Fatal(err)
+	}
+	logger.Error("target failed", "target", "hook")
+	logger.Warn("message queued")
+	lines := strings.Split(strings.TrimSpace(stderr.String()), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("stderr has %d lines, want the warning and two records:\n%s", len(lines), stderr.String())
+	}
+	for i, want := range []string{`level=WARN msg="syslog write failed, logging to stderr" call=0123 err=`, `level=ERROR msg="target failed" call=0123 target=hook`, `level=WARN msg="message queued" call=0123`} {
+		if !strings.Contains(lines[i], want) {
+			t.Errorf("line %d = %q, want %q", i, lines[i], want)
+		}
 	}
 }
 
@@ -99,7 +147,7 @@ func TestFallbackLoggerElevated(t *testing.T) {
 	dial := func(string) (*syslog.Writer, error) {
 		return nil, errors.New("dial unix /dev/log: connect: no such file or directory")
 	}
-	logger := newFallbackLogger("mailcrier", dial, &stderr, true).With("call", "0123")
+	logger := newFallbackLogger("mailcrier", dial, newStderrLog(&stderr, true)).With("call", "0123")
 	logger.Info("message received", "size", 10)
 	logger.Error("configuration rejected, message not delivered", "err", "etc/mailcrier.conf:3:1: target \"hook\"")
 	logger.Error("target failed", "target", "hook", "status", 502)

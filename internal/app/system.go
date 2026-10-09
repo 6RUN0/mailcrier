@@ -7,6 +7,7 @@ import (
 	"log"
 	"log/slog"
 	"log/syslog"
+	"net"
 	"net/http"
 	"os"
 	"os/user"
@@ -53,9 +54,10 @@ func SystemDeps() Deps {
 		EGID:       os.Getegid(),
 		ServiceUID: lookupServiceUID(),
 	}
+	fallback := newStderrLog(os.Stderr, creds.isElevated())
 	return Deps{
 		NewLogger: func(tag string) *slog.Logger {
-			return newFallbackLogger(tag, dialSyslog, os.Stderr, creds.isElevated())
+			return newFallbackLogger(tag, dialSyslog, fallback)
 		},
 		ConfigFS:       os.DirFS("/"),
 		ConfigPath:     SystemConfigPath,
@@ -130,32 +132,135 @@ func replaceEnv(env []string) {
 	}
 }
 
+// syslogSocket is the socket dialSyslog tries first, as log/syslog does.
+const syslogSocket = "/dev/log"
+
 // dialSyslog connects to syslog with the mail facility, because cron and
-// at discard the output of the mailer they run.
+// at discard the output of the mailer they run. log/syslog reports any
+// failure as "Unix syslog delivery error"; a dial of its first socket
+// names the path and the errno instead.
 func dialSyslog(tag string) (*syslog.Writer, error) {
-	return syslog.New(syslog.LOG_MAIL|syslog.LOG_INFO, tag)
+	writer, err := syslog.New(syslog.LOG_MAIL|syslog.LOG_INFO, tag)
+	if err != nil {
+		conn, dialErr := net.Dial("unixgram", syslogSocket)
+		if dialErr != nil {
+			return nil, dialErr
+		}
+		_ = conn.Close()
+	}
+	return writer, err
 }
 
 // newFallbackLogger logs to the syslog writer dial returns or, when syslog
-// is unreachable (a container has no /dev/log), to stderr, so that the
-// records are not lost and the call goes on. Without elevation stderr gets
-// logfmt with time and level. An elevated process writes for its caller,
-// who must not see what only the group may read (configuration positions,
-// target names, statuses), so stderr gets only the constant message of
-// warnings and errors.
-func newFallbackLogger(tag string, dial func(tag string) (*syslog.Writer, error), stderr io.Writer, isElevated bool) *slog.Logger {
-	writer, err := dial(tag)
-	if err == nil {
-		return slog.New(newSyslogHandler(writer))
+// is unreachable (a container has no /dev/log), to fallback, so that the
+// records are not lost and the call goes on. Once syslog failed, by a
+// dial or a write, the loggers made after it do not dial again.
+func newFallbackLogger(tag string, dial func(tag string) (*syslog.Writer, error), fallback *stderrLog) *slog.Logger {
+	if !fallback.isDown() {
+		writer, err := dial(tag)
+		if err == nil {
+			return slog.New(newSyslogHandler(writer, fallback))
+		}
+		fallback.setDown("syslog unavailable, logging to stderr", err)
 	}
-	var logger *slog.Logger
+	return slog.New(fallback.handler())
+}
+
+// stderrLog takes the records when syslog is unreachable or stops taking
+// them; one per process, so that the warning about it comes once, before
+// the first record on stderr and with its fields, such as call. Without
+// elevation stderr gets logfmt with time in UTC and level. An elevated
+// process writes for its caller, who must not see what only the group may
+// read (configuration positions, target names, statuses), so stderr gets
+// only the constant message of warnings and errors.
+type stderrLog struct {
+	base slog.Handler
+	mu   sync.Mutex
+	down bool
+	// warning is the message of the warning not yet written, cause its
+	// error; empty once written.
+	warning string
+	cause   error
+}
+
+func newStderrLog(stderr io.Writer, isElevated bool) *stderrLog {
+	l := &stderrLog{}
 	if isElevated {
-		logger = slog.New(&messageHandler{writer: stderr, mu: &sync.Mutex{}})
-	} else {
-		logger = slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: slog.LevelDebug}))
+		l.base = &messageHandler{writer: stderr, mu: &sync.Mutex{}}
+		return l
 	}
-	logger.Warn("syslog unavailable, logging to stderr", "err", err)
-	return logger
+	l.base = slog.NewTextHandler(stderr, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+		ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
+			if len(groups) == 0 && attr.Key == slog.TimeKey {
+				return slog.Time(slog.TimeKey, attr.Value.Time().UTC())
+			}
+			return attr
+		},
+	})
+	return l
+}
+
+// isDown reports whether the records go to stderr.
+func (l *stderrLog) isDown() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.down
+}
+
+// setDown sends every later record to stderr; the first call sets the
+// warning that comes before them.
+func (l *stderrLog) setDown(warning string, cause error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if !l.down {
+		l.down, l.warning, l.cause = true, warning, cause
+	}
+}
+
+func (l *stderrLog) handler() *stderrHandler {
+	return &stderrHandler{log: l, handler: l.base}
+}
+
+// stderrHandler writes records with the handler of a stderrLog, derived
+// with the attributes of its logger, after the pending warning.
+type stderrHandler struct {
+	log     *stderrLog
+	handler slog.Handler
+}
+
+// Enabled defers to the handler on stderr.
+func (h *stderrHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return h.handler.Enabled(ctx, level)
+}
+
+// Handle writes the pending warning, then the record when the handler on
+// stderr takes its level: a syslogHandler passes on every level.
+func (h *stderrHandler) Handle(ctx context.Context, record slog.Record) error {
+	h.log.mu.Lock()
+	defer h.log.mu.Unlock()
+	if h.log.warning != "" {
+		warning := slog.NewRecord(record.Time, slog.LevelWarn, h.log.warning, 0)
+		warning.AddAttrs(slog.Any("err", h.log.cause))
+		h.log.warning = ""
+		if err := h.handler.Handle(ctx, warning); err != nil {
+			return err
+		}
+	}
+	if !h.handler.Enabled(ctx, record.Level) {
+		return nil
+	}
+	return h.handler.Handle(ctx, record)
+}
+
+// WithAttrs returns a handler that adds attrs to every record.
+func (h *stderrHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return &stderrHandler{log: h.log, handler: h.handler.WithAttrs(attrs)}
+}
+
+// WithGroup returns a handler that nests later attributes under name.
+func (h *stderrHandler) WithGroup(name string) slog.Handler {
+	return &stderrHandler{log: h.log, handler: h.handler.WithGroup(name)}
 }
 
 // messageHandler writes "mailcrier: <message>" for warnings and errors and
@@ -186,6 +291,9 @@ func (h *messageHandler) WithGroup(string) slog.Handler { return h }
 
 // syslogHandler formats records as logfmt without time and level, which
 // syslog records itself, and sends each one with the matching severity.
+// A record syslog does not take goes to fallback, and so does every one
+// after it: a daemon that stopped would lose the records without a trace,
+// and a dial per record would slow every one down.
 type syslogHandler struct {
 	writer *syslog.Writer
 	// format renders into *buf; mu guards buf, which handlers derived with
@@ -193,9 +301,11 @@ type syslogHandler struct {
 	format slog.Handler
 	buf    *bytes.Buffer
 	mu     *sync.Mutex
+	// fallback is the handler on stderr, derived with the same attributes.
+	fallback *stderrHandler
 }
 
-func newSyslogHandler(writer *syslog.Writer) *syslogHandler {
+func newSyslogHandler(writer *syslog.Writer, fallback *stderrLog) *syslogHandler {
 	buf := &bytes.Buffer{}
 	format := slog.NewTextHandler(buf, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
@@ -206,7 +316,7 @@ func newSyslogHandler(writer *syslog.Writer) *syslogHandler {
 			return attr
 		},
 	})
-	return &syslogHandler{writer: writer, format: format, buf: buf, mu: &sync.Mutex{}}
+	return &syslogHandler{writer: writer, format: format, buf: buf, mu: &sync.Mutex{}, fallback: fallback.handler()}
 }
 
 // Enabled accepts every level; the syslog daemon filters by severity.
@@ -214,8 +324,22 @@ func (h *syslogHandler) Enabled(context.Context, slog.Level) bool {
 	return true
 }
 
-// Handle sends one record to syslog.
+// Handle sends one record to syslog, or to stderr once syslog failed.
 func (h *syslogHandler) Handle(ctx context.Context, record slog.Record) error {
+	if h.fallback.log.isDown() {
+		return h.fallback.Handle(ctx, record)
+	}
+	err := h.send(ctx, record)
+	if err == nil {
+		return nil
+	}
+	h.fallback.log.setDown("syslog write failed, logging to stderr", err)
+	return h.fallback.Handle(ctx, record)
+}
+
+// send formats one record and writes it to syslog; log/syslog dials once
+// more before it gives up.
+func (h *syslogHandler) send(ctx context.Context, record slog.Record) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.buf.Reset()
@@ -239,6 +363,7 @@ func (h *syslogHandler) Handle(ctx context.Context, record slog.Record) error {
 func (h *syslogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	derived := *h
 	derived.format = h.format.WithAttrs(attrs)
+	derived.fallback = h.fallback.WithAttrs(attrs).(*stderrHandler)
 	return &derived
 }
 
@@ -246,5 +371,6 @@ func (h *syslogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 func (h *syslogHandler) WithGroup(name string) slog.Handler {
 	derived := *h
 	derived.format = h.format.WithGroup(name)
+	derived.fallback = h.fallback.WithGroup(name).(*stderrHandler)
 	return &derived
 }
