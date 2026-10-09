@@ -34,7 +34,7 @@ type State string
 const (
 	// Pending means the target still has to get the message.
 	Pending State = "pending"
-	// Done means the target accepted the message, or a rule suppressed it.
+	// Done means the target accepted the message.
 	Done State = "done"
 	// Failed means the target will not get the message: it rejected it
 	// for good, or it is gone from the configuration.

@@ -114,6 +114,15 @@ func TestDoParseReadsBody(t *testing.T) {
 	}
 }
 
+// TestDoParseDecidesOverStatus pins that Do leaves a failed status to
+// parse instead of checking it first.
+func TestDoParseDecidesOverStatus(t *testing.T) {
+	client := answering(http.StatusInternalServerError, http.Header{}, http.NoBody)
+	if err := Do(client, newRequest(t), func(*http.Response) error { return nil }); err != nil {
+		t.Errorf("Do() error = %v, want the nil of parse", err)
+	}
+}
+
 func TestDoTransportErrorWithoutURL(t *testing.T) {
 	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("connection refused")

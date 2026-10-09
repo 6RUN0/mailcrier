@@ -37,9 +37,9 @@ const (
 	// helperKillAfterDone kills the process with SIGKILL right after the
 	// first sidecar write or entry removal that records a delivered target.
 	helperKillAfterDone = "kill-after-done"
-	// helperPauseAfterDone reports the first sidecar write that records a
-	// delivered target on fd 3 and waits, holding the entry, until fd 4
-	// reaches its end.
+	// helperPauseAfterDone reports the first sidecar write or entry removal
+	// that records a delivered target on fd 3 and waits, holding the entry,
+	// until fd 4 reaches its end.
 	helperPauseAfterDone = "pause-after-done"
 	// helperStopWhenLocked reports the first entry a queue run locks on
 	// fd 3 and stops the process with SIGSTOP; continued, it waits for the

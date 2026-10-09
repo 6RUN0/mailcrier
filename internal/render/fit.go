@@ -51,9 +51,9 @@ var strictFormats = map[text.Format]bool{
 //
 // The body is cut before escaping, so a cut never splits an entity, and
 // the rendering is measured after escaping, because escaping grows the
-// text by a factor that depends on the characters. The search relies on the template growing with the body,
-// the subject and the attachments, which holds for every template that
-// writes them once or more.
+// text by a factor that depends on the characters. The search relies on
+// the template growing with the body, the subject and the attachments,
+// which holds for every template that writes them once or more.
 //
 // A template from the configuration whose output exceeds its size limit
 // counts as too long here, as long as there is a limit, so that a body of
