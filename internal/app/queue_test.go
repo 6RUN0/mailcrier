@@ -485,6 +485,18 @@ func TestRunPanic(t *testing.T) {
 			t.Errorf("output lacks the second panic:\n%s", inv.output())
 		}
 	})
+	t.Run("message-held-before-own-entry", func(t *testing.T) {
+		c := newSpoolCase(t)
+		inv := c.invocation(elevatedUser, nil)
+		inv.stdin = strings.NewReader("Subject: kept\n\nbody\n")
+		inv.ownEntryCreating = func() { panic("bug in building the entry") }
+		if code := inv.run(t); code != 70 {
+			t.Fatalf("Run() = %d, want 70; output:\n%s", code, inv.output())
+		}
+		if e := c.entry(spool.HoldDir); e.Reason != reasonInternal {
+			t.Errorf("held entry = %+v, want reason internal error", e)
+		}
+	})
 	t.Run("T-TPL-12/broken-log", func(t *testing.T) {
 		c := newSpoolCase(t)
 		inv := c.invocation(elevatedUser, nil)
@@ -2057,6 +2069,66 @@ func TestQueueRunPanicSteps(t *testing.T) {
 		}
 		if copies := ownIDs(t, own, spool.FailedDir); len(copies) != 1 {
 			t.Errorf("own failed/ = %v, want the copy", copies)
+		}
+	})
+}
+
+// hasFile reports whether path is a regular file.
+func (c *spoolCase) hasFile(path string) bool {
+	info, err := os.Lstat(path)
+	return err == nil && info.Mode().IsRegular()
+}
+
+// TestSpoolMoveToFailed covers two ends of moving an entry to failed/: a
+// result recorded again after the entry already went there leaves it as
+// it is, and a move whose files are renamed but whose old sidecar cannot
+// be removed counts as done.
+func TestSpoolMoveToFailed(t *testing.T) {
+	t.Run("recorded-again-in-failed", func(t *testing.T) {
+		dir := t.TempDir()
+		// The record of the move panics once, so that the result whose
+		// recording moved the entry is recorded again.
+		inv := &invocation{
+			config: httpTargetConfig("https://hooks.example.org/hook/x"), client: &http.Client{Transport: panickingTransport{}},
+			spoolDir: dir, stdin: strings.NewReader("Subject: t\n\nb\n"),
+			wrapLog: func(h slog.Handler) slog.Handler { return panicOnceHandler{h, "message failed", &atomic.Bool{}} },
+		}
+		if code := inv.run(t); code != 70 {
+			t.Fatalf("Run() = %d, want 70; output:\n%s", code, inv.output())
+		}
+		c := &spoolCase{t: t, dir: dir}
+		if e := c.entry(spool.FailedDir); e.Reason != reasonInternal {
+			t.Errorf("failed entry = %+v, want reason internal error", e)
+		}
+	})
+	t.Run("moved-not-synced", func(t *testing.T) {
+		c := newSpoolCase(t)
+		c.service.reply("a", delivery.Temp)
+		c.send("old", elevatedUser)
+		queued := c.ids(spool.QueueDir)
+		c.clock.advance(7*24*time.Hour + time.Second)
+		// A directory in place of the old sidecar fails its removal, the
+		// last step of the move, after both files are in failed/.
+		inv := c.invocation(rootCaller, []string{"-q"})
+		inv.entryLocked = func(id string) {
+			sidecar := filepath.Join(c.dir, spool.QueueDir, id+".json")
+			if id != queued[0] || !c.hasFile(sidecar) {
+				return
+			}
+			if err := os.Remove(sidecar); err != nil {
+				t.Error(err)
+			}
+			if err := os.MkdirAll(filepath.Join(sidecar, "keep"), 0o700); err != nil {
+				t.Error(err)
+			}
+		}
+		code := inv.run(t)
+		if code != 74 || !strings.Contains(inv.output(), `msg="spool entry moved to failed, not synced" id=`+queued[0]) ||
+			!strings.Contains(inv.output(), `msg="message failed" id=`+queued[0]) {
+			t.Fatalf("-q = %d, want 74; output:\n%s", code, inv.output())
+		}
+		if e := c.entry(spool.FailedDir); e.Reason != reasonExpired {
+			t.Errorf("failed entry = %+v, want reason expired", e)
 		}
 	})
 }

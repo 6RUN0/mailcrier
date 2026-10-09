@@ -149,6 +149,9 @@ func (q *queue) deliverOwn(ctx context.Context, targets []delivery.Target, msg *
 	if q.settings.Dir != "" {
 		spoolErr = openErr
 		if spoolErr == nil {
+			if q.d.ownEntryCreating != nil {
+				q.d.ownEntryCreating()
+			}
 			names := make([]string, len(targets))
 			for i, target := range targets {
 				names[i] = target.ID

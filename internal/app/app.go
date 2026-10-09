@@ -156,6 +156,9 @@ type Deps struct {
 	// kill or stop the process there.
 	spoolSaved  func(e *spool.Entry)
 	entryLocked func(id string)
+	// ownEntryCreating is called by deliverOwn before it builds the
+	// entry of the own message; tests panic there.
+	ownEntryCreating func()
 }
 
 // Run handles one invocation and returns the process exit status; args

@@ -46,6 +46,8 @@ type invocation struct {
 	files   fstest.MapFS
 	// configFS replaces config and files when set.
 	configFS fs.FS
+	// ownEntryCreating is the hook of Deps.
+	ownEntryCreating func()
 	// wrapLog wraps the handler of every logger when set.
 	wrapLog func(slog.Handler) slog.Handler
 	// catchSignals is Deps.CatchSignals.
@@ -157,12 +159,13 @@ func (inv *invocation) run(t testing.TB) int {
 			name, ok := testUsers[uid]
 			return name, ok
 		},
-		IsLogOnStderr: func() bool { return inv.isSyslogDown },
-		SpoolDir:      inv.spoolDir,
-		CatchSignals:  inv.catchSignals,
-		deliver:       inv.deliver,
-		spoolSaved:    inv.spoolSaved,
-		entryLocked:   inv.entryLocked,
+		IsLogOnStderr:    func() bool { return inv.isSyslogDown },
+		SpoolDir:         inv.spoolDir,
+		CatchSignals:     inv.catchSignals,
+		deliver:          inv.deliver,
+		spoolSaved:       inv.spoolSaved,
+		entryLocked:      inv.entryLocked,
+		ownEntryCreating: inv.ownEntryCreating,
 	}
 	ctx := inv.ctx
 	if ctx == nil {
