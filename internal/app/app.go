@@ -69,6 +69,17 @@ func stackText(redactor *redact.Redactor, stack []byte) string {
 	return text
 }
 
+// panicAttrs returns the fields of the record of a recovered panic, its
+// value and its stack: those of the goroutine where it happened when
+// delivery raised it again as a *backend.PanicError.
+func panicAttrs(redactor *redact.Redactor, value any) []any {
+	stack := debug.Stack()
+	if panicErr, ok := value.(*backend.PanicError); ok {
+		value, stack = panicErr.Value, panicErr.Stack
+	}
+	return []any{"panic", value, "stack", stackText(redactor, stack)}
+}
+
 // envConfig names another configuration file, like --config.
 const envConfig = "MAILCRIER_CONFIG"
 
@@ -163,7 +174,7 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 		if value == nil {
 			return
 		}
-		log.Error("panic, call ended", "panic", value, "stack", stackText(redactor, debug.Stack()))
+		log.Error("panic, call ended", panicAttrs(redactor, value)...)
 		if rescue != nil {
 			rescue()
 		}

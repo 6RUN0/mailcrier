@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
-	"runtime/debug"
 	"slices"
 	"strings"
 	"sync"
@@ -638,7 +637,7 @@ func (q *queue) recoverEntry(rec *spool.Record) {
 		return
 	}
 	q.hasPanicked = true
-	q.log.Error("panic in queue run", "id", rec.ID(), "panic", value, "stack", stackText(q.redactor, debug.Stack()))
+	q.log.Error("panic in queue run", append([]any{"id", rec.ID()}, panicAttrs(q.redactor, value)...)...)
 	if rec.Area != spool.FailedDir && q.sp.Has(rec.Area, rec.ID()) {
 		q.fail(rec, reasonInternal)
 	}

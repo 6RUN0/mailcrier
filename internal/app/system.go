@@ -62,7 +62,7 @@ func SystemDeps() Deps {
 		HTTP:           &http.Client{Transport: newTransport(creds.isElevated())},
 		Hostname:       hostname,
 		Now:            time.Now,
-		Program:        os.Args[0],
+		Program:        programName(os.Args),
 		Stdout:         os.Stdout,
 		Stderr:         os.Stderr,
 		SetLogOutput:   log.SetOutput,
@@ -71,6 +71,15 @@ func SystemDeps() Deps {
 		LookupUserName: lookupUserName,
 		SpoolDir:       config.DefaultSpoolDir,
 	}
+}
+
+// programName returns argv[0] of argv, installedPath for an empty argv as
+// Harden takes it.
+func programName(argv []string) string {
+	if len(argv) == 0 {
+		return installedPath
+	}
+	return argv[0]
 }
 
 // lookupUserName returns the login name of uid from the user database.

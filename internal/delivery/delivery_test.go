@@ -178,6 +178,39 @@ func TestDeliverRecoversPanic(t *testing.T) {
 	})
 }
 
+// TestDeliverEachRaisesDonePanic pins that a panic of the callback, which
+// no recover of the caller would reach in the goroutine of the target, is
+// raised again in the goroutine of the caller once every target finished,
+// with the stack where it happened.
+func TestDeliverEachRaisesDonePanic(t *testing.T) {
+	var mu sync.Mutex
+	var recorded []string
+	done := func(r Result) {
+		if r.TargetID == "bad" {
+			panic("bug in done")
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		recorded = append(recorded, r.TargetID)
+	}
+	targets := []Target{
+		{ID: "bad", Sender: &fakeSender{}, Template: plainTemplate(t)},
+		{ID: "good", Sender: &fakeSender{}, Template: plainTemplate(t)},
+	}
+	value := func() (value any) {
+		defer func() { value = recover() }()
+		DeliverEach(context.Background(), targets, testData(), nil, nil, done)
+		return nil
+	}()
+	panicErr, ok := value.(*backend.PanicError)
+	if !ok || panicErr.Value != "bug in done" || !strings.Contains(string(panicErr.Stack), "TestDeliverEachRaisesDonePanic") {
+		t.Fatalf("DeliverEach panicked with %#v, want a *backend.PanicError of the callback", value)
+	}
+	if !slices.Equal(recorded, []string{"good"}) {
+		t.Errorf("recorded %v, want the other target", recorded)
+	}
+}
+
 // TestDeliverFitsText pins that the text is fitted to the limit of the
 // target, in its unit, with the result marked as truncated.
 func TestDeliverFitsText(t *testing.T) {

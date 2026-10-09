@@ -263,7 +263,8 @@ with "build constraints exclude all Go files".
   (`Result.IsInternal`, class `internal` in the sidecar; the spool moves
   the entry to `failed/` with reason `internal error` once no target is
   pending), so a target must not share mutable state with another. `DeliverEach` also hands each result to a
-  callback as its target finishes (the spool marks `Done` there).
+  callback as its target finishes (the spool marks `Done` there); a panic
+  of the callback is raised again in the caller once all targets finished.
   `ExitCode(results, queue)` is the exit status matrix, rules in order:
   Temp without a spool entry 73/74, any OK 0, any Perm 69, Temp queued 0,
   else 69.

@@ -197,19 +197,38 @@ func Deliver(ctx context.Context, targets []Target, d render.Data, files []messa
 // slowest target returns; done is called from several goroutines at once
 // and may be nil. raw is the kept input of the message, message.Raw, for
 // LongFileMessage.
+//
+// A panic of done would end the process from a goroutine of its own: it is
+// raised again in the goroutine of the caller once every target finished,
+// as a *backend.PanicError with the stack where it happened.
 func DeliverEach(ctx context.Context, targets []Target, d render.Data, files []message.Attachment, raw []byte, done func(Result)) []Result {
 	results := make([]Result, len(targets))
 	long := newLongFiles(d, raw)
 	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var donePanic *backend.PanicError
 	for i, target := range targets {
 		wg.Go(func() {
 			results[i] = deliverOne(ctx, target, d, files, long)
-			if done != nil {
-				done(results[i])
+			if done == nil {
+				return
 			}
+			defer func() {
+				if value := recover(); value != nil {
+					mu.Lock()
+					defer mu.Unlock()
+					if donePanic == nil {
+						donePanic = &backend.PanicError{Value: value, Stack: debug.Stack()}
+					}
+				}
+			}()
+			done(results[i])
 		})
 	}
 	wg.Wait()
+	if donePanic != nil {
+		panic(donePanic)
+	}
 	return results
 }
 

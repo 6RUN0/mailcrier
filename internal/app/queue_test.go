@@ -404,6 +404,20 @@ func TestRunPanic(t *testing.T) {
 			t.Errorf("a got %v, want the queued message untouched by the call that panicked", got)
 		}
 	})
+	t.Run("callback-panic-raised-in-caller", func(t *testing.T) {
+		inv := &invocation{
+			config: httpTargetConfig(newCountingServer(t, false).URL), spoolDir: t.TempDir(),
+			stdin:      strings.NewReader("Subject: t\n\nb\n"),
+			spoolSaved: func(*spool.Entry) { panic("bug in the spool hook") },
+		}
+		if code := inv.run(t); code != 70 {
+			t.Fatalf("Run() = %d, want 70; output:\n%s", code, inv.output())
+		}
+		if want := `msg="panic, call ended" panic="bug in the spool hook" stack="goroutine `; !strings.Contains(inv.output(), want) ||
+			!strings.Contains(inv.output(), "TestRunPanic") {
+			t.Errorf("output lacks %q with the stack of the callback:\n%s", want, inv.output())
+		}
+	})
 	t.Run("message-held", func(t *testing.T) {
 		c := newSpoolCase(t)
 		inv := c.invocation(elevatedUser, nil)

@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -483,5 +484,27 @@ func TestRunIgnoresForgedEnvConfigMarker(t *testing.T) {
 	}
 	if strings.Contains(inv.output(), "override ignored") {
 		t.Errorf("forged marker produced a warning:\n%s", inv.output())
+	}
+}
+
+// TestHardenEmptyArgv pins that a process started with no argv at all,
+// which execve allows, gets the installed path as argv[0] instead of a
+// panic before anything is logged.
+func TestHardenEmptyArgv(t *testing.T) {
+	var execs [][]string
+	args, _ := Harden(Process{
+		Environ:     []string{"GODEBUG=http2debug=2"},
+		Credentials: elevatedUser,
+		Exec: func(_ string, argv, _ []string) error {
+			execs = append(execs, argv)
+			return errors.New("exec: permission denied")
+		},
+		ReplaceEnv: func([]string) {},
+	})
+	if len(args) != 0 || len(execs) == 0 || !slices.Equal(execs[0], []string{installedPath}) {
+		t.Errorf("Harden() = %q, execs %q; want no arguments and argv[0] %s", args, execs, installedPath)
+	}
+	if got := programName(nil); got != installedPath {
+		t.Errorf("installedPath = %q, want %s", got, installedPath)
 	}
 }

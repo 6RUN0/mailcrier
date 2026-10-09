@@ -119,6 +119,11 @@ type Process struct {
 // process after the exec can warn about the variable it no longer sees. A
 // forged marker yields one extra warning, nothing else.
 func Harden(p Process) (args []string, reexecErr error) {
+	// execve(2) may pass no argv at all, which kernels before 5.18 do not
+	// replace with one empty string.
+	if len(p.Argv) == 0 {
+		p.Argv = []string{installedPath}
+	}
 	args = p.Argv[1:]
 	if !p.Credentials.isElevated() {
 		return args, nil
