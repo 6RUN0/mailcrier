@@ -1228,13 +1228,16 @@ is pending it moves to `failed/` with the reason `internal error`
 repeat the bug. A panic on one entry of a queue run is logged as `panic
 in queue run` with the id and the stack, moves that entry to `failed/`
 the same way, and the run goes on with the next one; `-q` then exits 70.
-Any other panic in the main goroutine is logged as `panic, call ended`
-and exits 70 without the queue run of the call; a message read and not
-yet written to the spool goes to `hold/` with the reason `internal
-error`, which a queue run routes like any held message. The stack in
-these records is cut to 4 KiB, as syslog daemons cut a long record. A
-panic in any other goroutine ends the process with the Go runtime's own
-report on stderr and status 2; that report is not redacted. A target that failed is
+A panic while the result of one target is recorded in the spool loses no
+result: every target is logged and recorded once all finished, the entry
+keeps its pending targets, and the call or `-q` exits 70. Any other
+panic in the main goroutine is logged as `panic, call ended` and exits
+70 without the queue run of the call; a message read and not yet written
+to the spool goes to `hold/` with the reason `internal error`, which a
+queue run routes like any held message. The stack in these records is
+cut to 4 KiB, as syslog daemons cut a long record. A panic in any other
+goroutine ends the process with the Go runtime's own report on stderr
+and status 2; that report is not redacted. A target that failed is
 logged as `target failed`; a temporary failure is also logged as
 `message queued for target` or `message queued`, or, without a spool
 entry, as `message lost for target` when another target accepted the

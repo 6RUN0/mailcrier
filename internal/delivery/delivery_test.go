@@ -133,7 +133,7 @@ func TestDeliverEachReportsEarly(t *testing.T) {
 	defer cancel()
 	var mu sync.Mutex
 	var order []string
-	results := DeliverEach(ctx, []Target{{ID: "slow", Sender: slow, Template: plainTemplate(t)}, {ID: "fast", Sender: fast, Template: plainTemplate(t)}}, testData(), nil, nil, func(r Result) {
+	results, _ := DeliverEach(ctx, []Target{{ID: "slow", Sender: slow, Template: plainTemplate(t)}, {ID: "fast", Sender: fast, Template: plainTemplate(t)}}, testData(), nil, nil, func(r Result) {
 		mu.Lock()
 		defer mu.Unlock()
 		order = append(order, r.TargetID)
@@ -178,11 +178,11 @@ func TestDeliverRecoversPanic(t *testing.T) {
 	})
 }
 
-// TestDeliverEachRaisesDonePanic pins that a panic of the callback, which
+// TestDeliverEachReturnsDonePanic pins that a panic of the callback, which
 // no recover of the caller would reach in the goroutine of the target, is
-// raised again in the goroutine of the caller once every target finished,
-// with the stack where it happened.
-func TestDeliverEachRaisesDonePanic(t *testing.T) {
+// returned with the stack where it happened, beside the results of every
+// target, once all finished.
+func TestDeliverEachReturnsDonePanic(t *testing.T) {
 	var mu sync.Mutex
 	var recorded []string
 	done := func(r Result) {
@@ -197,14 +197,12 @@ func TestDeliverEachRaisesDonePanic(t *testing.T) {
 		{ID: "bad", Sender: &fakeSender{}, Template: plainTemplate(t)},
 		{ID: "good", Sender: &fakeSender{}, Template: plainTemplate(t)},
 	}
-	value := func() (value any) {
-		defer func() { value = recover() }()
-		DeliverEach(context.Background(), targets, testData(), nil, nil, done)
-		return nil
-	}()
-	panicErr, ok := value.(*backend.PanicError)
-	if !ok || panicErr.Value != "bug in done" || !strings.Contains(string(panicErr.Stack), "TestDeliverEachRaisesDonePanic") {
-		t.Fatalf("DeliverEach panicked with %#v, want a *backend.PanicError of the callback", value)
+	results, panicErr := DeliverEach(context.Background(), targets, testData(), nil, nil, done)
+	if panicErr == nil || panicErr.Value != "bug in done" || !strings.Contains(string(panicErr.Stack), "TestDeliverEachReturnsDonePanic") {
+		t.Fatalf("DeliverEach() panic = %#v, want the panic of the callback", panicErr)
+	}
+	if len(results) != 2 || results[0].Status != OK || results[1].Status != OK {
+		t.Errorf("results = %+v, want both targets delivered", results)
 	}
 	if !slices.Equal(recorded, []string{"good"}) {
 		t.Errorf("recorded %v, want the other target", recorded)
@@ -319,7 +317,8 @@ func (tc longTextCase) check(t *testing.T) {
 	files := []message.Attachment{{Name: "a.log", ContentType: "text/plain", Data: []byte("attached")}}
 	sender := &fakeSender{caps: tc.caps}
 	tc.target.ID, tc.target.Sender, tc.target.Template = "t", sender, plainTemplate(t)
-	result := DeliverEach(context.Background(), []Target{tc.target}, d, files, tc.raw, nil)[0]
+	results, _ := DeliverEach(context.Background(), []Target{tc.target}, d, files, tc.raw, nil)
+	result := results[0]
 	if result.Status != OK || !result.IsTruncated || len(sender.sent) != 1 {
 		t.Fatalf("result = %+v", result)
 	}
@@ -483,7 +482,7 @@ func TestDeliverEachPassesMessage(t *testing.T) {
 	for i, s := range []*fakeSender{first, second, other} {
 		targets = append(targets, Target{ID: fmt.Sprint(i), Sender: s, Template: plainTemplate(t)})
 	}
-	DeliverEach(context.Background(), targets, d, nil, raw, nil)
+	_, _ = DeliverEach(context.Background(), targets, d, nil, raw, nil)
 
 	got := first.sent[0].Message
 	if got == nil {

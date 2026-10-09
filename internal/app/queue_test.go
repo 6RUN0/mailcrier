@@ -1,27 +1,34 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"maps"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"testing/iotest"
 	"time"
 
 	"github.com/6RUN0/mailcrier/internal/backend"
+	"github.com/6RUN0/mailcrier/internal/config"
 	"github.com/6RUN0/mailcrier/internal/delivery"
 	"github.com/6RUN0/mailcrier/internal/message"
+	"github.com/6RUN0/mailcrier/internal/redact"
 	"github.com/6RUN0/mailcrier/internal/render"
 	"github.com/6RUN0/mailcrier/internal/spool"
+	"github.com/6RUN0/mailcrier/internal/text"
 )
 
 // service stands in for the targets: each target answers with the
@@ -437,6 +444,146 @@ func TestRunPanic(t *testing.T) {
 			t.Errorf("-q = %d, hold/ %v, a got %v; output:\n%s", code, c.ids(spool.HoldDir), c.service.got("a"), inv.output())
 		}
 	})
+}
+
+// statusServer answers every request with the status in status.
+func statusServer(t *testing.T, status *atomic.Int32) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(int(status.Load()))
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
+
+// TestSpoolCallbackPanic pins that a panic while one result is recorded
+// loses no result: every target is logged and recorded, and the entry
+// keeps the target still pending instead of going to failed/.
+func TestSpoolCallbackPanic(t *testing.T) {
+	var statusA, statusB atomic.Int32
+	statusA.Store(http.StatusOK)
+	statusB.Store(http.StatusServiceUnavailable)
+	config := "[target.a]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"" + statusServer(t, &statusA).URL + "\"\n\n" +
+		"[target.b]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"" + statusServer(t, &statusB).URL + "\"\n"
+	// panicOnce makes the first write of a sidecar panic, as a bug in
+	// recording one result would; recording it again succeeds.
+	panicOnce := func() func(*spool.Entry) {
+		var calls atomic.Int32
+		return func(*spool.Entry) {
+			if calls.Add(1) == 1 {
+				panic("bug in recording")
+			}
+		}
+	}
+	checkPending := func(t *testing.T, dir string) {
+		t.Helper()
+		c := &spoolCase{t: t, dir: dir}
+		if failed := c.ids(spool.FailedDir); len(failed) != 0 {
+			t.Errorf("failed/ = %v, want empty", failed)
+		}
+		if e := c.entry(spool.QueueDir); e.Targets["a"].State != spool.Done || e.Targets["b"].State != spool.Pending {
+			t.Errorf("targets a %+v, b %+v; want a done, b pending", e.Targets["a"], e.Targets["b"])
+		}
+	}
+	t.Run("own-message", func(t *testing.T) {
+		dir := t.TempDir()
+		inv := &invocation{config: config, spoolDir: dir, stdin: strings.NewReader("Subject: t\n\nb\n"), spoolSaved: panicOnce()}
+		if code := inv.run(t); code != 70 {
+			t.Fatalf("Run() = %d, want 70; output:\n%s", code, inv.output())
+		}
+		for _, want := range []string{
+			`msg="target failed" target=b class=temp status=503`, `msg="message queued for target" target=b`,
+			`msg="panic, call ended" panic="bug in recording" stack="goroutine `,
+		} {
+			if !strings.Contains(inv.output(), want) {
+				t.Errorf("output lacks %q:\n%s", want, inv.output())
+			}
+		}
+		checkPending(t, dir)
+	})
+	t.Run("queue-run", func(t *testing.T) {
+		dir := t.TempDir()
+		statusA.Store(http.StatusServiceUnavailable)
+		first := &invocation{config: config, spoolDir: dir, stdin: strings.NewReader("Subject: t\n\nb\n")}
+		if code := first.run(t); code != 0 {
+			t.Fatalf("Run() = %d, want 0; output:\n%s", code, first.output())
+		}
+		statusA.Store(http.StatusOK)
+		inv := &invocation{
+			config: config, spoolDir: dir, args: []string{"-q"}, creds: rootCaller, spoolSaved: panicOnce(),
+			now: func() time.Time { return testNow.Add(2 * time.Minute) },
+		}
+		if code := inv.run(t); code != 70 {
+			t.Fatalf("-q = %d, want 70; output:\n%s", code, inv.output())
+		}
+		for _, want := range []string{`target=b class=temp status=503`, `msg="panic in queue run" id=`} {
+			if !strings.Contains(inv.output(), want) {
+				t.Errorf("output lacks %q:\n%s", want, inv.output())
+			}
+		}
+		checkPending(t, dir)
+	})
+}
+
+// textOnceErr is an error whose text panics the first time it is read, as
+// a bug in recording a result would; fmt would recover it inside a
+// *backend.Error, so a sender returns it bare.
+type textOnceErr struct{ reads *atomic.Int32 }
+
+func (e textOnceErr) Error() string {
+	if e.reads.Add(1) == 1 {
+		panic("bug in the error text")
+	}
+	return "unavailable"
+}
+
+// errSender fails every send with err, nil for none.
+type errSender struct{ err error }
+
+func (errSender) Caps() backend.Caps { return backend.Caps{} }
+
+func (s errSender) Send(context.Context, backend.Payload) error { return s.err }
+
+// TestSendRecordsAfterCallbackPanic pins that a result whose recording
+// panicked in the goroutine of its target is recorded once more after the
+// targets finished: target b, rejected, ends failed, and the entry, which
+// no target waits for any more, is removed.
+func TestSendRecordsAfterCallbackPanic(t *testing.T) {
+	settings := config.DefaultSpool()
+	settings.Dir = t.TempDir()
+	tmpl, err := render.Builtin(text.FormatPlain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targets := []delivery.Target{
+		{ID: "a", Sender: errSender{}, Template: tmpl},
+		{ID: "b", Sender: errSender{err: textOnceErr{reads: &atomic.Int32{}}}, Template: tmpl},
+	}
+	var logs strings.Builder
+	q, err := newQueue(Deps{Now: func() time.Time { return testNow }}, slog.New(slog.NewTextHandler(&logs, nil)), &redact.Redactor{}, settings, targets)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte("Subject: t\n\nbody\n")
+	msg, bcc, _, err := message.Read(bytes.NewReader(raw), message.ReadOptions{MaxSize: message.MaxSize, ReceivedAt: testNow})
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := spool.NewEntry(spool.NewID(testNow), 1000, testNow, testNow, message.Envelope{}, []string{"a", "b"})
+	rec, err := q.sp.Create(spool.QueueDir, entry, msg.Raw, spool.Quota{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rec.Close() }()
+	data := render.NewData(msg, message.Envelope{}, bcc)
+	data.Strings = render.DefaultStrings()
+	_, donePanic := q.send(context.Background(), targets, message.Envelope{}, data, nil, msg.Raw, rec)
+	if donePanic == nil || donePanic.Value != "bug in the error text" {
+		t.Fatalf("send() panic = %#v, want the panic of recording b", donePanic)
+	}
+	if b := rec.Entry.Targets["b"]; b.State != spool.Failed || b.LastError != "unavailable" || q.sp.Has(spool.QueueDir, rec.ID()) {
+		t.Errorf("b = %+v, entry in queue/ %v; want b failed and the entry removed", b, q.sp.Has(spool.QueueDir, rec.ID()))
+	}
 }
 
 // TestSpoolNotAvailable covers the exit statuses when the entry cannot be

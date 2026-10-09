@@ -189,7 +189,8 @@ func (r Result) IsInternal() bool {
 // Result.IsInternal reports: the others still deliver, and the value goes
 // into the error, which the caller logs redacted.
 func Deliver(ctx context.Context, targets []Target, d render.Data, files []message.Attachment) []Result {
-	return DeliverEach(ctx, targets, d, files, nil, nil)
+	results, _ := DeliverEach(ctx, targets, d, files, nil, nil)
+	return results
 }
 
 // DeliverEach is Deliver that also passes each result to done as soon as
@@ -199,14 +200,14 @@ func Deliver(ctx context.Context, targets []Target, d render.Data, files []messa
 // LongFileMessage.
 //
 // A panic of done would end the process from a goroutine of its own: it is
-// raised again in the goroutine of the caller once every target finished,
-// as a *backend.PanicError with the stack where it happened.
-func DeliverEach(ctx context.Context, targets []Target, d render.Data, files []message.Attachment, raw []byte, done func(Result)) []Result {
-	results := make([]Result, len(targets))
+// recovered, the other calls of done go on, and donePanic returns the first
+// one with the stack where it happened, beside the results of all targets,
+// for the caller to record what done did not and to raise it again.
+func DeliverEach(ctx context.Context, targets []Target, d render.Data, files []message.Attachment, raw []byte, done func(Result)) (results []Result, donePanic *backend.PanicError) {
+	results = make([]Result, len(targets))
 	long := newLongFiles(d, raw)
 	var wg sync.WaitGroup
 	var mu sync.Mutex
-	var donePanic *backend.PanicError
 	for i, target := range targets {
 		wg.Go(func() {
 			results[i] = deliverOne(ctx, target, d, files, long)
@@ -226,10 +227,7 @@ func DeliverEach(ctx context.Context, targets []Target, d render.Data, files []m
 		})
 	}
 	wg.Wait()
-	if donePanic != nil {
-		panic(donePanic)
-	}
-	return results
+	return results, donePanic
 }
 
 // deliverOne renders and sends the message for one target.

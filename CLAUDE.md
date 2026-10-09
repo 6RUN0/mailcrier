@@ -262,9 +262,12 @@ with "build constraints exclude all Go files".
   is recovered into a permanent result with a `*backend.PanicError`
   (`Result.IsInternal`, class `internal` in the sidecar; the spool moves
   the entry to `failed/` with reason `internal error` once no target is
-  pending), so a target must not share mutable state with another. `DeliverEach` also hands each result to a
-  callback as its target finishes (the spool marks `Done` there); a panic
-  of the callback is raised again in the caller once all targets finished.
+  pending), so a target must not share mutable state with another.
+  `DeliverEach` also hands each result to a callback as its target
+  finishes (the spool marks `Done` there); a panic of the callback comes
+  back beside the results, `queue.send` records again what it left
+  unrecorded, the own message raises it after logging the results, and a
+  queue run logs it and keeps the entry.
   `ExitCode(results, queue)` is the exit status matrix, rules in order:
   Temp without a spool entry 73/74, any OK 0, any Perm 69, Temp queued 0,
   else 69.

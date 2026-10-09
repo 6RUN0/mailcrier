@@ -54,7 +54,7 @@ func runProbe(ctx context.Context, d Deps, log *slog.Logger, newLogger func(tag 
 	defer cancel()
 	var results []delivery.Result
 	if d.deliver == nil {
-		results = delivery.DeliverEach(sendCtx, selected, data, msg.Attachments, msg.Raw, nil)
+		results, _ = delivery.DeliverEach(sendCtx, selected, data, msg.Attachments, msg.Raw, nil)
 	} else {
 		results = d.deliver(sendCtx, selected, env, data, msg.Attachments)
 	}
