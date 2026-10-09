@@ -102,7 +102,10 @@ mailcrier and never touch the configuration.
   After removal the remaining MTA is active again. The package installs an
   SELinux module that labels mailcrier like a stock MTA, so confined
   callers such as smartd can mail; a hook then runs in the mail domain of
-  its caller, see [docs/selinux.md](docs/selinux.md).
+  its caller, see [docs/selinux.md](docs/selinux.md). cronie decides when it
+  starts whether it mails the output of jobs: a crond started while no
+  MTA was installed logs that output until `systemctl restart crond`, and
+  the install prints a reminder while crond runs.
 - Alpine: the package replaces the BusyBox link `/usr/sbin/sendmail`, and
   BusyBox puts it back after removal. ssmtp, dma and opensmtpd own
   `/usr/sbin/sendmail` as well: apk refuses to overwrite it (`trying to

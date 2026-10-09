@@ -20,6 +20,18 @@ if [ "$1" = 1 ] && command -v systemctl >/dev/null; then
 		systemctl start mailcrier-queue.timer >/dev/null || true
 	fi
 fi
+# cronie decides at its start whether it mails the output of jobs, and
+# without a sendmail it logs the output from then on.
+if [ "$1" = 1 ]; then
+	if [ -d /run/systemd/system ]; then
+		systemctl --quiet is-active crond && crond_running=yes
+	elif [ -e /run/crond.pid ]; then
+		crond_running=yes
+	fi
+	if [ -n "${crond_running:-}" ]; then
+		echo "mailcrier: restart crond if it started before any MTA was installed, or it logs the output of jobs instead of mailing it"
+	fi
+fi
 if [ "$1" = 2 ] && [ -d /run/systemd/system ]; then
 	systemctl daemon-reload >/dev/null || true
 fi

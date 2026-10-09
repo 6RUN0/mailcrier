@@ -332,6 +332,7 @@ var scriptRedirects = []struct{ path, name string }{
 	{"/usr/sbin/nologin", "nologin"},
 	{"/usr/bin/deb-systemd-helper", "bin/deb-systemd-helper"},
 	{"/etc/selinux/config", "selinux-config"},
+	{"/run/crond.pid", "crond.pid"},
 }
 
 // scriptArguments are the absolute paths a package script may pass on to
@@ -500,6 +501,8 @@ func TestPackageScripts(t *testing.T) {
 	semoduleInstall := "semodule -X 200 -i " + module
 	moduleHint := "mailcrier: SELinux module not installed; to install it run: " + semoduleInstall
 	relabel := "restorecon -RF /usr/sbin/mailcrier {spool}"
+	const crondActive = "systemctl --quiet is-active crond"
+	const crondHint = "mailcrier: restart crond if it started before any MTA was installed, or it logs the output of jobs instead of mailing it"
 	cases := []scriptCase{
 		{name: "preinstall-existing", event: "deb-preinstall", args: []string{"install"},
 			want: []string{"getent group mailcrier", "getent passwd mailcrier"}},
@@ -535,7 +538,14 @@ func TestPackageScripts(t *testing.T) {
 			exits: failing("deb-systemd-helper", "dpkg-statoverride"),
 			want:  []string{"deb-systemd-helper purge " + timer, "dpkg-statoverride --quiet --remove /usr/sbin/mailcrier"}},
 		{name: "rpm-postinstall-install", event: "rpm-postinstall", args: []string{"1"}, present: []string{"run-systemd"},
-			want: append(slices.Clone(setgid), alternatives, "systemctl enable "+timer, "systemctl start "+timer)},
+			want: append(slices.Clone(setgid), alternatives, "systemctl enable "+timer, "systemctl start "+timer, crondActive), stdout: crondHint},
+		{name: "rpm-postinstall-install-crond-stopped", event: "rpm-postinstall", args: []string{"1"}, present: []string{"run-systemd"},
+			exits: map[string]map[string]int{"systemctl": {"--quiet is-active": 3}},
+			want:  append(slices.Clone(setgid), alternatives, "systemctl enable "+timer, "systemctl start "+timer, crondActive)},
+		{name: "rpm-postinstall-install-crond-pid", event: "rpm-postinstall", args: []string{"1"}, files: []string{"crond.pid"}, remain: []string{"crond.pid"},
+			want: append(slices.Clone(setgid), alternatives, "systemctl enable "+timer), stdout: crondHint},
+		{name: "rpm-postinstall-upgrade-crond-pid", event: "rpm-postinstall", args: []string{"2"}, files: []string{"crond.pid"}, remain: []string{"crond.pid"},
+			want: append(slices.Clone(setgid), alternatives)},
 		{name: "rpm-postinstall-install-failing", event: "rpm-postinstall", args: []string{"1"},
 			exits: failing("systemctl"), want: append(slices.Clone(setgid), alternatives, "systemctl enable "+timer)},
 		{name: "rpm-postinstall-upgrade", event: "rpm-postinstall", args: []string{"2"}, present: []string{"run-systemd"},
