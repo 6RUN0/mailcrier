@@ -1,11 +1,15 @@
 #!/bin/sh
-# Acts on erase only ($1 = 0) and names a spool that still holds messages.
-# Configuration, group and user stay.
+# Acts on erase only ($1 = 0): removes the SELinux module of %posttrans and
+# names a spool that still holds messages. Configuration, group and user
+# stay.
 set -e
 
 if [ "$1" = 0 ]; then
 	if [ -d /run/systemd/system ]; then
 		systemctl daemon-reload >/dev/null || true
+	fi
+	if [ -e /etc/selinux/config ] && command -v semodule >/dev/null; then
+		semodule -X 200 -r mailcrier >/dev/null 2>&1 || true
 	fi
 	has_mail=
 	for f in /var/spool/mailcrier/queue/*.eml /var/spool/mailcrier/hold/*.eml \

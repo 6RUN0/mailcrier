@@ -291,13 +291,14 @@ smoke-previous:
 # The run leaves its output in $(SELINUX_DIR)/<distro>, and the test reads
 # it also after a failed run, to name the step. The container runs as root
 # for /dev/kvm and ssh; run.sh hands its files to OWNER.
-$(addprefix selinux-,$(SELINUX_DISTROS)): selinux-%: smoke-dist selinux-image-%
+$(addprefix selinux-,$(SELINUX_DISTROS)): selinux-%: smoke-dist smoke-previous selinux-image-%
 	docker build -t $(SELINUX_IMAGE) testdata/selinux
 	mkdir -p $(SELINUX_DIR)/$*
 	status=0; \
 	docker run --rm --device /dev/kvm -e OWNER=$$(id -u):$$(id -g) \
 		-v $(SELINUX_DIR)/$(notdir $(SELINUX_URL_$*)):/images/base.qcow2:ro \
-		-v $(CURDIR)/dist:/pkgs:ro -v $(CURDIR)/testdata/selinux:/stand:ro -v $(SELINUX_DIR)/$*:/work \
+		-v $(CURDIR)/dist:/pkgs:ro -v $(SMOKE_PREVIOUS_DIR):/previous:ro \
+		-v $(CURDIR)/testdata/selinux:/stand:ro -v $(SELINUX_DIR)/$*:/work \
 		$(SELINUX_IMAGE) sh /stand/run.sh || status=1; \
 	$(GO) test -tags selinux -count=1 -run '^TestSELinux$$' . -args -selinux-log $(SELINUX_DIR)/$*/check.log || status=1; \
 	exit $$status

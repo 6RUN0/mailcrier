@@ -18,7 +18,7 @@ make smoke        # needs docker and dist/ of HEAD (make snapshot): packages
 make smoke-alpine # one of debian rocky9 rocky10 alpine
 make -j4 -O smoke # all distributions in parallel, 5-7 min with built images
 make -j2 selinux-rocky9 selinux-rocky10  # needs docker, /dev/kvm, network
-                  # and dist/ of HEAD: docs/selinux.md, 10-15 min, 2 VMs x 2 GB
+                  # and dist/ of HEAD: docs/selinux.md, 15-20 min, 2 VMs x 2 GB
 go build -o mailcrier ./cmd/mailcrier   # the binary; the name is gitignored
 MAILCRIER_TELEGRAM_ENV=/path/to/telegram.env \
   go test -run TestLiveTelegram ./internal/backend/telegram   # real Bot API
@@ -443,6 +443,14 @@ with "build constraints exclude all Go files".
   leaves the selinux record of `docs/releasing.md` valid. Dependabot does
   not update the images; a new minor release of Rocky moves them off
   dl.rockylinux.org, and the `Makefile` takes the new URL and sum by hand.
+- The rpm installs `packaging/selinux/mailcrier.cil` from `%posttrans`
+  (`packaging/scripts/rpm/posttrans.sh`) at priority 200, only where
+  `/etc/selinux/config` exists: the smoke images of Rocky have `semodule`
+  without it, and `semodule -r` there prints "No such file", which fails
+  `TestSmokeLifecycle`. A path rule of the module needs `/usr/bin` beside
+  `/usr/sbin`: EL10 looks `/usr/sbin` up as `/usr/bin`
+  (`file_contexts.subs_dist`). `TestSELinux` fails a denial of mailcrier
+  only when postfix did not get the same one in step 1 of `check.sh`.
 - `TestSmokePrevious` fails `make check` on every commit after a release
   tag until `SMOKE_PREVIOUS` names it, and after a failed release until the
   tag is in `unpublishedTags` (`docs/releasing.md`, steps 4 and 5).

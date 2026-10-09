@@ -5,40 +5,94 @@
 == policy selinux-policy-targeted-38.1.75-2.el9_8.1.noarch ==
 == cron_userdomain_transition on ==
 == step 1 ==
-== package mailcrier-0.1.0~rc1791475648-1.x86_64 ==
-== timer enabled active ==
 == domain crond system_u:system_r:crond_t:s0-s0:c0.c1023 ==
 == domain atd system_u:system_r:crond_t:s0-s0:c0.c1023 ==
-== mailcrier gid 993 ==
+== unit control-nnp system_u:system_r:initrc_t:s0 0 ==
+== unit control-service system_u:system_r:initrc_t:s0 0 ==
+== wait control user-cron: ok ==
+== wait control system-cron: ok ==
+== wait control smartd: ok ==
+== wait control nnp: ok ==
+== wait control service: ok ==
+== control denials ==
+<no matches>
 == step 2 ==
+== previous mailcrier-0.1.0~rc.2-1.x86_64 ==
+== timer enabled active ==
+== call upgrade: exit 0 ==
 == step 3 ==
+== package mailcrier-0.1.0~rc1791475648-1.x86_64 ==
+== label binary system_u:object_r:sendmail_exec_t:s0 ==
+== label spool system_u:object_r:mqueue_spool_t:s0 ==
+== label entry system_u:object_r:mqueue_spool_t:s0 ==
+== module 200 cil ==
+== timer after upgrade enabled ==
+== mailcrier gid 994 ==
 == step 4 ==
 == call root: exit 0 ==
-== wait root: ok ==
-== step 5 ==
-== wait user-cron: ok ==
-== wait hook: ok ==
-unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023
-1000
-== hook context unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023 ==
-== hook groups 1000 ==
-== step 6 ==
-== wait system-cron: ok ==
-== step 7 ==
-== wait at: ok ==
-== step 8 ==
-== call queued: exit 0 ==
-== wait queued: ok ==
-== queue service success ==
-== step 9 ==
 == smart available ==
 == domain smartd system_u:system_r:fsdaemon_t:s0 ==
-== wait smartd: ok ==
-== step 10 ==
+== unit nnp-call system_u:system_r:initrc_t:s0 0 ==
+== unit service-call system_u:system_r:initrc_t:s0 0 ==
+== wait root 80: ok ==
+== wait root 8080: ok ==
+== wait root 2586: ok ==
+== wait root 8443: ok ==
+== wait service 80: ok ==
+== wait service 8080: ok ==
+== wait service 2586: ok ==
+== wait service 8443: ok ==
+== wait nnp 80: ok ==
+== wait nnp 8080: ok ==
+== wait nnp 2586: ok ==
+== wait nnp 8443: ok ==
+== wait smartd 80: ok ==
+== wait smartd 8080: ok ==
+== wait smartd 2586: ok ==
+== wait smartd 8443: ok ==
+== wait user-cron 80: ok ==
+== wait user-cron 8080: ok ==
+== wait user-cron 2586: ok ==
+== wait user-cron 8443: ok ==
+== wait system-cron 80: ok ==
+== wait system-cron 8080: ok ==
+== wait system-cron 2586: ok ==
+== wait system-cron 8443: ok ==
+== wait at 80: ok ==
+== wait at 8080: ok ==
+== wait at 2586: ok ==
+== wait at 8443: ok ==
+== wait hook root: ok ==
+== wait hook service: ok ==
+== wait hook nnp: ok ==
+== wait hook smartd: ok ==
+== wait hook user-crontab: ok ==
+== wait hook cron-mail: ok ==
+== step 5 ==
+== call queued: exit 0 ==
+== wait queued 80: ok ==
+== wait queued 8080: ok ==
+== wait queued 2586: ok ==
+== wait queued 8443: ok ==
+== wait upgrade 80: ok ==
+== wait upgrade 8080: ok ==
+== wait upgrade 2586: ok ==
+== wait upgrade 8443: ok ==
+== wait hook queued: ok ==
+== queue service success ==
+== hook Cron_<root@selinux>_echo_cron-mail-hook system_u:system_r:system_mail_t:s0-s0:c0.c1023 0 ==
+== hook SMART_error_(EmailTest)_detected_on_host:_selinux system_u:system_r:system_mail_t:s0 0 ==
+== hook nnp-call system_u:system_r:initrc_t:s0 0 ==
+== hook queued-call system_u:system_r:sendmail_t:s0 994 ==
+== hook root-call unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023 0 ==
+== hook service-call system_u:system_r:sendmail_t:s0 0 ==
+== hook user-crontab-hook unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023 1001 ==
+== step 6 ==
+== module after erase: absent ==
 == policy load found ==
 == denials ==
 <no matches>
 == denials of mailcrier ==
 <no matches>
 == end ==
-== step 11 ==
+== cleanup ==

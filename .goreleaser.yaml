@@ -80,6 +80,9 @@ nfpms:
       predepends:
         - init-system-helpers (>= 1.54~)
         - passwd
+    rpm:
+      scripts:
+        posttrans: packaging/scripts/rpm/posttrans.sh
     apk:
       scripts:
         preupgrade: packaging/scripts/preinstall.sh
@@ -258,6 +261,11 @@ nfpms:
         packager: apk
         file_info:
           mode: 0o600
+      - dst: /usr/share/selinux/packages/mailcrier/mailcrier.cil
+        src: packaging/selinux/mailcrier.cil
+        packager: rpm
+        file_info:
+          mode: 0o644
       - dst: /usr/share/man/man8/mailcrier.8
         src: docs/mailcrier.8
         file_info:

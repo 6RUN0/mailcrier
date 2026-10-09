@@ -1,9 +1,12 @@
-"""Receiver of the SELinux check: logs every request on stdout and answers
-GET /wait?for=<text>&timeout=<seconds> with 200 once a request carrying
-the text arrived since start, 504 past the timeout, so check.sh waits on
-the event instead of on time."""
+"""Receiver of the SELinux check: http on 127.0.0.1 ports 80, 8080 and
+2586, https on 8443 with the certificate and key named on the command
+line. It logs every request on stdout and records it tagged
+"port<number>x"; GET /wait?for=<text>&for=<text>&timeout=<seconds> answers
+200 once one request carrying every text arrived since start, 504 past the
+timeout, so check.sh waits on the event instead of on time."""
 
 import http.server
+import ssl
 import sys
 import threading
 import urllib.parse
@@ -18,9 +21,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def record(self):
         size = int(self.headers.get("Content-Length") or 0)
         body = self.rfile.read(size).decode("utf-8", "replace")
-        print(self.command, self.path, body[:400], flush=True)
+        port = self.server.server_address[1]
+        print(port, self.command, self.path, body[:400].replace("\n", " | "), flush=True)
         with arrived:
-            seen.append(self.path + "\n" + str(self.headers) + body)
+            seen.append(f"port{port}x\n{self.path}\n{self.headers}{body}")
             arrived.notify_all()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -35,10 +39,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if url.path != "/wait" or "for" not in query:
             self.send_error(404)
             return
-        text = query["for"][0]
+        texts = query["for"]
         timeout = float(query.get("timeout", ["60"])[0])
         with arrived:
-            found = arrived.wait_for(lambda: any(text in s for s in seen), timeout)
+            found = arrived.wait_for(lambda: any(all(t in s for t in texts) for s in seen), timeout)
         self.send_response(200 if found else 504)
         self.end_headers()
 
@@ -46,10 +50,22 @@ class Handler(http.server.BaseHTTPRequestHandler):
         pass
 
 
+def serve(port, certificate=None):
+    """Starts a server on port in a thread of its own."""
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    if certificate:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(*certificate)
+        server.socket = context.wrap_socket(server.socket, server_side=True)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+
 def main():
+    serve(8080)
+    serve(2586)
+    serve(8443, (sys.argv[1], sys.argv[2]))
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 80), Handler)
     print("receiver listening", flush=True)
-    sys.stdout.flush()
     server.serve_forever()
 
 

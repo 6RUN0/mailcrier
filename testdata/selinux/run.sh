@@ -1,7 +1,8 @@
 #!/bin/sh
 # Runs check.sh on a throwaway Rocky virtual machine, inside the container
 # of the Dockerfile beside it (make selinux-<distro>): the cloud image on
-# /images/base.qcow2, dist/ on /pkgs, this directory on /stand, the output
+# /images/base.qcow2, dist/ on /pkgs, the packages of the previous release
+# on /previous, this directory on /stand, the output
 # in /work: check.log for selinux_test.go, console.log of the machine. The
 # overlay disk stays in /work after the run, for a look at a failure.
 set -u
@@ -30,6 +31,9 @@ trap '[ -n "${OWNER:-}" ] && chown -R "$OWNER" "$work"' EXIT
 set -- /pkgs/mailcrier_*_linux_amd64.rpm
 [ -f "$1" ] || fail "no amd64 rpm in dist/"
 rpm=$1
+set -- /previous/mailcrier_*_linux_amd64.rpm
+[ -f "$1" ] || fail "no amd64 rpm of the previous release in /previous"
+previous=$1
 
 rm -f "$work"/key "$work"/key.pub "$work"/user-data "$work"/seed.iso \
 	"$work"/disk.qcow2 "$work"/smart.img "$work"/console.log "$work"/check.log
@@ -79,7 +83,8 @@ name=$(basename "$rpm")
 for file in /stand/check.sh /stand/receiver.py "$rpm"; do
 	guest "cat > /root/$(basename "$file")" < "$file" || fail "copy of $file failed"
 done
-timeout 30m sh -c "ssh $ssh_opts root@127.0.0.1 sh /root/check.sh /root/$name" > "$work/check.log" 2>&1
+guest "cat > /root/previous.rpm" < "$previous" || fail "copy of $previous failed"
+timeout 45m sh -c "ssh $ssh_opts root@127.0.0.1 sh /root/check.sh /root/$name /root/previous.rpm" > "$work/check.log" 2>&1
 status=$?
 echo "check.sh exited $status, output in check.log" >&2
 

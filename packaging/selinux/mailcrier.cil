@@ -1,0 +1,22 @@
+; SELinux module of the rpm, installed by %posttrans at priority 200. It
+; gives mailcrier the types of a stock MTA, so a confined caller (smartd,
+; the mail of crond) runs it in system_mail_t instead of in its own domain,
+; which may neither write the spool nor reach the network. docs/selinux.md
+; has the measurements behind each rule.
+
+; The binary. EL10 substitutes /usr/sbin by /usr/bin before it looks up a
+; path (file_contexts.subs_dist), so a rule for /usr/sbin alone is ignored.
+(filecon "/usr/sbin/mailcrier" file (system_u object_r sendmail_exec_t ((s0) (s0))))
+(filecon "/usr/bin/mailcrier" file (system_u object_r sendmail_exec_t ((s0) (s0))))
+
+; The spool: system_mail_t and sendmail_t write mqueue_spool_t, not the
+; var_spool_t a new directory under /var/spool gets.
+(filecon "/var/spool/mailcrier(/.*)?" any (system_u object_r mqueue_spool_t ((s0) (s0))))
+
+; mailcrier-queue.service runs with NoNewPrivileges=yes, under which the
+; kernel refuses the transition from init_t to sendmail_t without this.
+(allow init_t sendmail_t (process2 (nnp_transition)))
+
+; A hook runs in a process group of its own; without this a hook of a call
+; in system_mail_t fails with "permission denied".
+(allow system_mail_t self (process (setpgid)))

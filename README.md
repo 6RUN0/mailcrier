@@ -64,6 +64,7 @@ apk add --allow-untrusted ./mailcrier_<version>_linux_amd64.apk
 | `mailcrier-queue.timer` and `.service`, `/etc/cron.d/mailcrier` | queue run, deb and rpm |
 | `/etc/crontabs/mailcrier` | queue run, apk |
 | `/usr/share/doc/mailcrier/examples/` | example configurations, see "Configuration" |
+| `/usr/share/selinux/packages/mailcrier/mailcrier.cil` | SELinux module, rpm, see below |
 
 The install creates the system group and user `mailcrier` (home
 `/var/spool/mailcrier`, no login shell) unless they exist. Then, as root:
@@ -98,7 +99,10 @@ mailcrier and never touch the configuration.
 - RHEL, Rocky, Alma, Fedora: the links are the alternative `mta` with
   priority 100, above postfix (60) and sendmail (90), so mailcrier is the
   active one after install; `alternatives --config mta` chooses another.
-  After removal the remaining MTA is active again.
+  After removal the remaining MTA is active again. The package installs an
+  SELinux module that labels mailcrier like a stock MTA, so confined
+  callers such as smartd can mail; a hook then runs in the mail domain of
+  its caller, see [docs/selinux.md](docs/selinux.md).
 - Alpine: the package replaces the BusyBox link `/usr/sbin/sendmail`, and
   BusyBox puts it back after removal. ssmtp, dma and opensmtpd own
   `/usr/sbin/sendmail` as well: apk refuses to overwrite it (`trying to

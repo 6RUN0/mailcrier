@@ -115,6 +115,11 @@ type nfpmSection struct {
 	Deb        struct {
 		Predepends []string `yaml:"predepends"`
 	} `yaml:"deb"`
+	RPM struct {
+		Scripts struct {
+			PostTrans string `yaml:"posttrans"`
+		} `yaml:"scripts"`
+	} `yaml:"rpm"`
 	APK struct {
 		Scripts struct {
 			PreUpgrade  string `yaml:"preupgrade"`
@@ -167,6 +172,9 @@ func packageScripts(section nfpmSection) map[string]string {
 			}
 		}
 	}
+	if section.RPM.Scripts.PostTrans != "" {
+		scripts["rpm-posttrans"] = section.RPM.Scripts.PostTrans
+	}
 	if section.APK.Scripts.PreUpgrade != "" {
 		scripts["apk-preupgrade"] = section.APK.Scripts.PreUpgrade
 	}
@@ -188,14 +196,15 @@ type packageEntry struct {
 // set the group and the setgid bit.
 func expectedContents() map[[2]string]packageEntry {
 	contents := map[[2]string]packageEntry{
-		{"/etc/mailcrier.conf", ""}:                      {"config|noreplace", "root", "mailcrier", 0o640},
-		{"/etc/mailcrier.d", ""}:                         {"dir", "root", "mailcrier", 0o750},
-		{"/var/spool/mailcrier", ""}:                     {"dir", "root", "mailcrier", 0o750},
-		{"/usr/share/man/man8/mailcrier.8", ""}:          {"", "root", "root", 0o644},
-		{"/etc/crontabs/mailcrier", "apk"}:               {"", "root", "root", 0o600},
-		{"/usr/share/doc/mailcrier/copyright", "deb"}:    {"", "root", "root", 0o644},
-		{"/usr/share/licenses/mailcrier/LICENSE", "rpm"}: {"license", "root", "root", 0o644},
-		{"/usr/share/licenses/mailcrier/LICENSE", "apk"}: {"", "root", "root", 0o644},
+		{"/etc/mailcrier.conf", ""}:                                    {"config|noreplace", "root", "mailcrier", 0o640},
+		{"/etc/mailcrier.d", ""}:                                       {"dir", "root", "mailcrier", 0o750},
+		{"/var/spool/mailcrier", ""}:                                   {"dir", "root", "mailcrier", 0o750},
+		{"/usr/share/man/man8/mailcrier.8", ""}:                        {"", "root", "root", 0o644},
+		{"/etc/crontabs/mailcrier", "apk"}:                             {"", "root", "root", 0o600},
+		{"/usr/share/doc/mailcrier/copyright", "deb"}:                  {"", "root", "root", 0o644},
+		{"/usr/share/licenses/mailcrier/LICENSE", "rpm"}:               {"license", "root", "root", 0o644},
+		{"/usr/share/selinux/packages/mailcrier/mailcrier.cil", "rpm"}: {"", "root", "root", 0o644},
+		{"/usr/share/licenses/mailcrier/LICENSE", "apk"}:               {"", "root", "root", 0o644},
 	}
 	for _, area := range []string{"tmp", "queue", "hold", "failed", "locks"} {
 		contents[[2]string{"/var/spool/mailcrier/" + area, ""}] = packageEntry{"dir", "root", "mailcrier", 0o2770}
@@ -254,6 +263,7 @@ func TestPackageContents(t *testing.T) {
 				"rpm-postinstall": "packaging/scripts/rpm/post.sh",
 				"rpm-preremove":   "packaging/scripts/rpm/preun.sh",
 				"rpm-postremove":  "packaging/scripts/rpm/postun.sh",
+				"rpm-posttrans":   "packaging/scripts/rpm/posttrans.sh",
 				"apk-preinstall":  "packaging/scripts/preinstall.sh",
 				"apk-postinstall": "packaging/scripts/apk/post-install.sh",
 				"apk-preupgrade":  "packaging/scripts/preinstall.sh",
@@ -321,11 +331,13 @@ var scriptRedirects = []struct{ path, name string }{
 	{"/var/spool/mailcrier", "spool"},
 	{"/usr/sbin/nologin", "nologin"},
 	{"/usr/bin/deb-systemd-helper", "bin/deb-systemd-helper"},
+	{"/etc/selinux/config", "selinux-config"},
 }
 
 // scriptArguments are the absolute paths a package script may pass on to
 // a command or use as its interpreter; any other one would reach the host.
-var scriptArguments = []string{"/bin/sh", "/dev/null", "/usr/sbin/mailcrier", "/usr/sbin/sendmail", "/usr/bin/mailq", "/usr/bin/newaliases", "/usr/lib/sendmail", "/sbin/nologin"}
+var scriptArguments = []string{"/bin/sh", "/dev/null", "/usr/sbin/mailcrier", "/usr/sbin/sendmail", "/usr/bin/mailq", "/usr/bin/newaliases", "/usr/lib/sendmail", "/sbin/nologin",
+	"/usr/share/selinux/packages/mailcrier/mailcrier.cil"}
 
 var absolutePath = regexp.MustCompile(`/[A-Za-z0-9._/-]+`)
 
@@ -340,7 +352,8 @@ var shellComment = regexp.MustCompile(`(?m)(?:^|\s)#.*$`)
 // scriptStubs are the commands a package script may run; each one is a
 // stub that logs its arguments. rm is the real one: the scripts delete
 // files of the spool, which lies in the temporary directory.
-var scriptStubs = []string{"dpkg-statoverride", "deb-systemd-helper", "deb-systemd-invoke", "systemctl", "alternatives", "chgrp", "chmod", "touch", "getent", "groupadd", "useradd", "addgroup", "adduser", "mailcrier"}
+var scriptStubs = []string{"dpkg-statoverride", "deb-systemd-helper", "deb-systemd-invoke", "systemctl", "alternatives", "chgrp", "chmod", "touch", "getent", "groupadd", "useradd", "addgroup", "adduser", "mailcrier",
+	"semodule", "selinuxenabled", "restorecon"}
 
 // scriptCase runs one package script with arguments in a temporary
 // directory: present lists what exists there ("run-systemd", "spool",
@@ -348,8 +361,9 @@ var scriptStubs = []string{"dpkg-statoverride", "deb-systemd-helper", "deb-syste
 // which remain must exist after the script and the others must not;
 // env adds variables to the environment; without drops stubs, and exits
 // gives the exit status of a stub per prefix of its arguments ("" for
-// any). spool expects the script to name the spool on stdout, fails to
-// exit non-zero.
+// any). spool expects the script to name the spool on stdout, stdout is
+// a line the script must print, and a case with neither wants no output;
+// fails expects a non-zero exit status.
 type scriptCase struct {
 	name    string
 	event   string
@@ -362,6 +376,7 @@ type scriptCase struct {
 	exits   map[string]map[string]int
 	want    []string
 	spool   bool
+	stdout  string
 	fails   bool
 }
 
@@ -393,7 +408,7 @@ func prepareScript(t *testing.T, script, dir string) string {
 }
 
 // writeStubs creates the stub commands of tc in dir/bin, each appending
-// "<name> <args>" to dir/log.
+// "<name> <args>" to dir/log, or "<name>" when it has none.
 func writeStubs(t *testing.T, tc scriptCase, dir string) {
 	t.Helper()
 	bin := filepath.Join(dir, "bin")
@@ -415,7 +430,7 @@ func writeStubs(t *testing.T, tc scriptCase, dir string) {
 		for prefix, code := range tc.exits[name] {
 			fmt.Fprintf(&cases, "%q*) exit %d ;;\n", prefix, code)
 		}
-		stub := fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' %q\" $*\" >>%q\ncase \"$*\" in\n%sesac\nexit 0\n", name, filepath.Join(dir, "log"), cases.String())
+		stub := fmt.Sprintf("#!/bin/sh\nprintf '%%s\\n' %q\"${*:+ $*}\" >>%q\ncase \"$*\" in\n%sesac\nexit 0\n", name, filepath.Join(dir, "log"), cases.String())
 		if err := os.WriteFile(filepath.Join(bin, name), []byte(stub), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -456,8 +471,10 @@ func scriptShells(t *testing.T) map[string][]string {
 // the setgid bit), keep a timer the administrator masked only through the
 // unmask of debhelper, delete the queue run locks before removal only when
 // the spool holds no message (the package manager then removes the empty
-// spool), name the spool after removal only when it holds one, and exit 0
-// when a command that is not essential fails, because a failed script
+// spool), name the spool after removal only when it holds one, install
+// the SELinux module only where /etc/selinux/config exists (the smoke
+// images have semodule without it) and print how to install it when that
+// fails, and exit 0 when a command that is not essential fails, because a failed script
 // leaves dpkg half done and stops an rpm erase. It must fail when the
 // group, the user, the setgid bit or the alternative cannot be set up: the
 // package would install a binary that cannot read its configuration.
@@ -479,6 +496,10 @@ func TestPackageScripts(t *testing.T) {
 		" --slave /usr/bin/mailq mta-mailq /usr/sbin/mailcrier" +
 		" --slave /usr/bin/newaliases mta-newaliases /usr/sbin/mailcrier" +
 		" --slave /usr/lib/sendmail mta-sendmail /usr/sbin/mailcrier"
+	const module = "/usr/share/selinux/packages/mailcrier/mailcrier.cil"
+	semoduleInstall := "semodule -X 200 -i " + module
+	moduleHint := "mailcrier: SELinux module not installed; to install it run: " + semoduleInstall
+	relabel := "restorecon -RF /usr/sbin/mailcrier {spool}"
 	cases := []scriptCase{
 		{name: "preinstall-existing", event: "deb-preinstall", args: []string{"install"},
 			want: []string{"getent group mailcrier", "getent passwd mailcrier"}},
@@ -527,6 +548,22 @@ func TestPackageScripts(t *testing.T) {
 			files: []string{"spool/hold/x.eml"}, remain: []string{"spool/hold/x.eml"}},
 		{name: "rpm-postremove-erase", event: "rpm-postremove", args: []string{"0"}, present: []string{"run-systemd", "spool"},
 			exits: failing("systemctl"), want: []string{"systemctl daemon-reload"}},
+		{name: "rpm-posttrans-no-selinux", event: "rpm-posttrans", args: []string{"1"}},
+		{name: "rpm-posttrans-no-semodule", event: "rpm-posttrans", args: []string{"1"}, present: []string{"selinux-config"},
+			without: []string{"semodule"}, stdout: moduleHint},
+		{name: "rpm-posttrans-enforcing", event: "rpm-posttrans", args: []string{"1"}, present: []string{"selinux-config"},
+			want: []string{semoduleInstall, "selinuxenabled", relabel}},
+		{name: "rpm-posttrans-disabled", event: "rpm-posttrans", args: []string{"2"}, present: []string{"selinux-config"},
+			exits: failing("selinuxenabled"), want: []string{semoduleInstall, "selinuxenabled"}},
+		{name: "rpm-posttrans-semodule-failing", event: "rpm-posttrans", args: []string{"1"}, present: []string{"selinux-config"},
+			exits: failing("semodule"), want: []string{semoduleInstall}, stdout: moduleHint},
+		{name: "rpm-posttrans-restorecon-failing", event: "rpm-posttrans", args: []string{"1"}, present: []string{"selinux-config"},
+			exits: failing("restorecon"), want: []string{semoduleInstall, "selinuxenabled", relabel}, spool: true},
+		{name: "rpm-postremove-erase-selinux", event: "rpm-postremove", args: []string{"0"}, present: []string{"selinux-config"},
+			exits: failing("semodule"), want: []string{"semodule -X 200 -r mailcrier"}},
+		{name: "rpm-postremove-erase-no-semodule", event: "rpm-postremove", args: []string{"0"}, present: []string{"selinux-config"},
+			without: []string{"semodule"}},
+		{name: "rpm-postremove-upgrade-selinux", event: "rpm-postremove", args: []string{"1"}, present: []string{"selinux-config"}},
 		{name: "apk-postinstall", event: "apk-postinstall", args: []string{"0.1.0"},
 			want: append(slices.Clone(setgid), "touch {crontabs}/cron.update")},
 		{name: "apk-postupgrade", event: "apk-postupgrade", args: []string{"0.2.0", "0.1.0"},
@@ -666,6 +703,9 @@ func TestPackageScripts(t *testing.T) {
 				}
 				if named := strings.Contains(stdout.String(), filepath.Join(dir, "spool")); named != tc.spool {
 					t.Errorf("stdout %q names the spool: %v, want %v", stdout.String(), named, tc.spool)
+				}
+				if !tc.spool && strings.TrimSuffix(stdout.String(), "\n") != tc.stdout {
+					t.Errorf("stdout %q, want %q", stdout.String(), tc.stdout)
 				}
 				for _, name := range tc.files {
 					_, err := os.Lstat(filepath.Join(dir, name))
