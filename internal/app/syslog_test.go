@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -26,6 +27,14 @@ const testSyslogTimeout = 50 * time.Millisecond
 func stuckDatagramSocket(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "log")
+	stuckDatagramSocketAt(t, path)
+	return path
+}
+
+// stuckDatagramSocketAt makes the stuck socket of stuckDatagramSocket at
+// path.
+func stuckDatagramSocketAt(t *testing.T, path string) {
+	t.Helper()
 	receiver, err := net.ListenPacket("unixgram", path)
 	if err != nil {
 		t.Fatal(err)
@@ -46,7 +55,7 @@ func stuckDatagramSocket(t *testing.T) string {
 			if !isTimeout(err) {
 				t.Fatalf("filling the queue: %v", err)
 			}
-			return path
+			return
 		}
 		if i > 1<<20 {
 			t.Fatal("the queue of the socket never filled")
@@ -176,11 +185,40 @@ func TestSyslogStuckInParallel(t *testing.T) {
 		wg.Go(func() { logger.Info("hook output", "target", i) })
 	}
 	wg.Wait()
-	// In turn the records would take records x testSyslogTimeout, 5 s.
-	if elapsed := time.Since(start); elapsed > records*testSyslogTimeout/4 {
+	// In turn the records would take records x testSyslogTimeout, 5 s; the
+	// first one waits out the timeout, and every other one goes on at once.
+	if elapsed := time.Since(start); elapsed > 3*testSyslogTimeout {
 		t.Errorf("%d records took %v", records, elapsed)
 	}
 	if got := strings.Count(stderr.String(), `msg="hook output"`); got != records {
 		t.Errorf("stderr has %d records, want %d:\n%s", got, records, stderr.String())
+	}
+}
+
+// TestSyslogRetryWithinTimeout pins that a write refused at once, by a
+// daemon that restarted, dials the new socket and writes again within the
+// same timeout: when the new daemon reads nothing either, the record still
+// waits one timeout, not two.
+func TestSyslogRetryWithinTimeout(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "log")
+	old, err := net.ListenPacket("unixgram", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer, err := dialSyslogAt([]string{path}, "mailcrier", testSyslogTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = writer.conn.Close() }()
+	// The old daemon goes; a new one binds the path and reads nothing.
+	_ = old.Close()
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	stuckDatagramSocketAt(t, path)
+	start := time.Now()
+	err = writer.write(severityInfo, `msg="message received"`)
+	if elapsed := time.Since(start); !isTimeout(err) || elapsed >= 2*testSyslogTimeout {
+		t.Errorf("write() = %v after %v, want a timeout within %v", err, elapsed, 2*testSyslogTimeout)
 	}
 }

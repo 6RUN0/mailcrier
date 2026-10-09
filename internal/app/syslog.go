@@ -45,31 +45,33 @@ type syslogWriter struct {
 	mu      sync.Mutex
 }
 
-// write sends line with severity. A write refused at once, by a daemon
-// that restarted and left a new socket, dials once more and repeats, as
-// log/syslog does; a write past the timeout does not, since the daemon
-// holds the socket and reads nothing. The caller gives up on any error.
+// write sends line with severity within one timeout. A write refused at
+// once, by a daemon that restarted and left a new socket, dials once more
+// and repeats, as log/syslog does, within what is left of the same
+// timeout; a write past the timeout does not, since the daemon holds the
+// socket and reads nothing. The caller gives up on any error.
 func (w *syslogWriter) write(severity int, line string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	deadline := time.Now().Add(w.timeout)
 	record := []byte(fmt.Sprintf("<%d>%s %s[%d]: %s\n", facilityMail|severity, time.Now().Format(time.Stamp), w.tag, os.Getpid(), strings.TrimSuffix(line, "\n")))
-	err := w.send(record)
+	err := w.send(record, deadline)
 	var netErr net.Error
 	if err == nil || (errors.As(err, &netErr) && netErr.Timeout()) || w.path == "" {
 		return err
 	}
-	conn, dialErr := dialSocket(w.path, w.timeout)
+	conn, dialErr := dialSocket(w.path, deadline)
 	if dialErr != nil {
 		return err
 	}
 	_ = w.conn.Close()
 	w.conn = conn
-	return w.send(record)
+	return w.send(record, deadline)
 }
 
-// send writes record within the timeout.
-func (w *syslogWriter) send(record []byte) error {
-	if err := w.conn.SetWriteDeadline(time.Now().Add(w.timeout)); err != nil {
+// send writes record before deadline.
+func (w *syslogWriter) send(record []byte, deadline time.Time) error {
+	if err := w.conn.SetWriteDeadline(deadline); err != nil {
 		return err
 	}
 	_, err := w.conn.Write(record)
@@ -90,7 +92,7 @@ func dialSyslog(tag string) (*syslogWriter, error) {
 func dialSyslogAt(paths []string, tag string, timeout time.Duration) (*syslogWriter, error) {
 	var firstErr error
 	for _, path := range paths {
-		conn, err := dialSocket(path, timeout)
+		conn, err := dialSocket(path, time.Now().Add(timeout))
 		if err == nil {
 			return &syslogWriter{conn: conn, path: path, tag: tag, timeout: timeout}, nil
 		}
@@ -104,9 +106,10 @@ func dialSyslogAt(paths []string, tag string, timeout time.Duration) (*syslogWri
 	return nil, firstErr
 }
 
-// dialSocket connects to the socket at path, datagram first.
-func dialSocket(path string, timeout time.Duration) (net.Conn, error) {
-	dialer := net.Dialer{Timeout: timeout}
+// dialSocket connects to the socket at path before deadline, datagram
+// first.
+func dialSocket(path string, deadline time.Time) (net.Conn, error) {
+	dialer := net.Dialer{Deadline: deadline}
 	conn, err := dialer.Dial("unixgram", path)
 	if errors.Is(err, syscall.EPROTOTYPE) {
 		conn, err = dialer.Dial("unix", path)

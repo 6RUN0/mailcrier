@@ -311,12 +311,10 @@ func (h *syslogHandler) Handle(ctx context.Context, record slog.Record) error {
 	if h.fallback.log.isDown() {
 		return h.fallback.Handle(ctx, record)
 	}
-	err := h.send(ctx, record)
-	if err == nil {
-		return nil
+	if err := h.send(ctx, record); err != nil {
+		return h.fallback.Handle(ctx, record)
 	}
-	h.fallback.log.setDown("syslog write failed, logging to stderr", err)
-	return h.fallback.Handle(ctx, record)
+	return nil
 }
 
 // errSyslogDown is what send returns for a record that waited for
@@ -326,13 +324,19 @@ var errSyslogDown = errors.New("syslog failed for an earlier record")
 // send formats one record and writes it to syslog within
 // syslogWriteTimeout, see syslogWriter.write. The targets of a delivery
 // log in parallel: once one write failed, those waiting behind it go to
-// fallback at once instead of each waiting out the timeout in turn.
-func (h *syslogHandler) send(ctx context.Context, record slog.Record) error {
+// fallback at once instead of each waiting out the timeout in turn, so
+// the failure is recorded before h.mu is released.
+func (h *syslogHandler) send(ctx context.Context, record slog.Record) (err error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if h.fallback.log.isDown() {
 		return errSyslogDown
 	}
+	defer func() {
+		if err != nil {
+			h.fallback.log.setDown("syslog write failed, logging to stderr", err)
+		}
+	}()
 	h.buf.Reset()
 	if err := h.format.Handle(ctx, record); err != nil {
 		return err
