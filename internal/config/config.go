@@ -539,29 +539,25 @@ func validate(cfg *Config, keys keyIndex) *Error {
 		{"spool", "max_queue_messages_per_uid", sp.MaxMessagesPerUID > 0}, {"spool", "max_queue_bytes_per_uid", sp.MaxBytesPerUID > 0},
 	} {
 		if keys.has(limit.table, limit.key) && !limit.isPositive {
-			pos := keys.position(limit.table, limit.key)
-			return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("value of key %q must be positive", limit.key)}
+			return keys.errorf([]string{limit.table, limit.key}, "value of key %q must be positive", limit.key)
 		}
 	}
 	if dir := cfg.Spool.Dir; keys.has("spool", "dir") && dir != "" && !strings.HasPrefix(dir, "/") {
-		pos := keys.position("spool", "dir")
-		return &Error{Line: pos.Line, Column: pos.Column, Msg: `value of key "dir" must be an absolute path or empty`}
+		return keys.errorf([]string{"spool", "dir"}, "value of key %q must be an absolute path or empty", "dir")
 	}
 	for _, notice := range []struct{ key, value string }{
 		{"no_subject", cfg.Strings.NoSubject}, {"empty_body", cfg.Strings.EmptyBody}, {"truncated", cfg.Strings.Truncated},
 		{"truncated_size", cfg.Strings.TruncatedSize}, {"more_attachments", cfg.Strings.MoreAttachments}, {"not_sent", cfg.Strings.NotSent},
 	} {
 		if keys.has("strings", notice.key) && strings.TrimSpace(notice.value) == "" {
-			pos := keys.position("strings", notice.key)
-			return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("value of key %q must not be blank", notice.key)}
+			return keys.errorf([]string{"strings", notice.key}, "value of key %q must not be blank", notice.key)
 		}
 	}
 	for _, notice := range []struct{ key, value, verb string }{
 		{"more_attachments", cfg.Strings.MoreAttachments, "%d"}, {"truncated_size", cfg.Strings.TruncatedSize, "%s"},
 	} {
 		if keys.has("strings", notice.key) && (strings.Count(notice.value, notice.verb) != 1 || strings.Count(notice.value, "%") != 1) {
-			pos := keys.position("strings", notice.key)
-			return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("value of key %q must hold one %s and no other %%", notice.key, notice.verb)}
+			return keys.errorf([]string{"strings", notice.key}, "value of key %q must hold one %s and no other %%", notice.key, notice.verb)
 		}
 	}
 	if len(cfg.Targets) == 0 {
@@ -629,8 +625,7 @@ func compileRules(cfg *Config, keys keyIndex) *Error {
 // which points at key in the rule, or at its header without the key.
 func ruleFail(keys keyIndex, array string, index int) func(key, format string, args ...any) *Error {
 	return func(key, format string, args ...any) *Error {
-		pos := keys.position(elementPath(array, index, key)...)
-		return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("%s %d: ", array, index+1) + fmt.Sprintf(format, args...)}
+		return keys.errorf(elementPath(array, index, key), "%s %d: %s", array, index+1, fmt.Sprintf(format, args...))
 	}
 }
 
@@ -684,8 +679,7 @@ func syntaxCode(err error) string {
 
 func validateTarget(name string, target Target, keys keyIndex) *Error {
 	fail := func(key, format string, args ...any) *Error {
-		pos := keys.position("target", name, key)
-		return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("target %q: ", name) + fmt.Sprintf(format, args...)}
+		return keys.errorf([]string{"target", name, key}, "target %q: %s", name, fmt.Sprintf(format, args...))
 	}
 	if !validName.MatchString(name) {
 		return fail("", "name must match %s", validName)
@@ -781,8 +775,7 @@ func validateTarget(name string, target Target, keys keyIndex) *Error {
 		default:
 			continue
 		}
-		pos := keys.position("target", name, "headers", header)
-		return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("target %q: %s", name, msg)}
+		return keys.errorf([]string{"target", name, "headers", header}, "target %q: %s", name, msg)
 	}
 	if keys.has("target", name, "on_long") && !slices.Contains(onLongPolicies, target.OnLong) {
 		return fail("on_long", "unknown policy, want one of %s", strings.Join(onLongPolicies, ", "))
@@ -888,8 +881,7 @@ func setChatIDs(cfg *Config, keys keyIndex) *Error {
 			target.ChatID = strings.TrimSpace(value)
 		}
 		if target.ChatID == "" {
-			pos := keys.position("target", name, "chat_id")
-			return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("target %q: value of key %q must be an integer or a string that is not blank", name, "chat_id")}
+			return keys.errorf([]string{"target", name, "chat_id"}, "target %q: value of key %q must be an integer or a string that is not blank", name, "chat_id")
 		}
 		cfg.Targets[name] = target
 	}
@@ -906,8 +898,7 @@ var directUsername = regexp.MustCompile(`^@[A-Za-z0-9_]{5,32}$`)
 func setDirectChats(cfg *Config, keys keyIndex) *Error {
 	general := &cfg.General
 	fail := func(key, format string, args ...any) *Error {
-		pos := keys.position("general", key)
-		return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf(format, args...)}
+		return keys.errorf([]string{"general", key}, format, args...)
 	}
 	if !keys.has("general", "telegram_direct") {
 		for _, key := range []string{"telegram_direct_chats", "telegram_direct_max"} {
@@ -965,8 +956,7 @@ func readSecretFiles(fsys fs.FS, cfg *Config, keys keyIndex) *Error {
 			}
 			content, err := fs.ReadFile(fsys, strings.TrimPrefix(file.path, "/"))
 			if err != nil {
-				pos := keys.position("target", name, file.key)
-				return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("target %q: %s: %s", name, file.key, fileErrorText(err))}
+				return keys.errorf([]string{"target", name, file.key}, "target %q: %s: %s", name, file.key, fileErrorText(err))
 			}
 			*file.dst = strings.TrimSpace(string(content))
 		}
@@ -984,14 +974,14 @@ func readTemplateFiles(fsys fs.FS, cfg *Config, keys keyIndex) *Error {
 		if target.TemplateFile == "" {
 			continue
 		}
-		pos := keys.position("target", name, "template_file")
+		path := []string{"target", name, "template_file"}
 		content, err := fs.ReadFile(fsys, strings.TrimPrefix(target.TemplateFile, "/"))
 		if err != nil {
-			return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("target %q: template_file: %s", name, fileErrorText(err))}
+			return keys.errorf(path, "target %q: template_file: %s", name, fileErrorText(err))
 		}
 		target.Template = strings.TrimSuffix(string(content), "\n")
 		if strings.TrimSpace(target.Template) == "" {
-			return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("target %q: file of key %q is blank", name, "template_file")}
+			return keys.errorf(path, "target %q: file of key %q is blank", name, "template_file")
 		}
 		cfg.Targets[name] = target
 	}
@@ -1006,11 +996,8 @@ func validateSecrets(cfg *Config, keys keyIndex) *Error {
 		target := cfg.Targets[name]
 		allowed := allowedKeys[target.Type]
 		fail := func(key, msg string) *Error {
-			if !keys.has("target", name, key) {
-				key += "_file"
-			}
-			pos := keys.position("target", name, key)
-			return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf("target %q: value of key %q %s", name, key, msg)}
+			key = keys.secretKey(name, key)
+			return keys.errorf([]string{"target", name, key}, "target %q: value of key %q %s", name, key, msg)
 		}
 		if slices.Contains(allowed, "token") && strings.TrimSpace(target.Token) == "" {
 			return fail("token", "is empty")

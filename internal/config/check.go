@@ -198,7 +198,7 @@ func (c *checker) checkTarget(name string, target Target) {
 		}
 		service, _, _ := strings.Cut(strings.ToLower(parsed.Scheme), "+")
 		if slices.Contains(nativeTypes, service) {
-			c.add(c.secretPosition(name, "url"), "target %q: shoutrrr service %q has a native target type %q: escaping, length limits and files", name, service, service)
+			c.add(c.keys.position("target", name, c.keys.secretKey(name, "url")), "target %q: shoutrrr service %q has a native target type %q: escaping, length limits and files", name, service, service)
 		}
 	case TypeHTTP:
 		parsed, err := url.Parse(target.URL)
@@ -215,15 +215,6 @@ func (c *checker) checkTarget(name string, target Target) {
 			c.add(c.keys.position("target", name, "argv"), "target %q: first element of key %q is not an executable file", name, "argv")
 		}
 	}
-}
-
-// secretPosition returns the position of key, or of its _file variant
-// when the file uses that one.
-func (c *checker) secretPosition(target, key string) unstable.Position {
-	if !c.keys.has("target", target, key) {
-		key += "_file"
-	}
-	return c.keys.position("target", target, key)
 }
 
 // checkRoutes checks that the rules leave no message and no target

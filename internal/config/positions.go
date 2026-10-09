@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -138,6 +139,22 @@ func (k keyIndex) position(path ...string) unstable.Position {
 		path = path[:len(path)-1]
 	}
 	return unstable.Position{}
+}
+
+// errorf returns the *Error with the message of format at the position of
+// the key path, as position finds it.
+func (k keyIndex) errorf(path []string, format string, args ...any) *Error {
+	pos := k.position(path...)
+	return &Error{Line: pos.Line, Column: pos.Column, Msg: fmt.Sprintf(format, args...)}
+}
+
+// secretKey returns key of the target, or its _file variant when the file
+// does not set key itself: a secret comes from one of the two.
+func (k keyIndex) secretKey(target, key string) string {
+	if !k.has("target", target, key) {
+		key += "_file"
+	}
+	return key
 }
 
 // keyPosition is position for a key whose last part may be the empty
