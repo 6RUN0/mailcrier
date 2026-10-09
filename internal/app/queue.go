@@ -849,7 +849,7 @@ type queueCounts struct {
 // for a privileged caller, the counts alone for anyone else, who must not
 // see the entries and errors of other users.
 func (q *queue) listQueue(w io.Writer) int {
-	if q.sp == nil {
+	if q.sp == nil && q.otherHold == "" {
 		return q.print(w, "queue is empty\n")
 	}
 	counts, lines, err := q.scan(q.d.Credentials.isPrivilegedCaller())
@@ -871,7 +871,7 @@ func (q *queue) listQueue(w io.Writer) int {
 // status prints the counts as one logfmt line for monitoring.
 func (q *queue) status(w io.Writer) int {
 	var counts queueCounts
-	if q.sp != nil {
+	if q.sp != nil || q.otherHold != "" {
 		var err error
 		if counts, _, err = q.scan(false); err != nil {
 			q.log.Error("queue not listed", "err", err)
@@ -892,38 +892,19 @@ func (q *queue) print(w io.Writer, text string) int {
 	return exitOK
 }
 
-// scan counts the entries of the spool and, with isDetailed, describes
-// each one.
+// scan counts the entries of the spool and of the hold/ of otherHold and,
+// with isDetailed, describes each one; the latter with the field dir. The
+// spool may be nil: then only otherHold is scanned.
 func (q *queue) scan(isDetailed bool) (queueCounts, []string, error) {
 	var counts queueCounts
 	var lines []string
 	now := q.d.Now()
-	usage, err := q.sp.Usage()
-	if err != nil {
-		return counts, nil, err
-	}
-	counts.bytes = usage.Bytes
-	for _, area := range []string{spool.QueueDir, spool.HoldDir, spool.FailedDir, spool.TmpDir} {
-		ids, err := q.sp.List(area)
-		if err != nil {
-			return counts, nil, err
-		}
-		switch area {
-		case spool.QueueDir:
-			counts.queued = len(ids)
-		case spool.HoldDir:
-			counts.held = len(ids)
-		case spool.FailedDir:
-			counts.failed = len(ids)
-		case spool.TmpDir:
-			counts.tmp = len(ids)
-			continue
-		}
+	add := func(sp *spool.Spool, area, dir string, ids []string) {
 		for _, id := range ids {
-			e, err := q.sp.Peek(area, id)
+			e, err := sp.Peek(area, id)
 			if err != nil {
 				if isDetailed {
-					lines = append(lines, fmt.Sprintf("%s %s unreadable", id, area))
+					lines = append(lines, fmt.Sprintf("%s %s unreadable", id, area)+dirField(dir))
 				}
 				continue
 			}
@@ -932,11 +913,63 @@ func (q *queue) scan(isDetailed bool) (queueCounts, []string, error) {
 				counts.oldest = age
 			}
 			if isDetailed {
-				lines = append(lines, describeEntry(area, e, age)...)
+				entry := describeEntry(area, e, age)
+				entry[0] += dirField(dir)
+				lines = append(lines, entry...)
 			}
 		}
 	}
+	if q.sp != nil {
+		usage, err := q.sp.Usage()
+		if err != nil {
+			return counts, nil, err
+		}
+		counts.bytes = usage.Bytes
+		for _, area := range []string{spool.QueueDir, spool.HoldDir, spool.FailedDir, spool.TmpDir} {
+			ids, err := q.sp.List(area)
+			if err != nil {
+				return counts, nil, err
+			}
+			switch area {
+			case spool.QueueDir:
+				counts.queued = len(ids)
+			case spool.HoldDir:
+				counts.held = len(ids)
+			case spool.FailedDir:
+				counts.failed = len(ids)
+			case spool.TmpDir:
+				counts.tmp = len(ids)
+				continue
+			}
+			add(q.sp, area, "", ids)
+		}
+	}
+	if q.otherHold == "" {
+		return counts, lines, nil
+	}
+	other, err := spool.OpenExisting(q.otherHold)
+	if errors.Is(err, fs.ErrNotExist) {
+		return counts, lines, nil
+	}
+	if err != nil {
+		return counts, nil, err
+	}
+	ids, err := other.List(spool.HoldDir)
+	if err != nil {
+		return counts, nil, err
+	}
+	counts.held += len(ids)
+	add(other, spool.HoldDir, q.otherHold, ids)
 	return counts, lines, nil
+}
+
+// dirField returns the field that names the directory of an entry outside
+// the spool, empty for one of the spool.
+func dirField(dir string) string {
+	if dir == "" {
+		return ""
+	}
+	return fmt.Sprintf(" dir=%q", dir)
 }
 
 // describeEntry returns the mailq lines of one entry: the entry, then one

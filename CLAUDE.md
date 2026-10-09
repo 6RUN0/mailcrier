@@ -303,8 +303,9 @@ with "build constraints exclude all Go files".
   of `--check-config`, before anything is loaded. With a valid file whose
   `dir` is not `Deps.SpoolDir`, `-q` also releases the `hold/` of
   `Deps.SpoolDir` (`queue.otherHold`), where a message held under a
-  rejected file went; with a rejected file `-q` only expires entries and
-  exits 78. `--check-config` (`check.go`) prints its findings to stderr and
+  rejected file went, and `mailq` and `--status` list it (`listSpool`),
+  under a rejected file the `dir` of a file that parses; with a rejected
+  file `-q` only expires entries and exits 78. `--check-config` (`check.go`) prints its findings to stderr and
   renders `sample.go`'s message through `delivery.Deliver` with
   `dryRunSender`; `--probe` (`probe.go`) sends it with `DeliverEach`,
   without spool, routes or suppression, and exits by `probeExitCode`

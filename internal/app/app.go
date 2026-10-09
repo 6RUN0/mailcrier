@@ -346,13 +346,20 @@ func runQueueMode(ctx context.Context, d Deps, log *slog.Logger, newLogger func(
 	if err == nil {
 		cfg, targets, log, err = loadTargets(d, log, newLogger, redactor, client, configPath, config.Load)
 	}
+	// parsed is the file even when its targets are rejected: a call holds
+	// its message in the dir of the file then.
+	parsed := cfg
 	if err != nil {
 		log.Error("configuration rejected", "err", err)
 		cfg, targets = nil, nil
 	}
 	settings := spoolSettings(d, cfg)
 	if inv.Mode == sendmail.ListQueue || inv.Mode == sendmail.Status {
-		return listSpool(d, log, settings.Dir, inv.Mode)
+		dir := spoolSettings(d, parsed).Dir
+		if err != nil {
+			log.Warn("spool listed under a rejected configuration", "dir", dir)
+		}
+		return listSpool(d, log, dir, inv.Mode)
 	}
 	q, openErr := newQueue(d, log, redactor, settings, targets)
 	if cfg != nil {
@@ -410,11 +417,17 @@ func loadTargets(d Deps, log *slog.Logger, newLogger func(tag string) *slog.Logg
 	return cfg, targets, log, err
 }
 
-// listSpool answers mailq, -bp and --status without creating anything in
-// the spool. A missing directory holds nothing for mailq, while --status,
-// read by monitoring, reports it as an error.
+// listSpool answers mailq, -bp and --status for the spool directory dir
+// without creating anything in the spool. A missing directory holds
+// nothing for mailq, while --status, read by monitoring, reports it as an
+// error.
 func listSpool(d Deps, log *slog.Logger, dir string, mode sendmail.Mode) int {
 	q := &queue{d: d, log: log}
+	// What -q takes from the hold/ of the default directory into another
+	// one is listed with it, see queue.otherHold.
+	if d.SpoolDir != "" && dir != d.SpoolDir {
+		q.otherHold = d.SpoolDir
+	}
 	if dir != "" {
 		sp, err := spool.OpenExisting(dir)
 		switch {

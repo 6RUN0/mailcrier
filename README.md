@@ -946,6 +946,13 @@ preset = "generic-json"
   the spool. `-q` on such a spool exits 74 without a run (`spool not
   writable, queue not run`): it would deliver entries it cannot record
   and deliver them again on the next run.
+- Both also count, and `mailq` lists with the field `dir="..."`, what
+  `hold/` of the default directory keeps when the file names another
+  `dir`, which `-q` moves into that queue. Under a rejected configuration
+  they show the `dir` of the file when it parses and only its targets are
+  rejected, since a call holds its message there, the default directory
+  otherwise, and log `spool listed under a rejected configuration` with
+  the directory.
 
 ### Options, privileges and containers
 

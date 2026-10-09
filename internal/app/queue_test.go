@@ -1258,6 +1258,39 @@ func TestHoldInDefaultSpool(t *testing.T) {
 	}
 }
 
+// TestListHoldOfDefaultSpool pins that mailq and --status show where a
+// held message is: the hold/ of the default directory beside a dir of the
+// file, and the dir of a file whose targets are rejected.
+func TestListHoldOfDefaultSpool(t *testing.T) {
+	t.Run("default-hold-beside-own-dir", func(t *testing.T) {
+		c := newSpoolCase(t)
+		own := t.TempDir()
+		c.config = "[spool]\ndir = \"" + own + "\"\n\n[target.a]\ntype = \"http\"\n"
+		c.send("held", elevatedUser)
+		id := c.ids(spool.HoldDir)[0]
+		c.config = "[spool]\ndir = \"" + own + "\"\n\n" + twoTargets
+		want := "0 queued, 1 held, 0 failed; oldest 0s\n" +
+			id + ` hold uid=1000 age=0s reason="configuration rejected" dir="` + c.dir + "\"\n"
+		if code, inv := c.queueRun(serviceCaller, "-bp"); code != 0 || inv.stdout.String() != want {
+			t.Errorf("-bp = %d, stdout:\n%s\nwant:\n%s", code, inv.stdout.String(), want)
+		}
+		if code, inv := c.queueRun(serviceCaller, "--status"); code != 0 || !strings.HasPrefix(inv.stdout.String(), "queued=0 held=1 ") {
+			t.Errorf("--status = %d, stdout %q, want the held message counted", code, inv.stdout.String())
+		}
+	})
+	t.Run("rejected-targets-list-own-dir", func(t *testing.T) {
+		c := newSpoolCase(t)
+		own := t.TempDir()
+		c.config = "[spool]\ndir = \"" + own + "\"\n\n[target.x]\ntype = \"shoutrrr\"\nurl = \"nosuch://example.org\"\n"
+		c.send("held", elevatedUser)
+		code, inv := c.queueRun(serviceCaller, "-bp")
+		if code != 0 || !strings.HasPrefix(inv.stdout.String(), "0 queued, 1 held, 0 failed;") ||
+			!strings.Contains(inv.output(), `level=WARN msg="spool listed under a rejected configuration" dir=`+own) {
+			t.Errorf("-bp = %d, stdout %q, want the message held in %s; output:\n%s", code, inv.stdout.String(), own, inv.output())
+		}
+	})
+}
+
 // TestHoldReleaseRestartsTTL pins that queue_ttl counts from the release,
 // not from the time the message was held.
 func TestHoldReleaseRestartsTTL(t *testing.T) {
