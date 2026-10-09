@@ -407,7 +407,7 @@ func (j *textJob) fit(tmpl *render.Template) (*fitted, error) {
 	var err error
 	out.text, out.isTruncated, err = render.ExecuteWhole(tmpl, d, j.limit, j.target.MaxLines, j.measure)
 	if err != nil || !out.isTruncated {
-		return out, err
+		return out, j.withLimit(err)
 	}
 	if j.target.OnLong != OnLongTruncate && caps.MaxFiles > 0 {
 		if out.longFile, err = j.long.file(j.target.LongFile); err != nil {
@@ -427,7 +427,21 @@ func (j *textJob) fit(tmpl *render.Template) (*fitted, error) {
 	}
 	d.IsCollapsed = j.target.OnLong == OnLongBlockquote
 	out.text, _, err = render.FitLines(tmpl, d, j.limit, j.target.MaxLines, j.measure)
-	return out, err
+	return out, j.withLimit(err)
+}
+
+// withLimit adds the limit and where it comes from to a text that does
+// not fit, so that the operator knows what to raise: max_text, or a
+// smaller template when the limit is that of the service.
+func (j *textJob) withLimit(err error) error {
+	switch {
+	case !errors.Is(err, render.ErrLimitTooSmall):
+		return err
+	case j.target.MaxText > 0:
+		return fmt.Errorf("%w, max_text %d", err, j.limit)
+	default:
+		return fmt.Errorf("%w, %d of the service", err, j.limit)
+	}
 }
 
 // fullTextTemplate is the built-in plain template, which renders the

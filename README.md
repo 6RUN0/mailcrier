@@ -943,8 +943,9 @@ preset = "generic-json"
   of the totals, so root still gets its mail queued. Parallel calls never
   exceed a limit together, but near it they may all be refused where one
   would have fit. A message over a limit
-  is not queued (`spool entry not written`): it is delivered all the same,
-  and a temporary failure then exits 73.
+  is not queued (`message not spooled` with `err="spool entry not created:
+  quota exceeded: ..."`): it is delivered all the same, and a temporary
+  failure then exits 73.
 - Delivery is at least once: a process killed after a service accepted
   the message, or a timeout after the service accepted it, repeats that
   delivery on the next run, and so may a power failure, since the state

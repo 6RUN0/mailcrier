@@ -229,6 +229,32 @@ func TestDeliverFitsText(t *testing.T) {
 	}
 }
 
+// TestDeliverNamesLimit pins that a strict template that does not fit
+// names the limit once, without a repeated "render:", and where it comes
+// from: max_text of the target or the limit of the service.
+func TestDeliverNamesLimit(t *testing.T) {
+	strict, err := render.Builtin(text.FormatGenericJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name    string
+		target  Target
+		wantErr string
+	}{
+		{"max-text", Target{ID: "t", MaxText: 10}, "permanent failure: render: the rest of the template alone exceeds the length limit, max_text 10"},
+		{"service", Target{ID: "t"}, "permanent failure: render: the rest of the template alone exceeds the length limit, 12 of the service"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.target.Sender, tc.target.Template = &fakeSender{caps: backend.Caps{MaxText: 12}}, strict
+			results := Deliver(context.Background(), []Target{tc.target}, testData(), nil)
+			if results[0].Status != Perm || results[0].Err == nil || results[0].Err.Error() != tc.wantErr {
+				t.Errorf("result = %+v, want Perm with %q", results[0], tc.wantErr)
+			}
+		})
+	}
+}
+
 // TestDeliverLongText pins the policies for a text over the limit: what
 // the text says and which file goes along.
 func TestDeliverLongText(t *testing.T) {

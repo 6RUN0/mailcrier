@@ -99,9 +99,16 @@ func TestCreateLayout(t *testing.T) {
 	})
 }
 
+// TestOpen pins that a missing directory is ErrCreate, whose text the
+// error does not repeat: the caller logs it as the spool not opened.
 func TestOpen(t *testing.T) {
-	if _, err := Open(filepath.Join(t.TempDir(), "missing")); !errors.Is(err, ErrCreate) {
-		t.Errorf("Open(missing) error = %v, want ErrCreate", err)
+	missing := filepath.Join(t.TempDir(), "missing")
+	_, err := Open(missing)
+	if !errors.Is(err, ErrCreate) || !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("Open(missing) error = %v, want ErrCreate and fs.ErrNotExist", err)
+	}
+	if want := "stat " + missing + ": no such file or directory"; err == nil || err.Error() != want {
+		t.Errorf("Open(missing) error = %v, want %q", err, want)
 	}
 	dir := t.TempDir()
 	if err := os.Mkdir(filepath.Join(dir, QueueDir), 0o700); err != nil {

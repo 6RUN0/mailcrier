@@ -172,12 +172,14 @@ func (q *queue) deliverOwn(ctx context.Context, targets []delivery.Target, msg *
 		q.finish(rec)
 	}
 	if spoolErr != nil {
-		// Without a temporary failure nothing needed the entry.
+		// Without a temporary failure nothing needed the entry. The error
+		// tells a directory not opened from an entry not created or not
+		// written.
 		level := slog.LevelWarn
 		if slices.ContainsFunc(results, func(r delivery.Result) bool { return r.Status == delivery.Temp }) {
 			level = slog.LevelError
 		}
-		q.log.Log(ctx, level, "spool entry not written", "err", spoolErr)
+		q.log.Log(ctx, level, "message not spooled", "err", spoolErr)
 	}
 	logOutcome(log, results, state)
 	if donePanic != nil {

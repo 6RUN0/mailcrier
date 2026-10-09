@@ -10,7 +10,7 @@ import (
 
 // ErrLimitTooSmall is returned by Fit when a text that a service parses
 // strictly does not fit even with the body and the subject cut away.
-var ErrLimitTooSmall = errors.New("render: the rest of the template alone exceeds the length limit")
+var ErrLimitTooSmall = errors.New("the rest of the template alone exceeds the length limit")
 
 // strictFormats are the formats a cut at an arbitrary character breaks for
 // the service: JSON that no longer parses, and Telegram MarkdownV2 with an

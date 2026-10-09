@@ -641,7 +641,7 @@ func TestSpoolNotAvailable(t *testing.T) {
 		if code != 73 || len(c.service.got("a")) != 1 {
 			t.Fatalf("Run() = %d, sent %v, want 73 after a direct attempt; output:\n%s", code, c.service.got("a"), inv.output())
 		}
-		for _, want := range []string{`level=ERROR msg="spool entry not written"`, `msg="message lost"`} {
+		for _, want := range []string{`level=ERROR msg="message not spooled" err="stat ` + c.dir + `: no such file or directory"`, `msg="message lost"`} {
 			if !strings.Contains(inv.output(), want) {
 				t.Errorf("output lacks %s:\n%s", want, inv.output())
 			}
@@ -650,7 +650,7 @@ func TestSpoolNotAvailable(t *testing.T) {
 	t.Run("missing-directory-delivered-exits-0", func(t *testing.T) {
 		c := newSpoolCase(t)
 		c.dir = filepath.Join(c.dir, "missing")
-		if code, inv := c.send("fine", elevatedUser); code != 0 || !strings.Contains(inv.output(), `level=WARN msg="spool entry not written"`) {
+		if code, inv := c.send("fine", elevatedUser); code != 0 || !strings.Contains(inv.output(), `level=WARN msg="message not spooled"`) {
 			t.Fatalf("Run() = %d, want 0 and a warning; output:\n%s", code, inv.output())
 		}
 	})

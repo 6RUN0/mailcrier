@@ -142,7 +142,7 @@ func TestCheckConfig(t *testing.T) {
 			t.Fatalf("Run() = %d, want 0; output:\n%s", code, inv.output())
 		}
 		warnings := linesWith(inv.stderr.String(), "warning: ")
-		if len(warnings) != 1 || !strings.Contains(warnings[0], `target "hook": the sample message does not render, the target gets nothing: `) {
+		if len(warnings) != 1 || !strings.HasSuffix(warnings[0], `target "hook": the sample message does not render, the target gets nothing: permanent failure: render: the rest of the template alone exceeds the length limit, max_text 10`) {
 			t.Errorf("warnings = %q", warnings)
 		}
 	})

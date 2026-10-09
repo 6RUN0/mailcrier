@@ -54,6 +54,18 @@ var (
 	ErrQuota = fmt.Errorf("%w: quota exceeded", ErrCreate)
 )
 
+// openError is an error of Open: it is ErrCreate, since no entry can be
+// created, but its text is the cause alone, such as "stat /var/spool/
+// mailcrier: no such file or directory", which the caller logs under a
+// message of its own about the directory.
+type openError struct {
+	err error
+}
+
+func (e *openError) Error() string { return e.err.Error() }
+
+func (e *openError) Unwrap() []error { return []error{ErrCreate, e.err} }
+
 // Errors of Lock and LockRun.
 var (
 	// ErrBusy means another process holds the lock.
@@ -80,11 +92,12 @@ type Spool struct {
 // Open returns the spool at dir, which must exist, and creates the areas
 // that are missing, for a container that uses any directory its user can
 // write. With a setgid install the packages create them: made here, they
-// would belong to the calling user. The error wraps ErrCreate.
+// would belong to the calling user. The error wraps ErrCreate, without
+// its text.
 func Open(dir string) (*Spool, error) {
 	sp, err := OpenExisting(dir)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrCreate, err)
+		return nil, &openError{err}
 	}
 	for _, area := range []string{TmpDir, QueueDir, HoldDir, FailedDir, LocksDir} {
 		path := filepath.Join(dir, area)
@@ -92,11 +105,11 @@ func Open(dir string) (*Spool, error) {
 			if errors.Is(err, fs.ErrExist) {
 				continue
 			}
-			return nil, fmt.Errorf("%w: %w", ErrCreate, err)
+			return nil, &openError{err}
 		}
 		// Mkdir applies the umask and may drop the setgid bit.
 		if err := os.Chmod(path, DirMode); err != nil {
-			return nil, fmt.Errorf("%w: %w", ErrCreate, err)
+			return nil, &openError{err}
 		}
 	}
 	return sp, nil
