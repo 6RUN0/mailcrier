@@ -315,7 +315,8 @@ with "build constraints exclude all Go files".
   (0, 69, 75), the only place of 75.
 - `internal/app/queue.go`: own message (write-ahead, deliver, record each
   result but the one that finishes the entry, which removes it), `hold/` on
-  a rejected configuration or without a route (`hold` takes the reason),
+  a rejected configuration, without a route or on a panic of the call
+  before its spool step (`hold` takes the reason),
   queue runs (`hold/` released first, then `queue/`, oldest first),
   `mailq`, `--status`. Errors stored in sidecars pass through the
   redactor. `internal/app/routing.go`: `queue.decide` runs after

@@ -1229,7 +1229,9 @@ retry would repeat the bug. `--check-config` reports such a panic as a
 finding and logs its stack as `panic in sample rendering`. A panic on
 one entry of a queue run is logged as `panic in queue run` with the id
 and the stack, moves that entry to `failed/` the same way, and the run
-goes on with the next one; `-q` then exits 70.
+goes on with the next one; `-q` then exits 70, while the short queue run
+after a call leaves the exit status of the call to its own message, as
+with any other error of that run.
 A panic while the result of one target is recorded in the spool loses no
 result: every target is logged and recorded once all finished, the entry
 keeps its pending targets, and the call or `-q` exits 70. Any other

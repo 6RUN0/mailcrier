@@ -505,6 +505,6 @@ func TestHardenEmptyArgv(t *testing.T) {
 		t.Errorf("Harden() = %q, execs %q; want no arguments and argv[0] %s", args, execs, installedPath)
 	}
 	if got := programName(nil); got != installedPath {
-		t.Errorf("installedPath = %q, want %s", got, installedPath)
+		t.Errorf("programName(nil) = %q, want %s", got, installedPath)
 	}
 }

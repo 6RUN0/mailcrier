@@ -403,6 +403,17 @@ When a target failed by a panic, an internal error, the entry moves to
 with the reason
 .Dq internal error
 instead, once no other target waits for it: a retry would repeat the error.
+A panic on one entry of a queue run moves that entry to
+.Pa failed/
+with the same reason and the run goes on;
+.Fl q
+then exits 70, the queue run after a call does not change its exit status.
+A panic of a call after its message is read and before the message is in
+the spool holds it in
+.Pa hold/
+with the reason
+.Dq internal error ;
+the call exits 70 and runs no queue.
 A target that fails temporarily is tried again by a later queue run, one
 minute after the first failure, twice as long after each further failure, at
 most after 24 hours and never before the Retry-After of the service; later
@@ -870,7 +881,8 @@ with the spool off.
 .Fl -probe :
 a target rejected the sample message.
 .It 70
-Internal error.
+Internal error, a panic: of the call, or on an entry of the queue run of
+.Fl q .
 .It 73
 A target failed temporarily, or a message to be held could not be held,
 and the spool entry could not be created: the directory is missing or not
