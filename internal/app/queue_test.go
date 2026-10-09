@@ -677,6 +677,14 @@ func TestQueueRun(t *testing.T) {
 			t.Fatalf("-q = %d, want 74; output:\n%s", code, inv.output())
 		}
 	})
+	t.Run("rejected-configuration-without-spool-exits-78", func(t *testing.T) {
+		c := newSpoolCase(t)
+		c.dir = filepath.Join(c.dir, "missing")
+		c.config = "[target.a]\ntype = \"http\"\n"
+		if code, inv := c.queueRun(serviceCaller); code != 78 {
+			t.Fatalf("-q = %d, want 78 for the configuration first; output:\n%s", code, inv.output())
+		}
+	})
 }
 
 // TestQueueRunClock covers what depends on time, with the clock replaced.

@@ -361,6 +361,9 @@ func runQueueMode(ctx context.Context, d Deps, log *slog.Logger, newLogger func(
 	}
 	if openErr != nil {
 		log.Error("spool not opened", "err", openErr)
+		if cfg == nil {
+			return exitConfig
+		}
 		return exitIOErr
 	}
 	// A message held while the file was rejected went to the default
