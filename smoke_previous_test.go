@@ -15,7 +15,7 @@ import (
 
 // unpublishedTags name releases whose run published nothing, so the upgrade
 // tests cannot fetch them.
-var unpublishedTags = []string{"v0.1.0-rc.1"}
+var unpublishedTags = []string{"v0.1.0-rc.1", "v0.1.0-rc3"}
 
 // releaseTagVersion matches a release tag. v0.1.0-rc.2 is a published tag
 // with a dot before the rc number, which RELEASE_TAG refuses.
@@ -134,14 +134,15 @@ func TestCheckPreviousPin(t *testing.T) {
 		isOK   bool
 	}{
 		{"v0.1.0-rc.2", []string{"v0.1.0-rc.1", "v0.1.0-rc.2"}, true},
-		{"v0.1.0-rc.2", []string{"v0.1.0-rc.1", "v0.1.0-rc.2", "v0.1.0-rc3"}, false},
-		{"v0.1.0-rc3", []string{"v0.1.0-rc.2", "v0.1.0-rc3", "v0.1.0-rc10"}, false},
-		{"v0.1.0-rc10", []string{"v0.1.0-rc.2", "v0.1.0-rc3", "v0.1.0-rc10"}, true},
-		{"v0.1.0-rc3", []string{"v0.1.0-rc3", "v0.1.0"}, false},
-		{"v0.1.0", []string{"v0.1.0-rc3", "v0.1.0", "v0.2.0-rc1"}, true},
+		{"v0.1.0-rc.2", []string{"v0.1.0-rc.1", "v0.1.0-rc.2", "v0.1.0-rc3"}, true},
+		{"v0.1.0-rc.2", []string{"v0.1.0-rc.1", "v0.1.0-rc.2", "v0.1.0-rc4"}, false},
+		{"v0.1.0-rc4", []string{"v0.1.0-rc.2", "v0.1.0-rc4", "v0.1.0-rc10"}, false},
+		{"v0.1.0-rc10", []string{"v0.1.0-rc.2", "v0.1.0-rc4", "v0.1.0-rc10"}, true},
+		{"v0.1.0-rc4", []string{"v0.1.0-rc4", "v0.1.0"}, false},
+		{"v0.1.0", []string{"v0.1.0-rc4", "v0.1.0", "v0.2.0-rc1"}, true},
 		{"v0.10.0", []string{"v0.9.0", "v0.10.0"}, true},
 		{"v0.1.0-rc.1", []string{"v0.1.0-rc.1"}, false},
-		{"v0.1.0-rc3", []string{"v0.1.0-rc.2"}, false},
+		{"v0.1.0-rc4", []string{"v0.1.0-rc.2"}, false},
 	} {
 		if err := checkPreviousPin(c.pin, c.merged); (err == nil) != c.isOK {
 			t.Errorf("checkPreviousPin(%s, %v) = %v, want ok %v", c.pin, c.merged, err, c.isOK)
