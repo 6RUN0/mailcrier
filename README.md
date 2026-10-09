@@ -219,9 +219,12 @@ preset = "generic-json"
   that does not load) go under `mailcrier`. Where no syslog socket
   exists (a container without `/dev/log`) the records go to stderr, with
   time in UTC and level, after one `syslog unavailable` warning that
-  names the socket and the error; a daemon that stops taking records
-  sends the record that failed and every later one of the process there
-  too, after one `syslog write failed` warning. PHP-FPM passes the stderr
+  names the socket and the error; a daemon that stops taking records,
+  or leaves a record without room for 1 s because it stopped reading
+  `/dev/log`, sends the record that failed and every later one of the
+  process there too, after one `syslog write failed` warning
+  (`err="... i/o timeout"`), so that the call never waits on the log
+  longer than that second. PHP-FPM passes the stderr
   of a worker to its own log only with `catch_workers_output = yes` in the
   pool configuration. A setgid-elevated process without syslog writes to
   stderr only `mailcrier: <message>` for warnings and errors, without

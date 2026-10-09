@@ -9,7 +9,6 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
-	"log/syslog"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -73,8 +72,10 @@ type invocation struct {
 	entryLocked func(id string)
 	// ctx is the context of Run, context.Background when nil.
 	ctx context.Context
-	// isSyslogDown makes the log go to stderr, as without a syslog socket.
+	// isSyslogDown makes the log go to stderr, as without a syslog socket;
+	// syslogSocket makes it go to that socket, with testSyslogTimeout.
 	isSyslogDown bool
+	syslogSocket string
 }
 
 // execCall is one attempt to replace the process image.
@@ -132,8 +133,13 @@ func (inv *invocation) run(t testing.TB) int {
 	fallback := newStderrLog(&inv.stderr, inv.creds.isElevated())
 	deps := Deps{
 		NewLogger: func(tag string) *slog.Logger {
+			if inv.syslogSocket != "" {
+				return newFallbackLogger(tag, func(tag string) (*syslogWriter, error) {
+					return dialSyslogAt([]string{inv.syslogSocket}, tag, testSyslogTimeout)
+				}, fallback)
+			}
 			if inv.isSyslogDown {
-				return newFallbackLogger(tag, func(string) (*syslog.Writer, error) { return nil, errors.New("dial unixgram /dev/log: no such file") }, fallback)
+				return newFallbackLogger(tag, func(string) (*syslogWriter, error) { return nil, errors.New("dial unixgram /dev/log: no such file") }, fallback)
 			}
 			buf := &bytes.Buffer{}
 			inv.logs[tag] = buf
@@ -159,7 +165,7 @@ func (inv *invocation) run(t testing.TB) int {
 			name, ok := testUsers[uid]
 			return name, ok
 		},
-		IsLogOnStderr:    func() bool { return inv.isSyslogDown },
+		IsLogOnStderr:    func() bool { return inv.isSyslogDown || fallback.isDown() },
 		SpoolDir:         inv.spoolDir,
 		CatchSignals:     inv.catchSignals,
 		deliver:          inv.deliver,

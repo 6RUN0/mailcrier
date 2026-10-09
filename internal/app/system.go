@@ -3,11 +3,10 @@ package app
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log"
 	"log/slog"
-	"log/syslog"
-	"net"
 	"net/http"
 	"os"
 	"os/user"
@@ -133,30 +132,11 @@ func replaceEnv(env []string) {
 	}
 }
 
-// syslogSocket is the socket dialSyslog tries first, as log/syslog does.
-const syslogSocket = "/dev/log"
-
-// dialSyslog connects to syslog with the mail facility, because cron and
-// at discard the output of the mailer they run. log/syslog reports any
-// failure as "Unix syslog delivery error"; a dial of its first socket
-// names the path and the errno instead.
-func dialSyslog(tag string) (*syslog.Writer, error) {
-	writer, err := syslog.New(syslog.LOG_MAIL|syslog.LOG_INFO, tag)
-	if err != nil {
-		conn, dialErr := net.Dial("unixgram", syslogSocket)
-		if dialErr != nil {
-			return nil, dialErr
-		}
-		_ = conn.Close()
-	}
-	return writer, err
-}
-
 // newFallbackLogger logs to the syslog writer dial returns or, when syslog
 // is unreachable (a container has no /dev/log), to fallback, so that the
 // records are not lost and the call goes on. Once syslog failed, by a
 // dial or a write, the loggers made after it do not dial again.
-func newFallbackLogger(tag string, dial func(tag string) (*syslog.Writer, error), fallback *stderrLog) *slog.Logger {
+func newFallbackLogger(tag string, dial func(tag string) (*syslogWriter, error), fallback *stderrLog) *slog.Logger {
 	if !fallback.isDown() {
 		writer, err := dial(tag)
 		if err == nil {
@@ -292,11 +272,12 @@ func (h *messageHandler) WithGroup(string) slog.Handler { return h }
 
 // syslogHandler formats records as logfmt without time and level, which
 // syslog records itself, and sends each one with the matching severity.
-// A record syslog does not take goes to fallback, and so does every one
-// after it: a daemon that stopped would lose the records without a trace,
-// and a dial per record would slow every one down.
+// A record syslog does not take within syslogWriteTimeout goes to
+// fallback, and so does every one after it in the process, which ends
+// within its deadline or run budget: too soon for a daemon that failed to
+// come back, while each new attempt could cost the call that timeout again.
 type syslogHandler struct {
-	writer *syslog.Writer
+	writer *syslogWriter
 	// format renders into *buf; mu guards buf, which handlers derived with
 	// WithAttrs and WithGroup share.
 	format slog.Handler
@@ -306,7 +287,7 @@ type syslogHandler struct {
 	fallback *stderrHandler
 }
 
-func newSyslogHandler(writer *syslog.Writer, fallback *stderrLog) *syslogHandler {
+func newSyslogHandler(writer *syslogWriter, fallback *stderrLog) *syslogHandler {
 	buf := &bytes.Buffer{}
 	format := slog.NewTextHandler(buf, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
@@ -338,11 +319,20 @@ func (h *syslogHandler) Handle(ctx context.Context, record slog.Record) error {
 	return h.fallback.Handle(ctx, record)
 }
 
-// send formats one record and writes it to syslog; log/syslog dials once
-// more before it gives up.
+// errSyslogDown is what send returns for a record that waited for
+// another one whose write failed.
+var errSyslogDown = errors.New("syslog failed for an earlier record")
+
+// send formats one record and writes it to syslog within
+// syslogWriteTimeout, see syslogWriter.write. The targets of a delivery
+// log in parallel: once one write failed, those waiting behind it go to
+// fallback at once instead of each waiting out the timeout in turn.
 func (h *syslogHandler) send(ctx context.Context, record slog.Record) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.fallback.log.isDown() {
+		return errSyslogDown
+	}
 	h.buf.Reset()
 	if err := h.format.Handle(ctx, record); err != nil {
 		return err
@@ -350,13 +340,13 @@ func (h *syslogHandler) send(ctx context.Context, record slog.Record) error {
 	line := string(bytes.TrimSuffix(h.buf.Bytes(), []byte("\n")))
 	switch {
 	case record.Level >= slog.LevelError:
-		return h.writer.Err(line)
+		return h.writer.write(severityErr, line)
 	case record.Level >= slog.LevelWarn:
-		return h.writer.Warning(line)
+		return h.writer.write(severityWarning, line)
 	case record.Level >= slog.LevelInfo:
-		return h.writer.Info(line)
+		return h.writer.write(severityInfo, line)
 	default:
-		return h.writer.Debug(line)
+		return h.writer.write(severityDebug, line)
 	}
 }
 

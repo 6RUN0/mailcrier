@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"log/slog"
-	"log/syslog"
 	"net"
 	"os"
 	"path/filepath"
@@ -22,11 +21,12 @@ func TestSyslogHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = conn.Close() }()
-	writer, err := syslog.Dial("udp", conn.LocalAddr().String(), syslog.LOG_MAIL|syslog.LOG_INFO, "mailcrier")
+	client, err := net.Dial("udp", conn.LocalAddr().String())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = writer.Close() }()
+	defer func() { _ = client.Close() }()
+	writer := &syslogWriter{conn: client, tag: "mailcrier", timeout: time.Second}
 	logger := slog.New(newSyslogHandler(writer, newStderrLog(&bytes.Buffer{}, false))).With("msgid", "m1")
 
 	cases := []struct {
@@ -80,7 +80,7 @@ func pidOf(packet string) string {
 func TestFallbackLoggerUsesStderr(t *testing.T) {
 	var stderr bytes.Buffer
 	dials := 0
-	dial := func(string) (*syslog.Writer, error) {
+	dial := func(string) (*syslogWriter, error) {
 		dials++
 		return nil, errors.New("dial unixgram /dev/log: connect: no such file or directory")
 	}
@@ -109,19 +109,19 @@ func TestSyslogWriteFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writer, err := syslog.Dial("unixgram", socket, syslog.LOG_MAIL|syslog.LOG_INFO, "mailcrier")
+	writer, err := dialSyslogAt([]string{socket}, "mailcrier", time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = writer.Close() }()
+	defer func() { _ = writer.conn.Close() }()
 	var stderr bytes.Buffer
 	logger := slog.New(newSyslogHandler(writer, newStderrLog(&stderr, false))).With("call", "0123")
 	logger.Info("message received")
 	if packet := readPacket(t, conn); !strings.Contains(packet, `msg="message received" call=0123`) {
 		t.Fatalf("packet %q", packet)
 	}
-	// The daemon goes away: the write fails, and so does the dial that
-	// log/syslog tries once more.
+	// The daemon goes away: the write fails, and so does the dial tried
+	// once more.
 	_ = conn.Close()
 	if err := os.Remove(socket); err != nil {
 		t.Fatal(err)
@@ -144,7 +144,7 @@ func TestSyslogWriteFailure(t *testing.T) {
 // positions, target names and statuses stay in syslog.
 func TestFallbackLoggerElevated(t *testing.T) {
 	var stderr bytes.Buffer
-	dial := func(string) (*syslog.Writer, error) {
+	dial := func(string) (*syslogWriter, error) {
 		return nil, errors.New("dial unix /dev/log: connect: no such file or directory")
 	}
 	logger := newFallbackLogger("mailcrier", dial, newStderrLog(&stderr, true)).With("call", "0123")

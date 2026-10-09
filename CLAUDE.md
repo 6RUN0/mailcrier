@@ -124,8 +124,11 @@ with "build constraints exclude all Go files".
   of `tmp/` files) reads `Deps.Now`; only the context deadlines use the
   real clock. `app.SystemDeps`
   builds the real ones (syslog `LOG_MAIL`, `/etc/mailcrier.conf`,
-  environment proxies only without elevation); its `stderrLog` takes every
-  record once a dial or a write to syslog failed, after one warning.
+  environment proxies only without elevation); records go to syslog
+  through `syslogWriter` (`syslog.go`), not log/syslog, whose writes have
+  no bound and hang a call on a `/dev/log` nobody reads; every dial and
+  write is bounded by `syslogWriteTimeout`, and `stderrLog` takes every
+  record once a dial or a write failed, after one warning.
 - Elevated means `egid != gid` and `uid != 0` (`internal/app/privilege.go`).
   `main` sets the umask, then calls `app.Harden` before `SystemDeps`, any
   logger or any time formatting (the time package opens a `TZ` path): an
