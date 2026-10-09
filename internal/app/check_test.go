@@ -1,7 +1,9 @@
 package app
 
 import (
+	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -10,9 +12,14 @@ import (
 	"testing"
 	"testing/fstest"
 	"testing/iotest"
+	"time"
 
+	"github.com/6RUN0/mailcrier/internal/backend"
 	"github.com/6RUN0/mailcrier/internal/config"
+	"github.com/6RUN0/mailcrier/internal/delivery"
 	"github.com/6RUN0/mailcrier/internal/redact"
+	"github.com/6RUN0/mailcrier/internal/render"
+	"github.com/6RUN0/mailcrier/internal/text"
 )
 
 // checkSummaryClean is the stderr of --check-config for a file without
@@ -300,5 +307,35 @@ func TestRegisterSecretsCoversSecretKeys(t *testing.T) {
 		if got := redactor.String(marker); got != redact.Mask {
 			t.Errorf("key %q: marker logged as %q", key, got)
 		}
+	}
+}
+
+// capsSender reports caps and accepts every payload.
+type capsSender struct{ caps backend.Caps }
+
+func (s capsSender) Caps() backend.Caps { return s.caps }
+
+func (capsSender) Send(context.Context, backend.Payload) error { return nil }
+
+// TestRenderSampleLogsPanic pins that a panic while the sample renders for
+// a target, a finding of --check-config by its value alone, leaves its
+// stack in the log.
+func TestRenderSampleLogsPanic(t *testing.T) {
+	tmpl, err := render.Builtin(text.FormatPlain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caps := backend.Caps{MaxText: 10, Measure: func(string) int { panic("bug in measure") }}
+	targets := []delivery.Target{{ID: "bad", Sender: capsSender{caps: caps}, Template: tmpl}}
+	cfg := &config.Config{}
+	cfg.General.Deadline.Duration = time.Minute
+	d := Deps{Now: func() time.Time { return testNow }, Hostname: "host1.example.org", LookupUserName: func(int) (string, bool) { return "root", true }}
+	var logs strings.Builder
+	findings, err := renderSample(context.Background(), d, slog.New(slog.NewTextHandler(&logs, nil)), &redact.Redactor{}, cfg, targets)
+	if err != nil || len(findings) != 1 || !strings.Contains(findings[0], "panic: bug in measure") {
+		t.Fatalf("renderSample() = %q, %v", findings, err)
+	}
+	if want := `level=ERROR msg="panic in sample rendering" target=bad panic="bug in measure" stack="goroutine `; !strings.Contains(logs.String(), want) {
+		t.Errorf("log lacks %q:\n%s", want, logs.String())
 	}
 }

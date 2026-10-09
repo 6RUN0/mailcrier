@@ -95,7 +95,7 @@ func runCheckConfig(ctx context.Context, d Deps, log *slog.Logger, newLogger fun
 		lines = append(lines, "warning: "+w.String())
 	}
 	if err == nil {
-		findings, renderErr := renderSample(ctx, d, cfg, targets)
+		findings, renderErr := renderSample(ctx, d, log, redactor, cfg, targets)
 		if renderErr != nil {
 			log.Error("sample message not rendered", "err", renderErr)
 			return exitSoftware
@@ -127,8 +127,9 @@ func plural(count int, noun string) string {
 // renderSample renders the sample message for every target as a delivery
 // does, with the senders replaced by ones that send nothing: no request
 // leaves the host and no hook runs. It returns what a target would not get
-// as configured, "target "name": what", in the order of targets.
-func renderSample(ctx context.Context, d Deps, cfg *config.Config, targets []delivery.Target) ([]string, error) {
+// as configured, "target "name": what", in the order of targets. A panic,
+// which the finding names only by its value, goes to log with its stack.
+func renderSample(ctx context.Context, d Deps, log *slog.Logger, redactor *redact.Redactor, cfg *config.Config, targets []delivery.Target) ([]string, error) {
 	_, _, data, err := readSample(d, notices(cfg.Strings))
 	if err != nil {
 		return nil, err
@@ -150,6 +151,10 @@ func renderSample(ctx context.Context, d Deps, cfg *config.Config, targets []del
 			finding = "request template fails on the sample message, the target gets nothing: " + r.RequestErr.Error()
 		case r.Status == delivery.Perm:
 			finding = "the sample message does not render, the target gets nothing: " + r.Err.Error()
+			var panicErr *backend.PanicError
+			if errors.As(r.Err, &panicErr) {
+				log.Error("panic in sample rendering", append([]any{"target", r.TargetID}, panicAttrs(redactor, panicErr)...)...)
+			}
 		default:
 			continue
 		}
