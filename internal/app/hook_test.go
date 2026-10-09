@@ -7,6 +7,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/6RUN0/mailcrier/internal/spool"
 )
@@ -64,17 +65,30 @@ func TestRunDeliversToExecTarget(t *testing.T) {
 
 // TestRunQueuesHookTempFailure pins that exit status 75 of a hook keeps
 // the message in the queue and exits 0, as a temporary failure of any
-// target does.
+// target does, and that the output of the hook names the spool entry, in
+// the call and in a queue run.
 func TestRunQueuesHookTempFailure(t *testing.T) {
-	path := writeHookScript(t, "cat >/dev/null\nexit 75\n")
+	path := writeHookScript(t, "cat >/dev/null\necho busy\nexit 75\n")
 	dir := t.TempDir()
-	inv := &invocation{config: "[target.run]\ntype = \"exec\"\nargv = [\"" + path + "\"]\n", stdin: strings.NewReader("Subject: t\n\nb\n"), spoolDir: dir}
+	config := "[target.run]\ntype = \"exec\"\nargv = [\"" + path + "\"]\n"
+	clock := newClock()
+	inv := &invocation{config: config, stdin: strings.NewReader("Subject: t\n\nb\n"), spoolDir: dir, now: clock.now}
 	if code := inv.run(t); code != 0 {
 		t.Fatalf("Run() = %d, want 0; log:\n%s", code, inv.output())
 	}
 	entries, err := filepath.Glob(filepath.Join(dir, spool.QueueDir, "*.eml"))
 	if err != nil || len(entries) != 1 {
-		t.Errorf("queue holds %v, want one entry", entries)
+		t.Fatalf("queue holds %v, want one entry", entries)
+	}
+	id := strings.TrimSuffix(filepath.Base(entries[0]), ".eml")
+	want := `level=WARN msg="hook output" id=` + id + ` target=run output="busy\n"`
+	if !strings.Contains(inv.output(), want) {
+		t.Errorf("output lacks %q:\n%s", want, inv.output())
+	}
+	clock.advance(time.Hour)
+	queueRun := &invocation{config: config, args: []string{"-q"}, creds: rootCaller, spoolDir: dir, now: clock.now}
+	if code := queueRun.run(t); code != 0 || !strings.Contains(queueRun.output(), want) {
+		t.Errorf("-q = %d, want 0 and %q; output:\n%s", code, want, queueRun.output())
 	}
 }
 

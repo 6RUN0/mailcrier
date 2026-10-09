@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/6RUN0/mailcrier/internal/backend"
+	"github.com/6RUN0/mailcrier/internal/backend/hook"
 	"github.com/6RUN0/mailcrier/internal/config"
 	"github.com/6RUN0/mailcrier/internal/delivery"
 	"github.com/6RUN0/mailcrier/internal/message"
@@ -155,14 +156,17 @@ func (q *queue) deliverOwn(ctx context.Context, targets []delivery.Target, msg *
 			rec, spoolErr = q.sp.Create(spool.QueueDir, entry, msg.Raw, q.quota(entry.OwnerUID))
 		}
 		state = queueState(spoolErr)
-		if spoolErr == nil {
-			q.log.Debug("message queued ahead of delivery", "id", rec.ID())
-		}
+	}
+	// The id leads from every record of the message to its line in mailq.
+	log := q.log
+	if rec != nil {
+		log = log.With("id", rec.ID())
+		log.Debug("message queued ahead of delivery")
 	}
 	q.isOwnTaken = true
-	results, donePanic := q.send(ctx, targets, env, data, msg.Attachments, msg.Raw, rec)
+	results, donePanic := q.send(hook.WithLog(ctx, log), targets, env, data, msg.Attachments, msg.Raw, rec)
 	for _, r := range results {
-		logResult(q.log, q.redactor, r)
+		logResult(log, q.redactor, r)
 	}
 	if rec != nil {
 		q.finish(rec)
@@ -175,7 +179,7 @@ func (q *queue) deliverOwn(ctx context.Context, targets []delivery.Target, msg *
 		}
 		q.log.Log(ctx, level, "spool entry not written", "err", spoolErr)
 	}
-	logOutcome(q.log, results, state)
+	logOutcome(log, results, state)
 	if donePanic != nil {
 		// Recorded and logged, the results are safe; the call ends as on
 		// any panic, without its queue run.
@@ -322,7 +326,7 @@ func (q *queue) finish(rec *spool.Record) {
 // entry is missing.
 func (q *queue) hold(msg *message.Message, env message.Envelope, receivedAt time.Time, openErr error, reason string) delivery.Queue {
 	if q.settings.Dir == "" {
-		q.log.Error("message lost, spool off")
+		q.log.Error("message lost, spool off", "reason", reason)
 		return delivery.QueueOff
 	}
 	err := openErr
@@ -331,12 +335,12 @@ func (q *queue) hold(msg *message.Message, env message.Envelope, receivedAt time
 		entry.Reason = reason
 		var rec *spool.Record
 		if rec, err = q.sp.Create(spool.HoldDir, entry, msg.Raw, q.quota(entry.OwnerUID)); err == nil {
-			q.log.Warn("message held", "id", rec.ID())
+			q.log.Warn("message held", "id", rec.ID(), "reason", reason)
 			_ = rec.Close()
 			return delivery.Queued
 		}
 	}
-	q.log.Error("message lost, not held", "err", err)
+	q.log.Error("message lost, not held", "reason", reason, "err", err)
 	return queueState(err)
 }
 
@@ -626,7 +630,7 @@ func (q *queue) releaseInto(rec *spool.Record) {
 	_ = copied.Close()
 	switch {
 	case isExpired:
-		q.log.Error("message failed", "id", id, "reason", reasonExpired)
+		q.log.Error("message failed", "id", id, "area", spool.HoldDir, "reason", reasonExpired, "dir", q.otherHold)
 		q.removeReleased(rec, "")
 	case area == spool.HoldDir:
 		q.removeReleased(rec, "held message moved")
@@ -643,7 +647,7 @@ func (q *queue) removeReleased(rec *spool.Record, message string) {
 		return
 	}
 	if message != "" {
-		q.log.Info(message, "id", rec.ID(), "from", q.otherHold)
+		q.log.Info(message, "id", rec.ID(), "dir", q.otherHold)
 	}
 }
 
@@ -704,7 +708,7 @@ func (q *queue) deliverEntry(ctx context.Context, rec *spool.Record) bool {
 	}
 	data := render.NewData(msg, e.Envelope, bcc)
 	data.Hostname, data.ReceivedAt, data.Strings = q.d.Hostname, e.ReceivedAt, q.notices
-	ctx, cancel := context.WithTimeout(ctx, q.deadline)
+	ctx, cancel := context.WithTimeout(hook.WithLog(ctx, log), q.deadline)
 	defer cancel()
 	results, donePanic := q.send(ctx, due, e.Envelope, data, msg.Attachments, msg.Raw, rec)
 	for _, r := range results {
@@ -773,7 +777,13 @@ func (q *queue) notePanic(log *slog.Logger, value any) {
 }
 
 // fail moves an entry to failed/ with reason and reports whether it did.
+// The record names the area the entry left and the targets that still
+// waited for it.
 func (q *queue) fail(rec *spool.Record, reason string) bool {
+	attrs := []any{"id", rec.ID(), "area", rec.Area, "reason", reason}
+	if pending := pendingTargets(rec.Entry); len(pending) > 0 {
+		attrs = append(attrs, "targets", pending)
+	}
 	rec.Entry.Reason, rec.Entry.FailedAt = reason, q.d.Now()
 	if err := rec.Move(spool.FailedDir); err != nil {
 		q.hasIOError = true
@@ -785,8 +795,20 @@ func (q *queue) fail(rec *spool.Record, reason string) bool {
 		// old sidecar, which RemoveStale deletes later, failed.
 		q.log.Warn("spool entry moved to failed, not synced", "id", rec.ID(), "err", err)
 	}
-	q.log.Error("message failed", "id", rec.ID(), "reason", reason)
+	q.log.Error("message failed", attrs...)
 	return true
+}
+
+// pendingTargets returns the names of the targets of e that wait for a
+// delivery, in order.
+func pendingTargets(e *spool.Entry) []string {
+	var names []string
+	for _, name := range sortedTargets(e) {
+		if e.Targets[name].State == spool.Pending {
+			names = append(names, name)
+		}
+	}
+	return names
 }
 
 // clean deletes the files that dead processes left in sp and entries

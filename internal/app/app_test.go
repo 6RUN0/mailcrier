@@ -176,6 +176,19 @@ func (inv *invocation) output() string {
 	return callField.ReplaceAllString(all.String(), "") + "[stderr]\n" + inv.stderr.String()
 }
 
+// queuedAhead finds the id of the own message in the record that writes it
+// ahead into the queue.
+var queuedAhead = regexp.MustCompile(`msg="message queued ahead of delivery"(?: msgid=\S+)? id=(\S+)`)
+
+// ownID returns the spool id of the own message of the invocation, empty
+// when it has none.
+func (inv *invocation) ownID() string {
+	if m := queuedAhead.FindStringSubmatch(inv.output()); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
 func (inv *invocation) log(tag string) string {
 	if buf, ok := inv.logs[tag]; ok {
 		return callField.ReplaceAllString(buf.String(), "")

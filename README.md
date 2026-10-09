@@ -238,8 +238,15 @@ preset = "generic-json"
   template from the configuration failed, `request template failed,
   message not sent` (warning) an `http` target whose path, query or
   header template failed, see "Templates".
-  Records about a spool entry carry its `id`. Headers and body of the
-  message are never logged, nor is the response body of a service.
+  Records about a spool entry carry its `id`, the name `mailq` lists,
+  from the moment the message is written to the spool: those of the
+  call and its targets and `hook output` too. `message held`, `message
+  lost` and `message failed` carry `reason`, `message failed` also `area`
+  (the spool directory the entry left) and `targets` (those that still
+  waited), `message lost` and `message not delivered` the `targets`
+  concerned; a lost message gets `message lost` alone. Headers and body
+  of the message are never logged, nor is the response body of a
+  service.
 - Tokens and URLs, including the content of `*_file`, are replaced by `***`
   in every log record and in the debug output of the Go HTTP stack. A URL
   is masked whole, and so are its host, host labels, request URI, path

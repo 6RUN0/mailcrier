@@ -59,8 +59,19 @@ type Process struct {
 	Credential *syscall.Credential
 	// TZ is the TZ variable of the process; empty when unset.
 	TZ string
-	// Log receives the output of the hook, one record per run.
+	// Log receives the output of the hook, one record per run, unless the
+	// context of the run carries another logger, see WithLog.
 	Log *slog.Logger
+}
+
+// logKey is the context key of the logger WithLog sets.
+type logKey struct{}
+
+// WithLog returns ctx with log, which takes the output of a hook run with
+// it in place of Process.Log: the caller adds the id of the spool entry
+// being delivered, which the logger of the process does not know.
+func WithLog(ctx context.Context, log *slog.Logger) context.Context {
+	return context.WithValue(ctx, logKey{}, log)
 }
 
 // Options configure one exec target.
@@ -125,7 +136,7 @@ func (s *Sender) Send(ctx context.Context, p backend.Payload) error {
 		runErr = cmd.Wait()
 	}
 	err := classify(ctx, cmd, runErr)
-	s.logOutput(output, err)
+	s.logOutput(ctx, output, err)
 	return err
 }
 
@@ -165,16 +176,21 @@ func classify(ctx context.Context, cmd *exec.Cmd, err error) error {
 }
 
 // logOutput writes what the hook printed as one record, through the
-// logger of the process, which masks the secrets of the configuration.
-func (s *Sender) logOutput(output *cappedBuffer, err error) {
-	if s.opts.Process.Log == nil || output.size == 0 {
+// logger of ctx or of the process, which masks the secrets of the
+// configuration.
+func (s *Sender) logOutput(ctx context.Context, output *cappedBuffer, err error) {
+	log := s.opts.Process.Log
+	if fromCtx, ok := ctx.Value(logKey{}).(*slog.Logger); ok {
+		log = fromCtx
+	}
+	if log == nil || output.size == 0 {
 		return
 	}
 	level := slog.LevelInfo
 	if err != nil {
 		level = slog.LevelWarn
 	}
-	s.opts.Process.Log.Log(context.Background(), level, "hook output", "target", s.opts.Name, "output", strings.ToValidUTF8(output.String(), ""), "output_size", output.size)
+	log.Log(context.Background(), level, "hook output", "target", s.opts.Name, "output", strings.ToValidUTF8(output.String(), ""), "output_size", output.size)
 }
 
 // buildEnv returns the environment of a hook: fixedEnv, TZ when the

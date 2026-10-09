@@ -509,35 +509,45 @@ func defaultSender(d Deps) string {
 	return ""
 }
 
+// Reasons of the record of a message lost after temporary failures, by
+// the state of its spool entry.
+var lostReasons = map[delivery.Queue]string{
+	delivery.QueueOff: "spool off", delivery.QueueNotCreated: "spool entry not created", delivery.QueueNotWritten: "spool entry not written",
+}
+
 // logOutcome adds the records for the message as a whole: what was
-// queued for a later attempt and what was lost.
+// queued for a later attempt and what was lost, once: a message lost
+// gets no "message not delivered" besides.
 func logOutcome(log *slog.Logger, results []delivery.Result, state delivery.Queue) {
-	var delivered, temporary []delivery.Result
+	var delivered, temporary, rejected []string
 	for _, r := range results {
 		switch r.Status {
 		case delivery.OK:
-			delivered = append(delivered, r)
+			delivered = append(delivered, r.TargetID)
 		case delivery.Temp:
-			temporary = append(temporary, r)
+			temporary = append(temporary, r.TargetID)
+		default:
+			rejected = append(rejected, r.TargetID)
 		}
 	}
 	isAllTemporary := len(temporary) > 0 && len(temporary) == len(results)
 	switch {
 	case state == delivery.Queued && isAllTemporary:
-		log.Warn("message queued")
+		log.Warn("message queued", "targets", temporary)
 	case state == delivery.Queued:
-		for _, r := range temporary {
-			log.Warn("message queued for target", "target", r.TargetID)
+		for _, name := range temporary {
+			log.Warn("message queued for target", "target", name)
 		}
 	case len(delivered) > 0 || (state != delivery.QueueOff && !isAllTemporary):
-		for _, r := range temporary {
-			log.Error("message lost for target", "target", r.TargetID)
+		for _, name := range temporary {
+			log.Error("message lost for target", "target", name, "reason", lostReasons[state])
 		}
 	case isAllTemporary:
-		log.Error("message lost")
+		log.Error("message lost", "reason", lostReasons[state], "targets", temporary)
+		return
 	}
 	if len(delivered) == 0 && delivery.ExitCode(results, state) == exitUnavailable {
-		log.Error("message not delivered")
+		log.Error("message not delivered", "targets", rejected)
 	}
 }
 

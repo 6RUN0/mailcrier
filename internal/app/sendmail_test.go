@@ -84,7 +84,8 @@ func TestExitStatusValues(t *testing.T) {
 
 // TestRunExitStatusMatrix has one subtest per row of the exit status
 // matrix that applies without a spool, named after the situation, with
-// the summary record the row asks for.
+// the summary record the row asks for. A message lost gets that one
+// record, not "message not delivered" besides.
 func TestRunExitStatusMatrix(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -94,9 +95,9 @@ func TestRunExitStatusMatrix(t *testing.T) {
 	}{
 		{"all-delivered", nil, 0, nil},
 		{"delivered-and-rejected", map[string]delivery.Status{"b": delivery.Perm}, 0, []string{`level=ERROR msg="target failed" target=b class=perm`}},
-		{"all-rejected", map[string]delivery.Status{"a": delivery.Perm, "b": delivery.Perm}, 69, []string{`level=ERROR msg="message not delivered"`}},
-		{"all-temp-without-spool", map[string]delivery.Status{"a": delivery.Temp, "b": delivery.Temp}, 69, []string{`level=ERROR msg="message lost"`}},
-		{"delivered-and-temp-without-spool", map[string]delivery.Status{"a": delivery.Temp}, 0, []string{`level=ERROR msg="message lost for target" target=a`}},
+		{"all-rejected", map[string]delivery.Status{"a": delivery.Perm, "b": delivery.Perm}, 69, []string{`level=ERROR msg="message not delivered" targets="[a b]"`}},
+		{"all-temp-without-spool", map[string]delivery.Status{"a": delivery.Temp, "b": delivery.Temp}, 69, []string{`level=ERROR msg="message lost" reason="spool off" targets="[a b]"`}},
+		{"delivered-and-temp-without-spool", map[string]delivery.Status{"a": delivery.Temp}, 0, []string{`level=ERROR msg="message lost for target" target=a reason="spool off"`}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -110,6 +111,9 @@ func TestRunExitStatusMatrix(t *testing.T) {
 				if !strings.Contains(log, want) {
 					t.Errorf("log lacks %q:\n%s", want, log)
 				}
+			}
+			if strings.Count(log, "level=ERROR msg=\"message ") > 1 {
+				t.Errorf("log has more than one summary record:\n%s", log)
 			}
 			isErrorRow := strings.Contains(strings.Join(tc.wantLog, "\n"), "level=ERROR")
 			if !isErrorRow && strings.Contains(log, "level=ERROR") {

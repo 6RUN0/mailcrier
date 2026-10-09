@@ -250,10 +250,10 @@ func TestSpoolDelivery(t *testing.T) {
 		c := newSpoolCase(t)
 		c.service.reply("b", delivery.Temp)
 		code, inv := c.send("half", elevatedUser)
-		if code != 0 || !strings.Contains(inv.output(), `msg="message queued for target" target=b`) {
+		e := c.entry(spool.QueueDir)
+		if code != 0 || !strings.Contains(inv.output(), `msg="message queued for target" id=`+e.ID+` target=b`) {
 			t.Fatalf("Run() = %d; output:\n%s", code, inv.output())
 		}
-		e := c.entry(spool.QueueDir)
 		if e.Targets["a"].State != spool.Done || e.Targets["b"].State != spool.Pending {
 			t.Errorf("targets = a %+v, b %+v", e.Targets["a"], e.Targets["b"])
 		}
@@ -325,7 +325,7 @@ func TestSpoolInternalError(t *testing.T) {
 		}
 		c.clock.advance(3 * time.Minute)
 		code, inv := c.queueRun(rootCaller)
-		if code != 0 || !strings.Contains(inv.output(), `msg="message failed" id=`+e.ID+` reason="internal error"`) {
+		if code != 0 || !strings.Contains(inv.output(), `msg="message failed" id=`+e.ID+` area=queue reason="internal error"`) {
 			t.Fatalf("second -q = %d; output:\n%s", code, inv.output())
 		}
 		if got := c.entry(spool.FailedDir); got.Reason != reasonInternal || got.Targets["b"].State != spool.Done {
@@ -364,7 +364,7 @@ func TestSpoolInternalError(t *testing.T) {
 		if strings.Contains(inv.output(), secretToken) {
 			t.Errorf("output contains the token:\n%s", inv.output())
 		}
-		if want := `msg="target failed" target=hook class=perm err="panic: unexpected request to ***" stack="goroutine `; !strings.Contains(inv.output(), want) {
+		if want := `msg="target failed" id=` + inv.ownID() + ` target=hook class=perm err="panic: unexpected request to ***" stack="goroutine `; !strings.Contains(inv.output(), want) {
 			t.Errorf("output lacks %q:\n%s", want, inv.output())
 		}
 	})
@@ -534,7 +534,7 @@ func TestSpoolCallbackPanic(t *testing.T) {
 			t.Fatalf("Run() = %d, want 70; output:\n%s", code, inv.output())
 		}
 		for _, want := range []string{
-			`msg="target failed" target=b class=temp status=503`, `msg="message queued for target" target=b`,
+			`msg="target failed" id=` + inv.ownID() + ` target=b class=temp status=503`, `msg="message queued for target" id=` + inv.ownID() + ` target=b`,
 			`msg="panic, call ended" panic="bug in recording" stack="goroutine `,
 		} {
 			if !strings.Contains(inv.output(), want) {
@@ -791,7 +791,7 @@ func TestQueueRun(t *testing.T) {
 		}
 		output := inv.output()
 		if !strings.Contains(output, `level=ERROR msg="panic in queue run" id=`+poisoned+` panic="bug in the queue run" stack="goroutine `) ||
-			!strings.Contains(output, `msg="message failed" id=`+poisoned+` reason="internal error"`) {
+			!strings.Contains(output, `msg="message failed" id=`+poisoned+` area=queue reason="internal error" targets=[a]`) {
 			t.Errorf("output lacks the panic and the failed entry:\n%s", output)
 		}
 		if got := c.service.got("a")[2:]; !slices.Equal(got, []string{"two"}) {
@@ -1189,10 +1189,10 @@ func TestHold(t *testing.T) {
 		c := newSpoolCase(t)
 		c.config = "[target.a]\ntype = \"http\"\n"
 		code, inv := c.send("held", elevatedUser)
-		if code != 78 || !strings.Contains(inv.output(), `level=WARN msg="message held" id=`) {
+		e := c.entry(spool.HoldDir)
+		if code != 78 || !strings.Contains(inv.output(), `level=WARN msg="message held" id=`+e.ID+` reason="configuration rejected"`) {
 			t.Fatalf("Run() = %d, want 78; output:\n%s", code, inv.output())
 		}
-		e := c.entry(spool.HoldDir)
 		if e.OwnerUID != 1000 || len(e.Targets) != 0 || e.Reason != reasonConfig {
 			t.Errorf("held entry = %+v", e)
 		}
@@ -1414,7 +1414,7 @@ func TestQueueCorruptSidecar(t *testing.T) {
 		}
 		c.corrupt(spool.QueueDir, testNow.Add(-7*24*time.Hour-time.Minute))
 		code, inv = c.queueRun(serviceCaller)
-		if code != 0 || !strings.Contains(inv.output(), `level=ERROR msg="message failed" id=`+id+` reason="corrupt sidecar"`) {
+		if code != 0 || !strings.Contains(inv.output(), `level=ERROR msg="message failed" id=`+id+` area=queue reason="corrupt sidecar"`) {
 			t.Fatalf("-q = %d, want 0 and the entry failed; output:\n%s", code, inv.output())
 		}
 		if e := c.entry(spool.FailedDir); e.ID != id || e.OwnerUID != os.Getuid() || e.Reason != reasonCorrupt || !e.FailedAt.Equal(c.clock.now()) {
