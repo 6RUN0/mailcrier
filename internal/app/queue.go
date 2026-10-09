@@ -78,6 +78,10 @@ type queue struct {
 	// hasPanicked records a panic on one entry of a queue run, which
 	// makes -q exit 70.
 	hasPanicked bool
+	// unsaved holds the ids of the entries whose new state was not
+	// written: on disk they look due at once, and a run of this process
+	// skips them rather than send them again.
+	unsaved map[string]bool
 	// otherHold is another spool directory whose hold/ a queue run
 	// releases into this queue; empty for none.
 	otherHold string
@@ -87,7 +91,7 @@ type queue struct {
 // be nil. When the directory cannot be opened the queue works without the
 // spool, and openErr tells the caller why.
 func newQueue(d Deps, log *slog.Logger, redactor *redact.Redactor, settings config.Spool, targets []delivery.Target) (q *queue, openErr error) {
-	q = &queue{d: d, log: log, redactor: redactor, settings: settings, throttled: map[string]time.Time{}}
+	q = &queue{d: d, log: log, redactor: redactor, settings: settings, throttled: map[string]time.Time{}, unsaved: map[string]bool{}}
 	if targets != nil {
 		q.targets = map[string]delivery.Target{}
 		for _, target := range targets {
@@ -193,6 +197,7 @@ func (q *queue) send(ctx context.Context, targets []delivery.Target, env message
 		}
 		if err := rec.Save(); err != nil {
 			q.hasIOError = true
+			q.unsaved[rec.ID()] = true
 			q.log.Error("spool entry not updated", "id", rec.ID(), "target", r.TargetID, "err", err)
 			return
 		}
@@ -351,6 +356,10 @@ func (q *queue) run(ctx context.Context, limits runLimits) error {
 			if isOver() {
 				q.log.Info("queue run budget spent")
 				return nil
+			}
+			if q.isUnsaved(id) {
+				q.log.Debug("spool entry skipped, state not recorded", "id", id)
+				continue
 			}
 			rec := q.lock(area, id, limits.owner)
 			if rec == nil {
@@ -677,9 +686,20 @@ func sortedTargets(e *spool.Entry) []string {
 
 func (q *queue) save(rec *spool.Record) {
 	if err := rec.Save(); err != nil {
+		q.mu.Lock()
+		defer q.mu.Unlock()
 		q.hasIOError = true
+		q.unsaved[rec.ID()] = true
 		q.log.Error("spool entry not updated", "id", rec.ID(), "err", err)
 	}
+}
+
+// isUnsaved reports whether the new state of the entry id was not written
+// in this process.
+func (q *queue) isUnsaved(id string) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.unsaved[id]
 }
 
 // recoverEntry is deferred by the steps of a queue run on one locked

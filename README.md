@@ -922,6 +922,10 @@ preset = "generic-json"
   the message, or a timeout after the service accepted it, repeats that
   delivery on the next run, and so may a power failure, since the state
   written after a delivery is not synced to disk before the next step.
+  A state that cannot be written at all (`spool entry not updated`, a full
+  disk) leaves the entry as it was before the attempt: the rest of that
+  call or run skips it, and the next run, in another process, finds it
+  due and tries again without the delay of a retry.
 - The spool must be on a local file system: the locks (`flock`) do not
   exclude processes over NFS. The directory must exist; the program creates
   `tmp`, `queue`, `hold`, `failed` and `locks` in it when missing, which

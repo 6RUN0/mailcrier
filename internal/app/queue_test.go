@@ -797,6 +797,28 @@ func TestQueueRunClock(t *testing.T) {
 			t.Errorf("a got %v, want the drain stopped after 10 s", got)
 		}
 	})
+	t.Run("drain-skips-entry-not-updated", func(t *testing.T) {
+		c := newSpoolCase(t)
+		c.service.reply("a", delivery.Temp, delivery.Temp)
+		inv := c.invocation(elevatedUser, nil)
+		inv.stdin = strings.NewReader("Subject: s\n\nbody\n")
+		inv.deliver = func(ctx context.Context, targets []delivery.Target, env message.Envelope, d render.Data, files []message.Attachment) []delivery.Result {
+			// A directory where Save writes the new sidecar fails it.
+			next := filepath.Join(c.dir, spool.TmpDir, c.ids(spool.QueueDir)[0]+".next.json")
+			if err := os.MkdirAll(filepath.Join(next, "keep"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			return c.service.deliver(ctx, targets, env, d, files)
+		}
+		code := inv.run(t)
+		if code != 0 || !strings.Contains(inv.output(), `level=ERROR msg="spool entry not updated"`) ||
+			!strings.Contains(inv.output(), `level=DEBUG msg="spool entry skipped, state not recorded"`) {
+			t.Errorf("Run() = %d; output:\n%s", code, inv.output())
+		}
+		if got := c.service.got("a"); len(got) != 1 {
+			t.Errorf("a got %v, want one attempt in the call", got)
+		}
+	})
 	t.Run("drain-lock-error-logged", func(t *testing.T) {
 		c := newSpoolCase(t)
 		if err := os.WriteFile(filepath.Join(c.dir, spool.LocksDir), nil, 0o600); err != nil {
