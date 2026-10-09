@@ -1514,6 +1514,27 @@ func TestListHoldOfDefaultSpool(t *testing.T) {
 			t.Errorf("--status = %d, stdout %q, want the held message counted", code, inv.stdout.String())
 		}
 	})
+	t.Run("default-hold-unreadable-warns", func(t *testing.T) {
+		if os.Geteuid() == 0 {
+			t.Skip("root ignores directory modes")
+		}
+		c := newSpoolCase(t)
+		own := t.TempDir()
+		if _, err := spool.Open(c.dir); err != nil {
+			t.Fatal(err)
+		}
+		holdDir := filepath.Join(c.dir, spool.HoldDir)
+		if err := os.Chmod(holdDir, 0o300); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(holdDir, 0o770) })
+		c.config = "[spool]\ndir = \"" + own + "\"\n\n" + twoTargets
+		code, inv := c.queueRun(serviceCaller, "--status")
+		if code != 0 || !strings.HasPrefix(inv.stdout.String(), "queued=0 held=0 ") ||
+			!strings.Contains(inv.output(), `level=WARN msg="default spool not listed" err=`) {
+			t.Errorf("--status = %d, stdout %q, want the own counts and a warning; output:\n%s", code, inv.stdout.String(), inv.output())
+		}
+	})
 	t.Run("rejected-targets-list-own-dir", func(t *testing.T) {
 		c := newSpoolCase(t)
 		own := t.TempDir()

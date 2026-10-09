@@ -958,8 +958,9 @@ func (q *queue) print(w io.Writer, text string) int {
 }
 
 // scan counts the entries of the spool and of the hold/ of otherHold and,
-// with isDetailed, describes each one; the latter with the field dir. The
-// spool may be nil: then only otherHold is scanned.
+// with isDetailed, describes each one; the latter with the field dir.
+// bytes and tmp are those of the spool alone. The spool may be nil: then
+// only otherHold is scanned.
 func (q *queue) scan(isDetailed bool) (queueCounts, []string, error) {
 	var counts queueCounts
 	var lines []string
@@ -1012,16 +1013,19 @@ func (q *queue) scan(isDetailed bool) (queueCounts, []string, error) {
 	if q.otherHold == "" {
 		return counts, lines, nil
 	}
+	// As in releaseOtherHold, a default directory this caller cannot read
+	// leaves the listing of the spool itself standing.
 	other, err := spool.OpenExisting(q.otherHold)
-	if errors.Is(err, fs.ErrNotExist) {
-		return counts, lines, nil
-	}
 	if err != nil {
-		return counts, nil, err
+		if !errors.Is(err, fs.ErrNotExist) {
+			q.log.Warn("default spool not opened", "err", err)
+		}
+		return counts, lines, nil
 	}
 	ids, err := other.List(spool.HoldDir)
 	if err != nil {
-		return counts, nil, err
+		q.log.Warn("default spool not listed", "err", err)
+		return counts, lines, nil
 	}
 	counts.held += len(ids)
 	add(other, spool.HoldDir, q.otherHold, ids)
