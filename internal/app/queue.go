@@ -166,7 +166,7 @@ func (q *queue) deliverOwn(ctx context.Context, targets []delivery.Target, msg *
 	q.isOwnTaken = true
 	results, donePanic := q.send(hook.WithLog(ctx, log), targets, env, data, msg.Attachments, msg.Raw, rec)
 	for _, r := range results {
-		logResult(log, q.redactor, r)
+		logResult(log, q.redactor, r, state == delivery.Queued)
 	}
 	if rec != nil {
 		q.finish(rec)
@@ -712,7 +712,7 @@ func (q *queue) deliverEntry(ctx context.Context, rec *spool.Record) bool {
 	defer cancel()
 	results, donePanic := q.send(ctx, due, e.Envelope, data, msg.Attachments, msg.Raw, rec)
 	for _, r := range results {
-		logResult(log, q.redactor, r)
+		logResult(log, q.redactor, r, true)
 	}
 	if !e.IsPending() {
 		log.Info("queued message finished")

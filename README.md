@@ -226,7 +226,10 @@ preset = "generic-json"
   Message-ID header, cut to 256 bytes, absent when the message has none)
   and `size` (bytes read) for the message, `target`, `class` (`temp` or
   `perm`), `status` (the HTTP status, when the service answered) and
-  `retry_after` (the delay the service asked for) for a failed target.
+  `retry_after` (the delay the service asked for) for a failed target:
+  `target failed, retry queued` (warning) when the spool retries a
+  temporary failure, `target failed` (error) for a permanent one and for
+  a temporary one nothing retries, `--probe` included.
   `hook output` (info, warning when the run failed) carries what an
   `exec` hook printed, see "Targets".
   `text truncated for target` (info) names a target that got a cut text,
@@ -1267,7 +1270,8 @@ queue run routes like any held message. The stack in these records is
 cut to 4 KiB, as syslog daemons cut a long record. A panic in any other
 goroutine ends the process with the Go runtime's own report on stderr
 and status 2; that report is not redacted. A target that failed is
-logged as `target failed`; a temporary failure is also logged as
-`message queued for target` or `message queued`, or, without a spool
-entry, as `message lost for target` when another target accepted the
-message and as `message lost` when every target failed temporarily.
+logged as `target failed`, or `target failed, retry queued` when the
+spool retries it; a temporary failure is also logged as `message queued
+for target` or `message queued`, or, without a spool entry, as `message
+lost for target` when another target accepted the message and as
+`message lost` when every target failed temporarily.

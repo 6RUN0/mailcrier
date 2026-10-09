@@ -237,13 +237,39 @@ func TestLogTextRejected(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var b strings.Builder
-			logResult(slog.New(slog.NewTextHandler(&b, nil)), &redact.Redactor{}, tc.result)
+			logResult(slog.New(slog.NewTextHandler(&b, nil)), &redact.Redactor{}, tc.result, true)
 			got := b.String()
 			if !strings.Contains(got, tc.want) {
 				t.Errorf("log %q, want %q", got, tc.want)
 			}
 			if tc.result.Status != delivery.OK && strings.Contains(got, "sent as file") {
 				t.Errorf("log of a failed retry claims the file: %q", got)
+			}
+		})
+	}
+}
+
+// TestLogResultLevel pins the level of a failed target: a warning for a
+// temporary failure the spool retries, an error for one nothing retries
+// and for a permanent failure, which someone must look at.
+func TestLogResultLevel(t *testing.T) {
+	temp := delivery.Result{TargetID: "api", Status: delivery.Temp, Err: &backend.Error{Class: backend.Temporary, Status: 503, Err: errors.New("Service Unavailable")}}
+	perm := delivery.Result{TargetID: "api", Status: delivery.Perm, Err: &backend.Error{Class: backend.Permanent, Status: 400, Err: errors.New("Bad Request")}}
+	for _, tc := range []struct {
+		name     string
+		result   delivery.Result
+		isQueued bool
+		want     string
+	}{
+		{"temp-queued", temp, true, `level=WARN msg="target failed, retry queued" target=api class=temp status=503`},
+		{"temp-not-queued", temp, false, `level=ERROR msg="target failed" target=api class=temp status=503`},
+		{"perm-queued", perm, true, `level=ERROR msg="target failed" target=api class=perm status=400`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var b strings.Builder
+			logResult(slog.New(slog.NewTextHandler(&b, nil)), &redact.Redactor{}, tc.result, tc.isQueued)
+			if got := b.String(); !strings.Contains(got, tc.want) {
+				t.Errorf("log %q, want %q", got, tc.want)
 			}
 		})
 	}

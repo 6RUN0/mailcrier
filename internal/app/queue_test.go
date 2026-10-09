@@ -534,7 +534,7 @@ func TestSpoolCallbackPanic(t *testing.T) {
 			t.Fatalf("Run() = %d, want 70; output:\n%s", code, inv.output())
 		}
 		for _, want := range []string{
-			`msg="target failed" id=` + inv.ownID() + ` target=b class=temp status=503`, `msg="message queued for target" id=` + inv.ownID() + ` target=b`,
+			`level=WARN msg="target failed, retry queued" id=` + inv.ownID() + ` target=b class=temp status=503`, `msg="message queued for target" id=` + inv.ownID() + ` target=b`,
 			`msg="panic, call ended" panic="bug in recording" stack="goroutine `,
 		} {
 			if !strings.Contains(inv.output(), want) {

@@ -632,8 +632,9 @@ func selectConfigPath(d Deps, inv sendmail.Invocation, log *slog.Logger) (string
 // logResult records the outcome of one target. For a failure class is
 // temp or perm, status the HTTP status when the service answered,
 // retry_after the delay it asked for and, after a panic, stack the stack
-// of the goroutine, redacted with redactor.
-func logResult(log *slog.Logger, redactor *redact.Redactor, r delivery.Result) {
+// of the goroutine, redacted with redactor. A temporary failure the spool
+// retries, isQueued, is a warning: nobody needs to act unless it lasts.
+func logResult(log *slog.Logger, redactor *redact.Redactor, r delivery.Result, isQueued bool) {
 	if r.IsTruncated {
 		log.Info("text truncated for target", "target", r.TargetID)
 	}
@@ -672,6 +673,10 @@ func logResult(log *slog.Logger, redactor *redact.Redactor, r delivery.Result) {
 	var panicErr *backend.PanicError
 	if errors.As(r.Err, &panicErr) {
 		attrs = append(attrs, "stack", stackText(redactor, panicErr.Stack))
+	}
+	if r.Status == delivery.Temp && isQueued {
+		log.Warn("target failed, retry queued", attrs...)
+		return
 	}
 	log.Error("target failed", attrs...)
 }
