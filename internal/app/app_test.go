@@ -44,6 +44,8 @@ type invocation struct {
 	files   fstest.MapFS
 	// configFS replaces config and files when set.
 	configFS fs.FS
+	// catchSignals is Deps.CatchSignals.
+	catchSignals func(ctx context.Context) (context.Context, context.CancelFunc)
 	// execs records the Exec calls, which all fail; replacedEnv is the
 	// environment passed to ReplaceEnv.
 	execs       []execCall
@@ -141,10 +143,11 @@ func (inv *invocation) run(t testing.TB) int {
 			name, ok := testUsers[uid]
 			return name, ok
 		},
-		SpoolDir:    inv.spoolDir,
-		deliver:     inv.deliver,
-		spoolSaved:  inv.spoolSaved,
-		entryLocked: inv.entryLocked,
+		SpoolDir:     inv.spoolDir,
+		CatchSignals: inv.catchSignals,
+		deliver:      inv.deliver,
+		spoolSaved:   inv.spoolSaved,
+		entryLocked:  inv.entryLocked,
 	}
 	ctx := inv.ctx
 	if ctx == nil {

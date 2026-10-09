@@ -426,6 +426,34 @@ func TestRunPanic(t *testing.T) {
 			t.Errorf("output lacks %q with the stack of the callback:\n%s", want, inv.output())
 		}
 	})
+	t.Run("message-held-right-after-reading", func(t *testing.T) {
+		c := newSpoolCase(t)
+		inv := c.invocation(elevatedUser, nil)
+		inv.stdin = strings.NewReader("Subject: kept\n\nbody\n")
+		inv.catchSignals = func(context.Context) (context.Context, context.CancelFunc) { panic("bug before the envelope") }
+		if code := inv.run(t); code != 70 {
+			t.Fatalf("Run() = %d, want 70; output:\n%s", code, inv.output())
+		}
+		if e := c.entry(spool.HoldDir); e.Reason != reasonInternal {
+			t.Errorf("held entry = %+v, want reason internal error", e)
+		}
+	})
+	t.Run("panic-while-handling-a-panic", func(t *testing.T) {
+		c := newSpoolCase(t)
+		inv := c.invocation(elevatedUser, nil)
+		inv.stdin = strings.NewReader("Subject: t\n\nbody\n")
+		inv.deliver = func(context.Context, []delivery.Target, message.Envelope, render.Data, []message.Attachment) []delivery.Result {
+			// A nil *backend.PanicError makes the record of the panic
+			// panic once more.
+			panic((*backend.PanicError)(nil))
+		}
+		if code := inv.run(t); code != 70 {
+			t.Fatalf("Run() = %d, want 70; output:\n%s", code, inv.output())
+		}
+		if !strings.Contains(inv.output(), `level=ERROR msg="panic while handling a panic"`) {
+			t.Errorf("output lacks the second panic:\n%s", inv.output())
+		}
+	})
 	t.Run("message-held", func(t *testing.T) {
 		c := newSpoolCase(t)
 		inv := c.invocation(elevatedUser, nil)

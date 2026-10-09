@@ -85,6 +85,10 @@ type queue struct {
 	// otherHold is another spool directory whose hold/ a queue run
 	// releases into this queue; empty for none.
 	otherHold string
+	// isOwnTaken reports that deliverOwn tried the spool for the own
+	// message: it is in queue/ or goes out without an entry, and a panic
+	// after that must not hold it once more.
+	isOwnTaken bool
 }
 
 // newQueue returns the queue of the spool settings with targets, which may
@@ -155,6 +159,7 @@ func (q *queue) deliverOwn(ctx context.Context, targets []delivery.Target, msg *
 			q.log.Debug("message queued ahead of delivery", "id", rec.ID())
 		}
 	}
+	q.isOwnTaken = true
 	results, donePanic := q.send(ctx, targets, env, data, msg.Attachments, msg.Raw, rec)
 	for _, r := range results {
 		logResult(q.log, q.redactor, r)

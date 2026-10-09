@@ -74,11 +74,10 @@ func stackText(redactor *redact.Redactor, stack []byte) string {
 // value and its stack: those of the goroutine where it happened when
 // delivery raised it again as a *backend.PanicError.
 func panicAttrs(redactor *redact.Redactor, value any) []any {
-	stack := debug.Stack()
 	if panicErr, ok := value.(*backend.PanicError); ok {
-		value, stack = panicErr.Value, panicErr.Stack
+		return []any{"panic", panicErr.Value, "stack", stackText(redactor, panicErr.Stack)}
 	}
-	return []any{"panic", value, "stack", stackText(redactor, stack)}
+	return []any{"panic", value, "stack", stackText(redactor, debug.Stack())}
 }
 
 // envConfig names another configuration file, like --config.
@@ -164,8 +163,8 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 		return slog.New(redactor.Handler(d.NewLogger(tag).Handler())).With("call", call)
 	}
 	log := newLogger(config.DefaultSyslogTag)
-	// rescue holds the message once it is read and until the spool has it
-	// or the call disposed of it; nil otherwise.
+	// rescue holds the message once it is read and until the spool step of
+	// the call took it or the call disposed of it; nil otherwise.
 	var rescue func()
 	// A panic value may quote a request URL; logging it through the
 	// redactor keeps the token out, which the runtime's own crash report
@@ -175,11 +174,18 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 		if value == nil {
 			return
 		}
+		code = exitSoftware
+		// A second panic, while this one is logged or the message held,
+		// would make the runtime print the first value unredacted.
+		defer func() {
+			if recover() != nil {
+				log.Error("panic while handling a panic")
+			}
+		}()
 		log.Error("panic, call ended", panicAttrs(redactor, value)...)
 		if rescue != nil {
 			rescue()
 		}
-		code = exitSoftware
 	}()
 	client := *d.HTTP
 	if d.ReexecErr != nil {
@@ -246,9 +252,19 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 		log.Error("message not read, giving up", "err", err)
 		return exitNoInput
 	}
+	var cfg *config.Config
+	var env message.Envelope
+	var own *queue
+	rescue = func() {
+		if own != nil && own.isOwnTaken {
+			return
+		}
+		q, openErr := newQueue(d, log, redactor, spoolSettings(d, cfg), nil)
+		_ = q.hold(msg, env, receivedAt, openErr, reasonInternal)
+	}
 	ctx, stop := catchSignals(ctx, d)
 	defer stop()
-	env := inv.Envelope(msg, bcc, func() string { return defaultSender(d) })
+	env = inv.Envelope(msg, bcc, func() string { return defaultSender(d) })
 	// Headers, body and addresses stay out of the log: they may carry
 	// anything the calling job printed. The Message-ID, when present,
 	// links the records to the message.
@@ -258,11 +274,6 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 		log.Warn(w)
 	}
 	log.Info("message received", "size", msg.Size, "recipients", len(env.Recipients))
-	var cfg *config.Config
-	rescue = func() {
-		q, openErr := newQueue(d, log, redactor, spoolSettings(d, cfg), nil)
-		_ = q.hold(msg, env, receivedAt, openErr, reasonInternal)
-	}
 	cfg, err = config.Load(d.ConfigFS, configPath)
 	if err != nil {
 		log.Error("configuration rejected, message not delivered", "err", err)
@@ -283,6 +294,7 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 		return holdExitCode(q.hold(msg, env, receivedAt, openErr, reasonConfig), exitConfig)
 	}
 	q, openErr := newQueue(d, log, redactor, spoolSettings(d, cfg), targets)
+	own = q
 	q.router, q.direct = newRouter(cfg), newDirectChats(cfg, targets, &client)
 	q.deadline, q.notices = cfg.General.Deadline.Duration, notices(cfg.Strings)
 	code = func() int {
@@ -299,9 +311,6 @@ func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int)
 		data.Hostname, data.ReceivedAt, data.Strings = d.Hostname, receivedAt, q.notices
 		deliverCtx, cancel := context.WithTimeout(ctx, q.deadline)
 		defer cancel()
-		// deliverOwn writes the entry before anything else, and a panic
-		// after that leaves it in queue/.
-		rescue = nil
 		return q.deliverOwn(deliverCtx, q.selectTargets(names), msg, env, data, openErr)
 	}()
 	rescue = nil
