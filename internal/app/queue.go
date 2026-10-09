@@ -208,7 +208,7 @@ func (q *queue) apply(e *spool.Entry, r delivery.Result) {
 		errText = q.redactor.String(r.Err.Error())
 	}
 	switch r.Status {
-	case delivery.OK, delivery.Suppressed:
+	case delivery.OK:
 		e.MarkDone(r.TargetID)
 	case delivery.Temp:
 		e.MarkRetry(r.TargetID, q.d.Now(), retryAfter(r.Err), delivery.Temp.String(), errText)

@@ -541,9 +541,6 @@ func logResult(log *slog.Logger, r delivery.Result) {
 	case r.Status == delivery.OK:
 		log.Debug("target delivered", "target", r.TargetID)
 		return
-	case r.Status == delivery.Suppressed:
-		log.Info("target suppressed", "target", r.TargetID)
-		return
 	}
 	attrs := []any{"target", r.TargetID, "class", r.Status}
 	var deliveryErr *backend.Error

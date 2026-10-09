@@ -119,8 +119,6 @@ const (
 	Temp
 	// Perm means the target rejected the payload for good.
 	Perm
-	// Suppressed means a rule kept the payload from the target on purpose.
-	Suppressed
 )
 
 // String returns the lowercase name used in log fields.
@@ -132,8 +130,6 @@ func (s Status) String() string {
 		return "temp"
 	case Perm:
 		return "perm"
-	case Suppressed:
-		return "suppressed"
 	default:
 		return "unknown"
 	}
@@ -573,17 +569,16 @@ const (
 //   - a temporary failure without an entry exits 73 when the entry could
 //     not be created and 74 when it could not be written: the message is
 //     lost for that target, which the caller must learn;
-//   - one accepted delivery, or suppression for every target, exits 0: a
-//     non-zero status makes cron mail the failure report through this
-//     very program, which multiplies the noise without delivering
-//     anything;
+//   - one accepted delivery exits 0: a non-zero status makes cron mail
+//     the failure report through this very program, which multiplies the
+//     noise without delivering anything;
 //   - a permanent failure exits 69;
 //   - temporary failures kept in the spool exit 0, as a classic MTA does
 //     for a queued message; 75 would make cron and smartd report a
 //     failure;
 //   - temporary failures without a spool exit 69 like permanent ones.
 func ExitCode(results []Result, queue Queue) int {
-	var ok, temp, perm, suppressed int
+	var ok, temp, perm int
 	for _, r := range results {
 		switch r.Status {
 		case OK:
@@ -592,8 +587,6 @@ func ExitCode(results []Result, queue Queue) int {
 			temp++
 		case Perm:
 			perm++
-		case Suppressed:
-			suppressed++
 		}
 	}
 	switch {
@@ -601,7 +594,7 @@ func ExitCode(results []Result, queue Queue) int {
 		return exitCantCreate
 	case temp > 0 && queue == QueueNotWritten:
 		return exitIOErr
-	case ok > 0, suppressed > 0 && suppressed == len(results):
+	case ok > 0:
 		return exitOK
 	case perm > 0:
 		return exitUnavailable

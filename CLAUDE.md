@@ -263,8 +263,8 @@ with "build constraints exclude all Go files".
   mutable state with another. `DeliverEach` also hands each result to a
   callback as its target finishes (the spool marks `Done` there).
   `ExitCode(results, queue)` is the exit status matrix, rules in order:
-  Temp without a spool entry 73/74, any OK or all suppressed 0, any Perm
-  69, Temp queued 0, else 69.
+  Temp without a spool entry 73/74, any OK 0, any Perm 69, Temp queued 0,
+  else 69.
 - `internal/spool` (imports only `message`): areas `tmp`, `queue`, `hold`,
   `failed`, `locks` under the spool directory; an entry is `<id>.eml` (the
   `message.Message.Raw` bytes, read back with `IgnoreDots`) and `<id>.json`

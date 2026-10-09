@@ -93,12 +93,10 @@ func TestRunExitStatusMatrix(t *testing.T) {
 		wantLog  []string
 	}{
 		{"all-delivered", nil, 0, nil},
-		{"delivered-and-suppressed", map[string]delivery.Status{"b": delivery.Suppressed}, 0, []string{`level=INFO msg="target suppressed" target=b`}},
 		{"delivered-and-rejected", map[string]delivery.Status{"b": delivery.Perm}, 0, []string{`level=ERROR msg="target failed" target=b class=perm`}},
 		{"all-rejected", map[string]delivery.Status{"a": delivery.Perm, "b": delivery.Perm}, 69, []string{`level=ERROR msg="message not delivered"`}},
 		{"all-temp-without-spool", map[string]delivery.Status{"a": delivery.Temp, "b": delivery.Temp}, 69, []string{`level=ERROR msg="message lost"`}},
 		{"delivered-and-temp-without-spool", map[string]delivery.Status{"a": delivery.Temp}, 0, []string{`level=ERROR msg="message lost for target" target=a`}},
-		{"all-suppressed", map[string]delivery.Status{"a": delivery.Suppressed, "b": delivery.Suppressed}, 0, []string{`level=INFO msg="target suppressed" target=a`}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
