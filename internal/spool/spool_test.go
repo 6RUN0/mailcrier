@@ -310,8 +310,8 @@ func TestLockOrphanMessage(t *testing.T) {
 	if err := os.Remove(filepath.Join(sp.dir, QueueDir, e.ID+".json")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := sp.Lock(QueueDir, e.ID); !errors.Is(err, ErrGone) {
-		t.Errorf("Lock() error = %v, want ErrGone", err)
+	if _, err := sp.Lock(QueueDir, e.ID); !errors.Is(err, ErrOrphanRemoved) || !errors.Is(err, ErrGone) {
+		t.Errorf("Lock() error = %v, want ErrOrphanRemoved", err)
 	}
 	if got := names(t, sp, QueueDir); len(got) != 0 {
 		t.Errorf("queue/ = %v, want empty", got)

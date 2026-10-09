@@ -705,6 +705,19 @@ func TestQueueRun(t *testing.T) {
 			t.Fatalf("-q = %d, want 74; output:\n%s", code, inv.output())
 		}
 	})
+	t.Run("message-without-sidecar-removed-and-logged", func(t *testing.T) {
+		c := newSpoolCase(t)
+		c.service.reply("a", delivery.Temp)
+		c.send("s", elevatedUser)
+		id := c.ids(spool.QueueDir)[0]
+		if err := os.Remove(filepath.Join(c.dir, spool.QueueDir, id+".json")); err != nil {
+			t.Fatal(err)
+		}
+		code, inv := c.queueRun(serviceCaller)
+		if code != 0 || !strings.Contains(inv.output(), `level=INFO msg="message without sidecar removed" id=`+id+` area=queue`) || len(c.ids(spool.QueueDir)) != 0 {
+			t.Errorf("-q = %d, queue %v, want the file removed and logged; output:\n%s", code, c.ids(spool.QueueDir), inv.output())
+		}
+	})
 	t.Run("rejected-configuration-without-spool-exits-78", func(t *testing.T) {
 		c := newSpoolCase(t)
 		c.dir = filepath.Join(c.dir, "missing")

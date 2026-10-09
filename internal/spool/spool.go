@@ -60,6 +60,10 @@ var (
 	ErrBusy = errors.New("locked by another process")
 	// ErrGone means the entry was finished or moved meanwhile.
 	ErrGone = errors.New("entry gone")
+	// ErrOrphanRemoved wraps ErrGone when Lock found the message file
+	// without its sidecar, the trace of an interrupted Remove, and
+	// deleted it.
+	ErrOrphanRemoved = fmt.Errorf("%w: message without sidecar removed", ErrGone)
 )
 
 // afterMoveStep and afterCreateStep, when set by a test, run after each
@@ -448,9 +452,12 @@ func (s *Spool) lockMessage(area, id string) (*Record, []byte, error) {
 		// message stays: Create and Move put the sidecar in place first
 		// and take the old one last. A message file without a sidecar is
 		// what a run left that died in the middle of Remove.
-		_ = os.Remove(path)
+		err := ErrGone
+		if os.Remove(path) == nil {
+			err = ErrOrphanRemoved
+		}
 		_ = rec.Close()
-		return nil, nil, ErrGone
+		return nil, nil, err
 	}
 	if err != nil {
 		_ = rec.Close()

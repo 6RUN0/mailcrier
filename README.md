@@ -864,7 +864,10 @@ preset = "generic-json"
   `message failed`, and after `failed_ttl` there it is deleted. Files
   older than one hour that a killed process left behind, in `tmp/` unless
   a live process still holds them and sidecars without their message
-  elsewhere, are removed.
+  elsewhere, are removed. A message file without its sidecar, which
+  `mailq` lists as `unreadable`, is the trace of a removal cut short once
+  no target waited for the message: the next run that comes to it deletes it, logged
+  as `message without sidecar removed` with its id and area.
 - An entry whose sidecar cannot be read stays where it is with the
   warning `spool entry unreadable, left alone` on every queue run, which
   then exits 74. A corrupt sidecar has lost the dates of the entry, so

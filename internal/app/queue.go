@@ -405,6 +405,8 @@ func (q *queue) lock(area, id string, owner int) *spool.Record {
 // entry that cannot be read at all, it makes -q exit 74.
 func (q *queue) lockFailed(sp *spool.Spool, area, id string, err error) {
 	switch {
+	case errors.Is(err, spool.ErrOrphanRemoved):
+		q.log.Info("message without sidecar removed", "id", id, "area", area)
 	case errors.Is(err, spool.ErrBusy), errors.Is(err, spool.ErrGone):
 	case errors.Is(err, spool.ErrUnknownVersion):
 		q.log.Warn("spool entry of another version left alone", "id", id, "area", area, "err", err)
@@ -754,6 +756,9 @@ func (q *queue) clean(sp *spool.Spool) {
 			if rec, err = sp.LockCorrupt(spool.FailedDir, id); err == nil {
 				rec.Entry.FailedAt = rec.Entry.CreatedAt
 			}
+		}
+		if errors.Is(err, spool.ErrOrphanRemoved) {
+			q.log.Info("message without sidecar removed", "id", id, "area", spool.FailedDir)
 		}
 		if err != nil {
 			continue
