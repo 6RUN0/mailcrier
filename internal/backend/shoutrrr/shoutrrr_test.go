@@ -109,6 +109,42 @@ func TestSendTransportErrorIsTemporary(t *testing.T) {
 	}
 }
 
+// roundTripFunc is an http.RoundTripper made of a function.
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+// TestSendRecoversPanic pins that a panic in the goroutine of the library,
+// which no recover of delivery reaches, is a permanent failure of the
+// target instead of the end of the process, and that it frees the sender
+// for the next send.
+func TestSendRecoversPanic(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+	var requests atomic.Int32
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		if requests.Add(1) == 1 {
+			panic("transport broken")
+		}
+		return http.DefaultTransport.RoundTrip(req)
+	})}
+	sender, err := New(Options{URL: genericURL(server, "/hook"), Client: client})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = sender.Send(context.Background(), backend.Payload{Text: "t"})
+	var deliveryErr *backend.Error
+	if !errors.As(err, &deliveryErr) || deliveryErr.Class != backend.Permanent || !strings.Contains(err.Error(), "panic: transport broken") {
+		t.Fatalf("Send() error = %v, want permanent with the panic value", err)
+	}
+	err = sender.Send(context.Background(), backend.Payload{Text: "t"})
+	if !errors.As(err, &deliveryErr) || deliveryErr.Status != http.StatusNotFound {
+		t.Errorf("second Send() error = %v, want the 404 of the receiver", err)
+	}
+}
+
 // TestSendStopsAtDeadline pins that the deadline of the call ends a send
 // that hangs, as a temporary failure.
 func TestSendStopsAtDeadline(t *testing.T) {

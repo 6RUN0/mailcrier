@@ -39,6 +39,26 @@ func TestRunDeliversToShoutrrrTarget(t *testing.T) {
 	}
 }
 
+// TestRunKeepsTokenOutOfShoutrrrPanic runs a shoutrrr target whose
+// transport panics with the URL in the value: the panic is a failure of
+// the target, and the token reaches neither syslog nor stderr.
+func TestRunKeepsTokenOutOfShoutrrrPanic(t *testing.T) {
+	t.Run("T-TPL-12/shoutrrr-panic", func(t *testing.T) {
+		config := "[target.bus]\ntype = \"shoutrrr\"\nurl = \"generic+https://hooks.example.org/hook/" + secretToken + "\"\n"
+		inv := &invocation{config: config, client: &http.Client{Transport: panickingTransport{}}, stdin: strings.NewReader("Subject: t\n\nb\n")}
+		if code := inv.run(t); code != 69 {
+			t.Errorf("Run() = %d, want 69", code)
+		}
+		output := inv.output()
+		if !strings.Contains(output, "panic: unexpected request") {
+			t.Errorf("output lacks the panic:\n%s", output)
+		}
+		if strings.Contains(output, secretToken) {
+			t.Errorf("output contains the token:\n%s", output)
+		}
+	})
+}
+
 // shoutrrrTargetConfig is a shoutrrr target for tests that cover every
 // target type; empty in a build without the library.
 const shoutrrrTargetConfig = "[target.bus]\ntype = \"shoutrrr\"\nurl = \"generic://hooks.example.org/in\"\n"
