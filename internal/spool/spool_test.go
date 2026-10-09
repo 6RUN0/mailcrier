@@ -1016,3 +1016,19 @@ func TestCheckWritableNotADirectory(t *testing.T) {
 		t.Errorf("CheckWritable() error = %v, want %s not a directory", err, locks)
 	}
 }
+
+// TestCheckWritableSymlinkedArea pins that an area moved to another file
+// system behind a symbolic link is writable like a directory.
+func TestCheckWritableSymlinkedArea(t *testing.T) {
+	sp := openSpool(t)
+	queue := filepath.Join(sp.dir, QueueDir)
+	if err := os.Remove(queue); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(t.TempDir(), queue); err != nil {
+		t.Fatal(err)
+	}
+	if err := sp.CheckWritable(); err != nil {
+		t.Errorf("CheckWritable() error = %v, want nil", err)
+	}
+}

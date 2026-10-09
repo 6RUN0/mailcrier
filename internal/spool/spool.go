@@ -150,7 +150,9 @@ func (s *Spool) CheckWritable() error {
 	}
 	for _, area := range []string{TmpDir, QueueDir, HoldDir, FailedDir, LocksDir} {
 		path := s.path(area, "")
-		info, err := os.Lstat(path)
+		// An area may be a symbolic link to a directory on another file
+		// system, which Open and the entries accept: Stat follows it.
+		info, err := os.Stat(path)
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
 			path = s.dir
