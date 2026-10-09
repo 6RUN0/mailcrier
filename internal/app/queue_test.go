@@ -293,6 +293,20 @@ func TestSpoolInternalError(t *testing.T) {
 			t.Errorf("queue/ = %v, want empty", ids)
 		}
 	})
+	t.Run("expiry-keeps-internal-reason", func(t *testing.T) {
+		c := newSpoolCase(t)
+		c.service.reply("a", delivery.Perm)
+		c.service.reply("b", delivery.Temp)
+		c.service.panicking["a"] = true
+		c.send("bug", elevatedUser)
+		c.clock.advance(7*24*time.Hour + time.Second)
+		if code, inv := c.queueRun(rootCaller); code != 0 || !strings.Contains(inv.output(), `msg="message failed" id=`) {
+			t.Fatalf("-q = %d; output:\n%s", code, inv.output())
+		}
+		if e := c.entry(spool.FailedDir); e.Reason != reasonInternal {
+			t.Errorf("failed entry reason = %q, want %q", e.Reason, reasonInternal)
+		}
+	})
 	t.Run("queue-run-waits-for-pending-target", func(t *testing.T) {
 		c := newSpoolCase(t)
 		c.service.reply("a", delivery.Temp, delivery.Perm)

@@ -656,7 +656,13 @@ func (q *queue) deliverEntry(ctx context.Context, rec *spool.Record) bool {
 	e, now := rec.Entry, q.d.Now()
 	log := q.log.With("id", e.ID)
 	if spool.Expired(e, now, q.settings.QueueTTL.Duration) {
-		q.fail(rec, reasonExpired)
+		// A target that failed by a panic names the cause better than the
+		// age of the entry.
+		reason := reasonExpired
+		if hasInternalFailure(e) {
+			reason = reasonInternal
+		}
+		q.fail(rec, reason)
 		return false
 	}
 	if q.targets == nil {
@@ -771,8 +777,13 @@ func (q *queue) fail(rec *spool.Record, reason string) bool {
 	rec.Entry.Reason, rec.Entry.FailedAt = reason, q.d.Now()
 	if err := rec.Move(spool.FailedDir); err != nil {
 		q.hasIOError = true
-		q.log.Error("spool entry not moved to failed", "id", rec.ID(), "err", err)
-		return false
+		if rec.Area != spool.FailedDir {
+			q.log.Error("spool entry not moved to failed", "id", rec.ID(), "err", err)
+			return false
+		}
+		// Both files are in failed/; syncing a directory or removing the
+		// old sidecar, which RemoveStale deletes later, failed.
+		q.log.Warn("spool entry moved to failed, not synced", "id", rec.ID(), "err", err)
 	}
 	q.log.Error("message failed", "id", rec.ID(), "reason", reason)
 	return true

@@ -1222,10 +1222,10 @@ The targets are sent to at the same time. A panic while rendering or
 sending for one target (a bug) fails that target permanently, logged
 redacted as `target failed` with the field `stack`, and the others still
 deliver. Its spool entry is not removed: once no target of the message
-is pending it moves to `failed/` with the reason `internal error`
-(`message failed`), where `mailq` shows the target with
-`internal="panic: ..."` until `failed_ttl` deletes it; a retry would
-repeat the bug. A panic on one entry of a queue run is logged as `panic
+is pending, or `queue_ttl` expires first, it moves to `failed/` with the
+reason `internal error` (`message failed`), where `mailq` shows the
+target with `internal="panic: ..."` until `failed_ttl` deletes it; a
+retry would repeat the bug. A panic on one entry of a queue run is logged as `panic
 in queue run` with the id and the stack, moves that entry to `failed/`
 the same way, and the run goes on with the next one; `-q` then exits 70.
 A panic while the result of one target is recorded in the spool loses no
