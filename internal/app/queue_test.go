@@ -760,6 +760,48 @@ func TestListQueue(t *testing.T) {
 	})
 }
 
+// TestQueueRemoveFailureSaves pins the fallback of the last result: when
+// the removal of the finished entry fails, the result is saved in a new
+// sidecar, and the removal that finish tries again is logged and makes -q
+// exit 74. A non-empty directory in place of the message file lets the
+// sidecar go and fails the unlink of the message.
+func TestQueueRemoveFailureSaves(t *testing.T) {
+	c := newSpoolCase(t)
+	c.service.reply("a", delivery.Temp)
+	if code, _ := c.send("s", elevatedUser); code != 0 {
+		t.Fatalf("Run() = %d", code)
+	}
+	id := c.ids(spool.QueueDir)[0]
+	c.clock.advance(time.Hour)
+	inv := c.invocation(serviceCaller, []string{"-q"})
+	inv.deliver = func(ctx context.Context, targets []delivery.Target, env message.Envelope, d render.Data, files []message.Attachment) []delivery.Result {
+		eml := filepath.Join(c.dir, spool.QueueDir, id+".eml")
+		if err := os.Remove(eml); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Join(eml, "keep"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		return c.service.deliver(ctx, targets, env, d, files)
+	}
+	// The sidecar is read in the hook: finish removes it again afterwards.
+	var saved []*spool.Entry
+	inv.spoolSaved = func(e *spool.Entry) {
+		if _, err := os.Stat(filepath.Join(c.dir, spool.QueueDir, id+".json")); err != nil {
+			t.Errorf("sidecar after the failed removal: %v", err)
+		}
+		saved = append(saved, e)
+	}
+	code := inv.run(t)
+	if code != 74 || !strings.Contains(inv.output(), `level=ERROR msg="spool entry not removed" id=`+id) ||
+		strings.Contains(inv.output(), "spool entry not updated") {
+		t.Errorf("-q = %d, want 74 and the removal logged; output:\n%s", code, inv.output())
+	}
+	if len(saved) != 1 || saved[0].IsPending() {
+		t.Errorf("saved %d sidecars, want one with the last result recorded", len(saved))
+	}
+}
+
 // TestQueueErrorRedacted pins that the error stored in the sidecar and
 // shown by mailq passes through the redactor.
 func TestQueueErrorRedacted(t *testing.T) {
