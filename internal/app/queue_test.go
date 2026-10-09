@@ -769,6 +769,16 @@ func TestQueueRunClock(t *testing.T) {
 			t.Errorf("a got %v, want the drain stopped after 10 s", got)
 		}
 	})
+	t.Run("drain-lock-error-logged", func(t *testing.T) {
+		c := newSpoolCase(t)
+		if err := os.WriteFile(filepath.Join(c.dir, spool.LocksDir), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		code, inv := c.send("s", elevatedUser)
+		if code != 0 || !strings.Contains(inv.output(), `level=WARN msg="queue run lock not taken" err=`) {
+			t.Errorf("Run() = %d, want 0 and the lock error logged; output:\n%s", code, inv.output())
+		}
+	})
 }
 
 // entry2 reads the sidecar of the i-th entry in area.

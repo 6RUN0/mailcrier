@@ -753,6 +753,11 @@ func (q *queue) drainOwn(ctx context.Context) {
 	}
 	lock, err := q.sp.LockRun(q.d.Credentials.UID)
 	if err != nil {
+		// A run under way is the normal case; any other error, such as
+		// locks/ not being a writable directory, stops every drain.
+		if !errors.Is(err, spool.ErrBusy) {
+			q.log.Warn("queue run lock not taken", "err", err)
+		}
 		return
 	}
 	defer func() { _ = lock.Close() }()
