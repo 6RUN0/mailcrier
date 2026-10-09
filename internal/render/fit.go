@@ -42,16 +42,16 @@ var strictFormats = map[text.Format]bool{
 //     the built-in templates replace by the NoSubject notice.
 //
 // Each step is a binary search over the number of attachments or
-// characters kept: at most about log2 of that number renderings. A search
-// over the body keeps at most limit plus text.WordWindow plus one
-// characters when the rendering of that many is over the limit, which it
-// is unless the measure counts characters of the body as nothing, and the
-// step over attachments is left out when that many characters with no
-// attachment are: a body of megabytes costs renderings of about the
-// limit after the whole one. The body is cut before escaping, so a cut
-// never splits an entity, and the rendering is measured after escaping,
-// because escaping grows the text by a factor that depends on the
-// characters. The search relies on the template growing with the body,
+// characters kept: at most about log2 of that number renderings. When
+// the rendering of the first limit + text.WordWindow + 1 characters of the
+// body is over the limit, the search over the body goes no further, and
+// for a built-in template the step over attachments is left out. A body
+// of megabytes then costs one whole rendering, one more when the subject
+// is cut, and renderings of about the limit.
+//
+// The body is cut before escaping, so a cut never splits an entity, and
+// the rendering is measured after escaping, because escaping grows the
+// text by a factor that depends on the characters. The search relies on the template growing with the body,
 // the subject and the attachments, which holds for every template that
 // writes them once or more.
 //
@@ -81,7 +81,7 @@ func FitLines(t *Template, d Data, limit, maxLines int, measure func(string) int
 	if isCut {
 		d.Body = withNotice(body, d.Strings.Truncated)
 	}
-	if full, fits, err := renderWhole(t, d, limit, measure); err != nil || fits {
+	if full, fits, err := measureWhole(t, d, limit, measure); err != nil || fits {
 		return full, isCut, err
 	}
 	render := func() (string, bool, error) {
@@ -133,10 +133,12 @@ func FitLines(t *Template, d Data, limit, maxLines int, measure func(string) int
 	// isBodyOver reports that the first bound characters of the body,
 	// with no attachment, are over the limit already: then no number of
 	// attachments fits the whole body, and the search over them is spared
-	// its renderings of the whole body.
+	// its renderings of the whole body. Only for a built-in template: one
+	// from the configuration may write the body unescaped, and a prefix
+	// cut inside a tag can measure more than the whole body.
 	isBodyOver := func() bool {
 		whole := d.Body
-		if bound <= 0 || utf8.RuneCountInString(whole) <= bound {
+		if t.user != nil || bound <= 0 || utf8.RuneCountInString(whole) <= bound {
 			return false
 		}
 		d.Body = text.TruncateRunes(whole, bound)
@@ -191,26 +193,26 @@ func FitLines(t *Template, d Data, limit, maxLines int, measure func(string) int
 	return longestPrefix(shortest, limit, measure), true, nil
 }
 
-// Whole is the first step of FitLines alone, one rendering: the text of
-// d with the body cut after line maxLines only, and whether FitLines
-// cuts anything, the truncated it returns. When that rendering is over
-// limit, out is empty.
-func Whole(t *Template, d Data, limit, maxLines int, measure func(string) int) (out string, truncated bool, err error) {
+// ExecuteWhole renders d with t once, the body cut after line maxLines
+// only, and reports truncated when that cut was made or the rendering is
+// over limit: when FitLines cuts the text or, for a strict format, gives
+// ErrLimitTooSmall. out is empty when the rendering is over limit.
+func ExecuteWhole(t *Template, d Data, limit, maxLines int, measure func(string) int) (out string, truncated bool, err error) {
 	body, isCut := firstLines(d.Body, maxLines)
 	if isCut {
 		d.Body = withNotice(body, d.Strings.Truncated)
 	}
-	if full, fits, err := renderWhole(t, d, limit, measure); err != nil || fits {
+	if full, fits, err := measureWhole(t, d, limit, measure); err != nil || fits {
 		return full, isCut, err
 	}
 	return "", true, nil
 }
 
-// renderWhole renders d uncut and reports whether it fits limit, which
+// measureWhole renders d uncut and reports whether it fits limit, which
 // any rendering does without a limit. A template from the configuration
 // whose output exceeds its size limit does not fit, with no error, as
 // long as there is a limit.
-func renderWhole(t *Template, d Data, limit int, measure func(string) int) (string, bool, error) {
+func measureWhole(t *Template, d Data, limit int, measure func(string) int) (string, bool, error) {
 	full, err := t.Execute(d)
 	if limit > 0 && errors.Is(err, errOutputLimit) {
 		return "", false, nil

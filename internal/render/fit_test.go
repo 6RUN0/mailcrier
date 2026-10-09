@@ -558,9 +558,9 @@ func benchBody(size int) string {
 	return strings.Repeat(line, size/len(line)+1)[:size]
 }
 
-// TestWhole pins that Whole tells what FitLines tells of a cut, with one
-// rendering, and gives the same text when nothing is cut.
-func TestWhole(t *testing.T) {
+// TestExecuteWhole pins that ExecuteWhole tells what FitLines tells of a
+// cut, with one rendering, and gives the same text when nothing is cut.
+func TestExecuteWhole(t *testing.T) {
 	bodies := []string{"b\n", "one\ntwo\nthree\nfour\n", strings.Repeat("line with & < > . _ * and ёжик 😀\n", 50)}
 	for _, format := range builtinFormats {
 		tmpl, err := Builtin(format)
@@ -577,9 +577,9 @@ func TestWhole(t *testing.T) {
 						} else if err != nil {
 							t.Fatal(err)
 						}
-						whole, wholeTruncated, err := Whole(tmpl, fitData(body), limit, maxLines, m.measure)
+						whole, wholeTruncated, err := ExecuteWhole(tmpl, fitData(body), limit, maxLines, m.measure)
 						if err != nil || wholeTruncated != truncated || (!truncated && whole != out) {
-							t.Errorf("%s/%s/%d/%d body of %d bytes: Whole truncated = %v, err = %v; FitLines truncated = %v", format, m.name, limit, maxLines, len(body), wholeTruncated, err, truncated)
+							t.Errorf("%s/%s/%d/%d body of %d bytes: ExecuteWhole truncated = %v, err = %v; FitLines truncated = %v", format, m.name, limit, maxLines, len(body), wholeTruncated, err, truncated)
 						}
 					}
 				}
@@ -667,5 +667,48 @@ func TestFitRendersTheWholeBodyOnce(t *testing.T) {
 	}
 	if long != 1 {
 		t.Errorf("%d renderings over 64 KiB measured, want the whole one only", long)
+	}
+}
+
+// TestFitListsAttachmentsBesideBodyMeasuredAsNothing pins the check by
+// rendering before the step over attachments is left out: a body far
+// longer than the limit that the measure counts as nothing still goes
+// whole, with the attachments that fit beside it.
+func TestFitListsAttachmentsBesideBodyMeasuredAsNothing(t *testing.T) {
+	tmpl, err := Builtin(text.FormatTelegramMarkdownV2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := strings.Repeat("<x>", 3000)
+	checkAttachmentsBesideBody(t, tmpl, body)
+}
+
+// TestFitListsAttachmentsBesideUnescapedBody pins the step over
+// attachments for a template from the configuration that writes the body
+// unescaped: a prefix of the body cut inside a tag measures more than the
+// whole body, which still goes whole, with the attachments that fit.
+func TestFitListsAttachmentsBesideUnescapedBody(t *testing.T) {
+	tmpl, err := Parse("unescaped", "{{ range .Attachments }}{{ .Name }} {{ end }}{{ .MoreAttachments }}\n{{ .Body }}", text.FormatTelegramHTML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkAttachmentsBesideBody(t, tmpl, "<b"+strings.Repeat("y", 5000)+">short visible text")
+}
+
+// checkAttachmentsBesideBody fits body with three attachments of long
+// names into 300 characters of Telegram HTML, where the whole body fits
+// with one of them, and wants the whole body and that one.
+func checkAttachmentsBesideBody(t *testing.T, tmpl *Template, body string) {
+	t.Helper()
+	d := fitData(body)
+	for i := range 3 {
+		d.Attachments = append(d.Attachments, Attachment{Name: strings.Repeat("n", 120) + fmt.Sprint(i), ContentType: "text/plain", Size: 1000})
+	}
+	out, truncated, err := Fit(tmpl, d, 300, text.MeasureTelegramHTML)
+	if err != nil || !truncated {
+		t.Fatalf("truncated = %v, err = %v", truncated, err)
+	}
+	if !strings.Contains(out, body) || !strings.Contains(out, strings.Repeat("n", 120)+"0") || strings.Contains(out, strings.Repeat("n", 120)+"2") {
+		t.Errorf("want the whole body and the first attachment only, got %d bytes ending %q", len(out), out[max(0, len(out)-200):])
 	}
 }
