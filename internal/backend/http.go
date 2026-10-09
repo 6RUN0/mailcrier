@@ -140,6 +140,11 @@ func StatusCause(status int, header http.Header) error {
 	if len(host) > maxLocationHost {
 		host = strings.ToValidUTF8(host[:maxLocationHost], "") + "..."
 	}
+	if location.Scheme == "" {
+		// A Location such as //cdn.example.org/x keeps the scheme of the
+		// request, which the header does not tell.
+		return fmt.Errorf("redirect to %s not followed", host)
+	}
 	return fmt.Errorf("redirect to %s://%s not followed", location.Scheme, host)
 }
 

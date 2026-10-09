@@ -12,6 +12,8 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/nicholas-fedor/shoutrrr/pkg/router"
 	"github.com/nicholas-fedor/shoutrrr/pkg/types"
@@ -80,9 +82,9 @@ func New(opts Options) (*Sender, error) {
 	return &Sender{service: service, recorder: recorder, busy: make(chan struct{}, 1)}, nil
 }
 
-// minURLPart is the shortest part of the URL that withoutURLParts masks:
-// a shorter one is a word such as "id", whose masking would garble the
-// text.
+// minURLPart is the shortest host label, path segment or query value
+// that withoutURLParts masks: a shorter one is a word such as "id". User
+// name and password are masked at any length.
 const minURLPart = 3
 
 // withoutURLParts returns the text of an error of the library with the
@@ -91,21 +93,29 @@ const minURLPart = 3
 // The library quotes the token it rejects whatever its length, several
 // services keep it in the host (pushover://shoutrrr:token@userKey/), and
 // the redactor of the log masks a short part only within the whole URL.
-// The scheme stays, and so does a host that only repeats the name of the
-// service (telegram://token@telegram): they name the service.
+// A part is masked only as a whole word, so that the label "org" leaves
+// "organization" alone. The scheme stays, and so does a host or label
+// that only repeats the name of the service (telegram://token@telegram):
+// they name the service.
 func withoutURLParts(err error, raw string) string {
-	text := backend.WithoutURL(err).Error()
+	text := strings.ReplaceAll(backend.WithoutURL(err).Error(), raw, "***")
 	parsed, parseErr := url.Parse(raw)
 	if parseErr != nil {
 		return "invalid URL"
 	}
-	parts := []string{raw, parsed.Host, parsed.Hostname()}
-	parts = append(parts, strings.Split(parsed.Hostname(), ".")...)
+	service, _, _ := strings.Cut(strings.ToLower(parsed.Scheme), "+")
+	var parts []string
+	for _, part := range append([]string{parsed.Host, parsed.Hostname()}, strings.Split(parsed.Hostname(), ".")...) {
+		if strings.ToLower(part) != service {
+			parts = append(parts, part)
+		}
+	}
 	parts = append(parts, strings.Split(parsed.Path, "/")...)
 	parts = append(parts, strings.Split(parsed.EscapedPath(), "/")...)
 	for _, values := range parsed.Query() {
 		parts = append(parts, values...)
 	}
+	parts = slices.DeleteFunc(parts, func(part string) bool { return len(part) < minURLPart })
 	if user := parsed.User; user != nil {
 		parts = append(parts, user.String(), user.Username())
 		if password, ok := user.Password(); ok {
@@ -115,13 +125,40 @@ func withoutURLParts(err error, raw string) string {
 	// The longest first, so that a part inside another one does not leave
 	// the rest of it.
 	slices.SortFunc(parts, func(a, b string) int { return len(b) - len(a) })
-	service, _, _ := strings.Cut(strings.ToLower(parsed.Scheme), "+")
 	for _, part := range parts {
-		if len(part) >= minURLPart && strings.ToLower(part) != service {
-			text = strings.ReplaceAll(text, part, "***")
+		if part != "" {
+			text = maskWord(text, part)
 		}
 	}
 	return text
+}
+
+// maskWord replaces every occurrence of word in text that no letter or
+// digit adjoins with ***.
+func maskWord(text, word string) string {
+	var out strings.Builder
+	for {
+		i := strings.Index(text, word)
+		if i < 0 {
+			out.WriteString(text)
+			return out.String()
+		}
+		before, _ := utf8.DecodeLastRuneInString(text[:i])
+		after, _ := utf8.DecodeRuneInString(text[i+len(word):])
+		out.WriteString(text[:i])
+		if isWordRune(before) || isWordRune(after) {
+			out.WriteString(word)
+		} else {
+			out.WriteString("***")
+		}
+		text = text[i+len(word):]
+	}
+}
+
+// isWordRune reports a letter or a digit; utf8.RuneError, the rune
+// beyond either end of a text, is neither.
+func isWordRune(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsDigit(r)
 }
 
 // Caps reports neither a text limit nor files: each service cuts or

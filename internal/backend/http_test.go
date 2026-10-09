@@ -139,3 +139,25 @@ func TestDoTransportErrorWithoutURL(t *testing.T) {
 		t.Errorf("error text contains the URL: %v", err)
 	}
 }
+
+// TestStatusCause pins the description of a redirect: the scheme and
+// host of its Location alone, the host alone when the Location has no
+// scheme, and no path in either.
+func TestStatusCause(t *testing.T) {
+	for _, tc := range []struct {
+		location, want string
+	}{
+		{"https://ntfy.example.org/alerts?x=1", "redirect to https://ntfy.example.org not followed"},
+		{"//cdn.example.org/alerts", "redirect to cdn.example.org not followed"},
+		{"/alerts/", "redirect to another path not followed"},
+		{"", "redirect not followed"},
+	} {
+		header := http.Header{}
+		if tc.location != "" {
+			header.Set("Location", tc.location)
+		}
+		if got := StatusCause(http.StatusFound, header).Error(); got != tc.want {
+			t.Errorf("StatusCause(302, Location %q) = %q, want %q", tc.location, got, tc.want)
+		}
+	}
+}

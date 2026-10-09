@@ -178,10 +178,10 @@ func TestNewRejectsURL(t *testing.T) {
 	for url, want := range map[string]string{
 		"nosuch://SECRET-TOKEN@example.org":     `unknown shoutrrr service "nosuch"`,
 		"telegram://SECRET-TOKEN@telegram?x=%%": `URL rejected by shoutrrr service "telegram": telegram: invalid telegram token: ***:`,
-		"telegram://abc@telegram":               `URL rejected by shoutrrr service "telegram": telegram: invalid telegram token: ***:`,
+		"telegram://ab@telegram":                `URL rejected by shoutrrr service "telegram": telegram: invalid telegram token: ***:`,
 	} {
 		_, err := New(Options{URL: url, Client: &http.Client{}})
-		if err == nil || !strings.HasPrefix(err.Error(), want) || strings.Contains(err.Error(), "SECRET") || strings.Contains(err.Error(), "abc:") {
+		if err == nil || !strings.HasPrefix(err.Error(), want) || strings.Contains(err.Error(), "SECRET") || strings.Contains(err.Error(), "ab:") {
 			t.Errorf("New(%s) error = %v, want %s", url, err, want)
 		}
 	}
@@ -263,6 +263,12 @@ func TestWithoutURLParts(t *testing.T) {
 	err := errors.New("pushover: invalid user key userKey9 for token tok42 at pushover://shoutrrr:tok42@userKey9/")
 	want := "pushover: invalid user key *** for token *** at ***"
 	if got := withoutURLParts(err, "pushover://shoutrrr:tok42@userKey9/"); got != want {
+		t.Errorf("withoutURLParts() = %q, want %q", got, want)
+	}
+	// A label is masked as a word, not inside one.
+	err = errors.New("ntfy: no topic for the organization at ntfy.example.org")
+	want = "ntfy: no topic for the organization at ***"
+	if got := withoutURLParts(err, "ntfy://ntfy.example.org/"); got != want {
 		t.Errorf("withoutURLParts() = %q, want %q", got, want)
 	}
 }
