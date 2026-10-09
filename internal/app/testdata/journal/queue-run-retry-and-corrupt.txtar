@@ -1,0 +1,7 @@
+-- exit --
+74
+-- log --
+level=WARN msg="target failed, retry queued" id=<id> target=a class=temp status=503 err=unavailable
+level=WARN msg="spool entry unreadable, left alone" id=<id> area=queue err="corrupt sidecar: unexpected end of JSON input"
+-- stderr --
+mailcrier: queue run incomplete, see the mail log

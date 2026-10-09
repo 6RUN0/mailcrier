@@ -24,6 +24,7 @@ MAILCRIER_TELEGRAM_ENV=/path/to/telegram.env \
   go test -run TestLiveTelegram ./internal/backend/telegram   # real Bot API
 go test ./internal/backend/webhook -update   # rewrite golden files
 go test ./internal/app -run TestCallers -update   # caller golden files
+go test ./internal/app -run TestJournalGolden -update   # whole log, stderr
 go test ./internal/render -run TestBuiltinGolden -update   # template golden
 mandoc -T lint -W warning docs/mailcrier.8   # man page; not in make check
 make release-gate TAG=v0.1.0   # gate of release.yml; check-release needs

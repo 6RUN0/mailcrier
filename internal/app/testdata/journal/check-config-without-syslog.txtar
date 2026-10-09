@@ -1,0 +1,9 @@
+-- exit --
+0
+-- log --
+-- stderr --
+level=WARN msg="syslog unavailable, logging to stderr" err="dial unixgram /dev/log: no such file"
+level=INFO msg="configuration checked" errors=0 warnings=2
+warning: /etc/mailcrier.conf:6:9: target "b": no route names this target
+warning: /etc/mailcrier.conf:10:3: routes have no rule without conditions: a message no rule matches is held and the call exits 64, or the message is lost with the spool off
+/etc/mailcrier.conf: 0 errors, 2 warnings

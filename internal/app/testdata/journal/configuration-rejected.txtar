@@ -1,0 +1,7 @@
+-- exit --
+78
+-- log --
+level=INFO msg="message received" size=14 recipients=0
+level=ERROR msg="configuration rejected" err="/etc/mailcrier.conf:1:9: target \"a\": one of keys \"url\" and \"url_file\" is required"
+level=WARN msg="message held" id=<id> reason="configuration rejected"
+-- stderr --

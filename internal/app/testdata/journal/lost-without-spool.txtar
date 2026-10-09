@@ -1,0 +1,8 @@
+-- exit --
+73
+-- log --
+level=INFO msg="message received" size=14 recipients=0
+level=ERROR msg="target failed" target=a class=temp status=503 err=unavailable
+level=ERROR msg="target failed" target=b class=temp status=503 err=unavailable
+level=ERROR msg="message lost" reason="spool not opened" targets="[a b]" err="stat <spool>/missing: no such file or directory"
+-- stderr --

@@ -1,0 +1,8 @@
+-- exit --
+0
+-- log --
+level=INFO msg="message received" msgid=<m1@example.org> size=43 recipients=0
+level=DEBUG msg="message queued ahead of delivery" msgid=<m1@example.org> id=<id>
+level=DEBUG msg="target delivered" msgid=<m1@example.org> id=<id> target=a
+level=DEBUG msg="target delivered" msgid=<m1@example.org> id=<id> target=b
+-- stderr --
