@@ -669,7 +669,7 @@ func TestReadmeExamplesLoad(t *testing.T) {
 		t.Fatalf("README section %q has no toml block", readmeConfigHeading)
 	}
 	secrets := fstest.MapFS{}
-	for _, name := range []string{"etc/mailcrier.d/hook.url", "etc/mailcrier.d/tg.token", "etc/mailcrier.d/discord.url", "etc/mailcrier.d/slack.token", "etc/mailcrier.d/ntfy.url", "etc/mailcrier.d/mm.url", "etc/mailcrier.d/bus.url"} {
+	for _, name := range []string{"etc/mailcrier.d/api.url", "etc/mailcrier.d/telegram.token", "etc/mailcrier.d/discord.url", "etc/mailcrier.d/slack.token", "etc/mailcrier.d/ntfy.url", "etc/mailcrier.d/mm.url", "etc/mailcrier.d/bus.url"} {
 		secrets[name] = &fstest.MapFile{Data: []byte("https://hooks.example.org/in/secret\n")}
 	}
 	for i, block := range blocks {

@@ -56,7 +56,7 @@ Configuration:
   A minimal configuration:
     [target.ops-telegram]
     type = "telegram"
-    token_file = "/etc/mailcrier.d/tg.token"
+    token_file = "/etc/mailcrier.d/telegram.token"
     chat_id = -1001234567890
   Check it with --check-config, then send a test with
   --probe -- ops-telegram.

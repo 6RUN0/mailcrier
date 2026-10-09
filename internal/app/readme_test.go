@@ -21,7 +21,7 @@ func TestReadmeTemplatesParse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	files := fstest.MapFS{"etc/mailcrier.d/tg.token": {Data: []byte("123:abc\n")}, "etc/mailcrier.d/mm.url": {Data: []byte("https://mm.example.org/hooks/x\n")}}
+	files := fstest.MapFS{"etc/mailcrier.d/telegram.token": {Data: []byte("123:abc\n")}, "etc/mailcrier.d/mm.url": {Data: []byte("https://mm.example.org/hooks/x\n")}}
 	found := 0
 	for _, block := range regexp.MustCompile("(?s)```toml\n(.*?)```").FindAllStringSubmatch(string(readme), -1) {
 		if !strings.Contains(block[1], "template") {

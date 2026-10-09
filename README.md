@@ -182,9 +182,9 @@ truncated_size = "[truncated, %s in full]"
 more_attachments = "... and %d more"
 not_sent = "[not sent]"
 
-[target.hook]                   # the table key is the target name: [a-z0-9-]
+[target.api]                    # the table key is the target name: [a-z0-9-]
 type = "http"
-url_file = "/etc/mailcrier.d/hook.url"  # or url = "https://..."
+url_file = "/etc/mailcrier.d/api.url"   # or url = "https://..."
 preset = "generic-json"
 ```
 
@@ -311,10 +311,10 @@ it is, and the service rejects a bigger file.
 ```toml
 [target.ops-telegram]
 type = "telegram"
-token_file = "/etc/mailcrier.d/tg.token"   # or token = "123456:ABC..."
-chat_id = -1001234567890                   # or "-1001234567890", "@channel"
-message_thread_id = 42                     # optional, forum topic
-disable_notification = true                # optional, silent messages
+token_file = "/etc/mailcrier.d/telegram.token"  # or token = "123456:ABC..."
+chat_id = -1001234567890                        # or "-1001234567890", "@channel"
+message_thread_id = 42                          # optional, forum topic
+disable_notification = true                     # optional, silent messages
 ```
 
 - `telegram`: `chat_id` (an integer or a non-blank string) is required.
@@ -560,7 +560,7 @@ url_file = "/etc/mailcrier.d/bus.url"   # a service URL, gotify://host/token
 ```toml
 [target.ops-telegram]
 type = "telegram"
-token_file = "/etc/mailcrier.d/tg.token"
+token_file = "/etc/mailcrier.d/telegram.token"
 chat_id = -1001234567890
 on_long = "file"        # optional: file | truncate | blockquote
 long_file = "text"      # optional: text (message.txt) | eml (message.eml)
@@ -606,7 +606,7 @@ max_lines = 40          # optional, lines of the body in the text
 ```toml
 [target.ops-telegram]
 type = "telegram"
-token_file = "/etc/mailcrier.d/tg.token"
+token_file = "/etc/mailcrier.d/telegram.token"
 chat_id = -1001234567890
 template = '''
 <b>{{ .Subject | default .Strings.NoSubject | tgHTML }}</b>
@@ -720,7 +720,7 @@ template = '''
 ```toml
 [target.ops-telegram]
 type = "telegram"
-token_file = "/etc/mailcrier.d/tg.token"
+token_file = "/etc/mailcrier.d/telegram.token"
 chat_id = -1001234567890
 
 [target.mm]
@@ -824,7 +824,7 @@ telegram_direct_max = 10        # optional, the default
 
 [target.ops-telegram]
 type = "telegram"
-token_file = "/etc/mailcrier.d/tg.token"
+token_file = "/etc/mailcrier.d/telegram.token"
 chat_id = -1001234567890
 ```
 
@@ -886,9 +886,9 @@ max_queue_bytes = 268435456
 max_queue_messages_per_uid = 200
 max_queue_bytes_per_uid = 67108864
 
-[target.hook]
+[target.api]
 type = "http"
-url_file = "/etc/mailcrier.d/hook.url"
+url_file = "/etc/mailcrier.d/api.url"
 preset = "generic-json"
 ```
 
