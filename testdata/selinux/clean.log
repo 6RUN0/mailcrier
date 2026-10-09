@@ -7,8 +7,8 @@
 == step 1 ==
 == domain crond system_u:system_r:crond_t:s0-s0:c0.c1023 ==
 == domain atd system_u:system_r:crond_t:s0-s0:c0.c1023 ==
-== unit control-nnp system_u:system_r:initrc_t:s0 0 ==
-== unit control-service system_u:system_r:initrc_t:s0 0 ==
+== unit control-nnp system_u:system_r:initrc_t:s0 0  ==
+== unit control-service system_u:system_r:initrc_t:s0 0  ==
 == wait control user-cron: ok ==
 == wait control system-cron: ok ==
 == wait control smartd: ok ==
@@ -21,7 +21,7 @@
 == timer enabled active ==
 == call upgrade: exit 0 ==
 == step 3 ==
-== package mailcrier-0.1.0~rc1791475648-1.x86_64 ==
+== package mailcrier-0.1.0~rc1791525644-1.x86_64 ==
 == label binary system_u:object_r:sendmail_exec_t:s0 ==
 == label spool system_u:object_r:mqueue_spool_t:s0 ==
 == label entry system_u:object_r:mqueue_spool_t:s0 ==
@@ -32,8 +32,8 @@
 == call root: exit 0 ==
 == smart available ==
 == domain smartd system_u:system_r:fsdaemon_t:s0 ==
-== unit nnp-call system_u:system_r:initrc_t:s0 0 ==
-== unit service-call system_u:system_r:initrc_t:s0 0 ==
+== unit nnp-call system_u:system_r:initrc_t:s0 0  ==
+== unit service-call system_u:system_r:initrc_t:s0 0  ==
 == wait root 80: ok ==
 == wait root 8080: ok ==
 == wait root 2586: ok ==
