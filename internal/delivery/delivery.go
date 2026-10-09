@@ -369,9 +369,11 @@ type fitted struct {
 
 // fit renders the text of the target with tmpl, fitted to its limit, and
 // picks the files: for a cut text the full text goes first among them
-// per OnLong, else the notice of the cut gives its size. A template from
-// the configuration gets one budget for both renderings, ending no later
-// than the delivery.
+// per OnLong, else the notice of the cut gives its size. render.Whole
+// tells a cut text before the files are picked, so the binary searches of
+// render.FitLines run once, on the data with the files. A template from
+// the configuration gets one budget for both, ending no later than the
+// delivery.
 func (j *textJob) fit(tmpl *render.Template) (*fitted, error) {
 	if tmpl == nil {
 		return &fitted{}, nil
@@ -381,7 +383,7 @@ func (j *textJob) fit(tmpl *render.Template) (*fitted, error) {
 	out := &fitted{}
 	d.Attachments, out.sent = selectFiles(caps, j.full.Attachments, j.named)
 	var err error
-	out.text, out.isTruncated, err = render.FitLines(tmpl, d, j.limit, j.target.MaxLines, j.measure)
+	out.text, out.isTruncated, err = render.Whole(tmpl, d, j.limit, j.target.MaxLines, j.measure)
 	if err != nil || !out.isTruncated {
 		return out, err
 	}

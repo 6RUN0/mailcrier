@@ -75,12 +75,7 @@ func FitLines(t *Template, d Data, limit, maxLines int, measure func(string) int
 	if isCut {
 		d.Body = withNotice(body, d.Strings.Truncated)
 	}
-	full, err := t.Execute(d)
-	isOverOutputLimit := limit > 0 && errors.Is(err, errOutputLimit)
-	if isOverOutputLimit {
-		err = nil
-	}
-	if err != nil || limit <= 0 || (!isOverOutputLimit && measure(full) <= limit) {
+	if full, fits, err := renderWhole(t, d, limit, measure); err != nil || fits {
 		return full, isCut, err
 	}
 	render := func() (string, bool, error) {
@@ -156,6 +151,33 @@ func FitLines(t *Template, d Data, limit, maxLines int, measure func(string) int
 		return text.CutTelegramHTML(shortest, limit, measure), true, nil
 	}
 	return longestPrefix(shortest, limit, measure), true, nil
+}
+
+// Whole is the first step of FitLines alone, one rendering: the text of
+// d with the body cut after line maxLines only, and whether FitLines
+// cuts anything, the truncated it returns. When that rendering is over
+// limit, out is empty.
+func Whole(t *Template, d Data, limit, maxLines int, measure func(string) int) (out string, truncated bool, err error) {
+	body, isCut := firstLines(d.Body, maxLines)
+	if isCut {
+		d.Body = withNotice(body, d.Strings.Truncated)
+	}
+	if full, fits, err := renderWhole(t, d, limit, measure); err != nil || fits {
+		return full, isCut, err
+	}
+	return "", true, nil
+}
+
+// renderWhole renders d uncut and reports whether it fits limit, which
+// any rendering does without a limit. A template from the configuration
+// whose output exceeds its size limit does not fit, with no error, as
+// long as there is a limit.
+func renderWhole(t *Template, d Data, limit int, measure func(string) int) (string, bool, error) {
+	full, err := t.Execute(d)
+	if limit > 0 && errors.Is(err, errOutputLimit) {
+		return "", false, nil
+	}
+	return full, err == nil && (limit <= 0 || measure(full) <= limit), err
 }
 
 // firstLines returns the first maxLines lines of body, without the line

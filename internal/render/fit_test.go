@@ -557,3 +557,33 @@ func benchBody(size int) string {
 	line := "Oct  9 03:00:01 host CRON[1234]: (root) CMD (run-parts /etc/cron.daily) <x> & y\n"
 	return strings.Repeat(line, size/len(line)+1)[:size]
 }
+
+// TestWhole pins that Whole tells what FitLines tells of a cut, with one
+// rendering, and gives the same text when nothing is cut.
+func TestWhole(t *testing.T) {
+	bodies := []string{"b\n", "one\ntwo\nthree\nfour\n", strings.Repeat("line with & < > . _ * and ёжик 😀\n", 50)}
+	for _, format := range builtinFormats {
+		tmpl, err := Builtin(format)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range measures {
+			for _, limit := range []int{0, 50, 300, 4096} {
+				for _, maxLines := range []int{0, 3} {
+					for _, body := range bodies {
+						out, truncated, err := FitLines(tmpl, fitData(body), limit, maxLines, m.measure)
+						if errors.Is(err, ErrLimitTooSmall) {
+							truncated = true
+						} else if err != nil {
+							t.Fatal(err)
+						}
+						whole, wholeTruncated, err := Whole(tmpl, fitData(body), limit, maxLines, m.measure)
+						if err != nil || wholeTruncated != truncated || (!truncated && whole != out) {
+							t.Errorf("%s/%s/%d/%d body of %d bytes: Whole truncated = %v, err = %v; FitLines truncated = %v", format, m.name, limit, maxLines, len(body), wholeTruncated, err, truncated)
+						}
+					}
+				}
+			}
+		}
+	}
+}

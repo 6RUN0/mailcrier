@@ -718,3 +718,61 @@ func BenchmarkFitTarget(b *testing.B) {
 		})
 	}
 }
+
+// TestDeliverCutText pins the text and IsTruncated of a cut text for each
+// OnLong and max_lines, with the Telegram HTML template: the flag comes
+// from the whole rendering, the text from one fit of the data with the
+// file of the full text and the notice it needs.
+func TestDeliverCutText(t *testing.T) {
+	limit300 := backend.Caps{MaxText: 300, Measure: text.MeasureTelegramHTML, MaxFiles: 10}
+	limit4096 := backend.Caps{MaxText: 4096, Measure: text.MeasureTelegramHTML, MaxFiles: 10}
+	const head, fullText, attached = "<b>s</b>\n<i>h: </i>\n", "\nmessage.txt (text/plain; charset=utf-8, 1.9 KiB)", "\na.log (text/plain, 8 B)"
+	lines := func(n int) string { return strings.Repeat("a line of the body\n", n) }
+	withFile, withoutFile := []string{"message.txt", "a.log"}, []string{"a.log"}
+	for _, tc := range []cutTextCase{
+		{"fits", Target{}, limit4096, false, head + "<pre>" + strings.TrimSuffix(longBody, "\n") + "</pre>" + attached, withoutFile},
+		{"truncate", Target{OnLong: OnLongTruncate}, limit300, true, head + "<pre>" + lines(12) + "a line of the\n[truncated, 1.9 KiB in full]</pre>" + attached, withoutFile},
+		{"file", Target{}, limit300, true, head + "<pre>" + lines(11) + "[truncated]</pre>" + fullText + attached, withFile},
+		{"blockquote", Target{OnLong: OnLongBlockquote}, limit300, true, head + "<blockquote expandable>" + lines(11) + "[truncated]</blockquote>" + fullText + attached, withFile},
+		{"text-only-target", Target{}, backend.Caps{MaxText: 300, Measure: text.MeasureTelegramHTML}, true, head + "<pre>" + lines(12) + "a line of the\n[truncated, 1.9 KiB in full]</pre>" + attached, nil},
+		{"max-lines-within-the-limit", Target{MaxLines: 3}, limit4096, true, head + "<pre>" + lines(3) + "[truncated]</pre>" + fullText + attached, withFile},
+		{"max-lines-then-the-limit", Target{MaxLines: 50}, limit300, true, head + "<pre>" + lines(11) + "[truncated]</pre>" + fullText + attached, withFile},
+		{"max-lines-truncate", Target{MaxLines: 3, OnLong: OnLongTruncate}, limit4096, true, head + "<pre>" + lines(3) + "[truncated, 1.9 KiB in full]</pre>" + attached, withoutFile},
+	} {
+		t.Run(tc.name, tc.check)
+	}
+}
+
+// cutTextCase delivers longBody with one attachment to target with caps.
+type cutTextCase struct {
+	name          string
+	target        Target
+	caps          backend.Caps
+	wantTruncated bool
+	wantText      string
+	wantFiles     []string
+}
+
+func (tc cutTextCase) check(t *testing.T) {
+	tmpl, err := render.Builtin(text.FormatTelegramHTML)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := testData()
+	d.Body = longBody
+	d.Attachments = []render.Attachment{{Name: "a.log", ContentType: "text/plain", Size: 8}}
+	files := []message.Attachment{{Name: "a.log", ContentType: "text/plain", Data: []byte("attached")}}
+	sender := &fakeSender{caps: tc.caps}
+	tc.target.ID, tc.target.Sender, tc.target.Template = "t", sender, tmpl
+	result := Deliver(context.Background(), []Target{tc.target}, d, files)[0]
+	if result.Status != OK || len(sender.sent) != 1 {
+		t.Fatalf("result = %+v", result)
+	}
+	var names []string
+	for _, file := range sender.sent[0].Attachments {
+		names = append(names, file.Name)
+	}
+	if result.IsTruncated != tc.wantTruncated || sender.sent[0].Text != tc.wantText || !slices.Equal(names, tc.wantFiles) {
+		t.Errorf("truncated = %v, files %#v, text:\n%#v", result.IsTruncated, names, sender.sent[0].Text)
+	}
+}
