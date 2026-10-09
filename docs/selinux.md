@@ -200,8 +200,44 @@ give their own, and the transition into `system_mail_t` gives
 
 ## Result
 
-Not run yet. For each run: the Rocky version, the output of `rpm -q
-mailcrier` and the commit the rpm was built from, the lines `policy`,
+For each run: the Rocky version, the output of `rpm -q mailcrier` and the
+commit the rpm was built from, the lines `policy`,
 `cron_userdomain_transition`, `module` and `hook` of `check.log`, and the
 denials the test printed. No host names, addresses or paths outside the
 virtual machine.
+
+### 960edf2, 2026-10-09
+
+`make -j2 selinux-rocky9 selinux-rocky10` passed on both, every one of the
+48 waits `ok`; the rpm `mailcrier-0.1.0~rc1791525644-1.x86_64`, upgraded
+from `mailcrier-0.1.0~rc.2-1.x86_64`, module `200 cil`, absent after
+`rpm -e`; `cron_userdomain_transition on`.
+
+| | Rocky 9.8 | Rocky 10.2 |
+|---|---|---|
+| `policy` | `selinux-policy-targeted-38.1.75-2.el9_8.1` | `selinux-policy-targeted-42.1.18-4.el10_2.4` |
+| crond, atd | `crond_t` | `crond_t` |
+| smartd | `fsdaemon_t` | `fsdaemon_t` |
+
+The hook ran as in the table of "Domains of the callers" on both: the
+mail of crond and smartd in `system_mail_t`, the queue service (group
+`mailcrier`) and the service without NoNewPrivileges in `sendmail_t`, the
+service with it in `initrc_t`, root and the user crontab in
+`unconfined_t`.
+
+Denials of mailcrier and its callers, each one postfix got as well in step
+1:
+
+| Source -> target | Class and permission | Rocky |
+|---|---|---|
+| `fsdaemon_t` -> `system_mail_t` | `process` `noatsecure`, `rlimitinh`, `siginh` | 9 |
+| `smartdwarn_t` -> `system_mail_t` | `process` `noatsecure`, `rlimitinh`, `siginh` | 10 |
+| `system_mail_t` -> `init_t` | `unix_stream_socket` `read write` (stdout of crond, comm `sendmail`) | 9, 10 |
+| `initrc_t` -> `sendmail_t` | `process2` `nnp_transition` (service with NoNewPrivileges) | 9, 10 |
+| `smartdwarn_t` -> `fs_t` | `filesystem` `getattr` (comm `mail`, s-nail) | 10 |
+
+Denials of other processes, with the dontaudit rules off: `setroubleshootd_t`
+writing `rpm_var_lib_t` (comm `rpm`), `systemd_logind_t` (9) or
+`systemd_user_runtimedir_t` (10) asking for `net_admin`, `init_t` reading
+`shadow_t` (9), `systemd_gpt_generator_t` asking for `sys_admin` and
+`kdump_dep_generator_t` reading `passwd_file_t` (10).
