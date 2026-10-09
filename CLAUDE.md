@@ -114,7 +114,9 @@ with "build constraints exclude all Go files".
   `Deps` carries the logger factory, config `fs.FS` rooted at `/`, HTTP
   client, host name, argv[0] (`Program`), stdout, stderr, `Credentials`
   (uid, gid, egid, service uid), environment, the error of a failed
-  re-exec, a uid-to-login lookup and the default spool directory
+  re-exec, a uid-to-login lookup, whether the log goes to stderr
+  (`IsLogOnStderr`: then -q, mailq and --status add no line of their own
+  there, `tellUser`) and the default spool directory
   (`SpoolDir`, empty in tests unless set); the unexported `deliver` field
   lets tests replace delivery, `spoolSaved` and `entryLocked` let a
   helper process kill or stop itself at a spool state.
@@ -122,7 +124,8 @@ with "build constraints exclude all Go files".
   of `tmp/` files) reads `Deps.Now`; only the context deadlines use the
   real clock. `app.SystemDeps`
   builds the real ones (syslog `LOG_MAIL`, `/etc/mailcrier.conf`,
-  environment proxies only without elevation).
+  environment proxies only without elevation); its `stderrLog` takes every
+  record once a dial or a write to syslog failed, after one warning.
 - Elevated means `egid != gid` and `uid != 0` (`internal/app/privilege.go`).
   `main` sets the umask, then calls `app.Harden` before `SystemDeps`, any
   logger or any time formatting (the time package opens a `TZ` path): an
@@ -197,7 +200,8 @@ with "build constraints exclude all Go files".
   (`TestRegisterSecretsCoversSecretKeys` checks one way).
   `template_file` is read at load, but `config` does not import `render`:
   `app.buildTargets` parses the template, and a parse error rejects the
-  configuration (78, message held). `[[route]]` and
+  configuration (78, message held); its errors are `*config.Error` at the
+  key, from `Config.TargetError`. `[[route]]` and
   `[[suppress]]` are compiled at load (`compileRules`, globs through
   `compileGlob` into `(?is)^...$` RE2, `FuzzGlob`) into `Match`; their
   errors name the rule number and key, never the expression. `keyIndex`
@@ -208,7 +212,10 @@ with "build constraints exclude all Go files".
 - `internal/backend`: `Sender`, `Caps`, `Payload`, `*Error` with `Class`,
   `IsPartial` (text arrived, files did not: counts as delivered),
   `Classify`, and the HTTP guards every target uses (`WithoutRedirects`,
-  `TransportError`, `StatusError`, `Drain`). Targets live in
+  `TransportError`, `RequestError`, `StatusError`, `BodyError`, `Drain`).
+  Every context of a delivery, a queue run and a hook ends with a
+  `LimitError` cause (`context.WithTimeoutCause`), so that an error names
+  the key and value of the bound. Targets live in
   `internal/backend/<name>` (`webhook` is type `http`, `hook` is type
   `exec`, both named off the stdlib package they use; Slack is plain Web
   API calls, no client library) and are mapped from config only in
