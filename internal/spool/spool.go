@@ -386,9 +386,12 @@ func (s *Spool) Lock(area, id string) (*Record, error) {
 // is corrupt, and returns it with an Entry made from what the message file
 // tells: OwnerUID is the owner of the file, and CreatedAt and ReceivedAt
 // are its modification time, which is when the entry was written, since
-// the message file is never rewritten. The entry has no targets: the
-// record serves to move it to failed/, where Move writes a valid sidecar,
-// or to remove it. It returns ErrBusy and ErrGone as Lock does, ErrGone
+// the message file is never rewritten. Both are approximate: a copy that
+// a run of another uid made into this spool, from the hold/ of another
+// directory, is owned by that uid and dated by the copy, and an entry
+// released from hold/ keeps the time it was held. The entry has no
+// targets: the record serves to move it to failed/, where Move writes a
+// valid sidecar, or to remove it. It returns ErrBusy and ErrGone as Lock does, ErrGone
 // also when the sidecar decodes meanwhile, and the error of Decode for a
 // sidecar of another version.
 func (s *Spool) LockCorrupt(area, id string) (*Record, error) {

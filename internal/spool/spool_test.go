@@ -151,7 +151,8 @@ func TestCreateFailures(t *testing.T) {
 // to take is a write error, exit status 74, as for the message: a full
 // disk must not read as a missing directory. RLIMIT_FSIZE below the size
 // of the sidecar fails its write with EFBIG, as ENOSPC would; the Go
-// runtime ignores the SIGXFSZ that comes with it.
+// runtime ignores the SIGXFSZ that comes with it. The limit holds for the
+// whole test process, so this test must never run in parallel.
 func TestCreateSidecarNotWritten(t *testing.T) {
 	sp := openSpool(t)
 	var limit syscall.Rlimit

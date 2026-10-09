@@ -304,6 +304,11 @@ func TestSetgidSpool(t *testing.T) {
 	if out, err := runAs(t, nobody, "", "/usr/sbin/mailcrier", "-bp"); err != nil || !strings.HasPrefix(out, "0 queued, 1 held, 0 failed; oldest ") || strings.Count(out, "\n") != 1 {
 		t.Errorf("mailq as the caller = %v, output:\n%s\nwant the counts line only", err, out)
 	}
+	// The spool is writable through the group of the binary alone: a check
+	// with the real ids would find it not writable.
+	if out, err := runAs(t, nobody, "", "/usr/sbin/mailcrier", "--status"); err != nil || !strings.Contains(out, "queued=0 held=1 ") || strings.Contains(out, "not writable") {
+		t.Errorf("--status as the caller = %v, output:\n%s\nwant 0 and the counts", err, out)
+	}
 
 	writeFile(t, "/etc/mailcrier.conf", []byte(httpTargetConfig(receiver.URL+"/hook")), 0, serviceGID, 0o640)
 	isUp.Store(true)

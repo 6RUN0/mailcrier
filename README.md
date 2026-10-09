@@ -876,8 +876,12 @@ preset = "generic-json"
   the message file stands in for them: written with the entry and never
   rewritten, once it is older than `queue_ttl` (`hold_ttl` in `hold/`)
   the entry moves to `failed/` with the reason `corrupt sidecar` and a
-  new sidecar without targets, owned by the owner of the file. The
-  message is kept as it was; when its headers name the recipients,
+  new sidecar without targets, owned by the owner of the file. Owner and
+  age are approximate: a message that `-q` copied from `hold/` of the
+  default directory belongs to the user of that run and dates from the
+  copy, and one released from `hold/` counts from the time it was held,
+  not from its release. The message is kept as it was; when its headers
+  name the recipients,
   `mailcrier -t < failed/<id>.eml` sends it again. A corrupt sidecar in
   `failed/` goes with its message `failed_ttl` after the file was
   written. An entry of another sidecar version is left alone, for the
