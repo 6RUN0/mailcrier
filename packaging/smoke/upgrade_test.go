@@ -18,11 +18,11 @@ import (
 )
 
 // unorderablePrevious maps a package format to the version of the previous
-// release its package manager cannot order before the snapshot of HEAD:
-// dpkg sorts 0.1.0~rc.2 above 0.1.0~rc<time>, apk cannot parse 0.1.0_rc.2.
-// The commit that bumps SMOKE_PREVIOUS past them drops them,
-// docs/releasing.md says so.
-var unorderablePrevious = map[string]string{"deb": "0.1.0~rc.2", "apk": "0.1.0_rc.2"}
+// release its package manager cannot order before the snapshot of HEAD,
+// such as a dotted rc: dpkg sorts 0.1.0~rc.2 above 0.1.0~rc<time>, apk
+// cannot parse 0.1.0_rc.2. The commit that bumps SMOKE_PREVIOUS past such
+// a version drops its entry, docs/releasing.md says so.
+var unorderablePrevious = map[string]string{}
 
 // TestSmokeUpgrade installs the release SMOKE_PREVIOUS of the Makefile,
 // leaves messages in queue/, hold/ and failed/ with its binary and upgrades
