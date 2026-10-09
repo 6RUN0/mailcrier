@@ -251,6 +251,7 @@ func FuzzRead(f *testing.F) {
 		"Subject: =?utf-8?q?a=C3?= =?x?B?!!?=\n\n\xff\n",
 		"Content-Type: multipart/mixed; boundary=b\n\n--b\nContent-Type: text/html\n\n<a href=x>y</a>\n--b\nContent-Transfer-Encoding: base64\n\nQQ==\n--b--\n",
 		"Content-Type: text/plain; charset=koi8-r\nContent-Transfer-Encoding: quoted-printable\n\n=F0=\n=ZZ\n",
+		"From x\r\n\r\nSubject: body\n", "Subject: a\r\n b\r\r\n\r\r\nSubject: c\n", "To: a\n.\nSubject: b\n\n",
 	} {
 		f.Add(seed, false)
 		f.Add(seed, true)
@@ -287,6 +288,13 @@ func FuzzRead(f *testing.F) {
 		if !reflect.DeepEqual(again, msg) {
 			t.Errorf("Raw read again differs:\n%+v\nwant\n%+v", again, msg)
 		}
+		original := []byte(input)
+		if got := ParseSubject(original, ReadOptions{IgnoreDots: ignoreDots, MaxSize: 1 << 16}); got != msg.Subject {
+			t.Errorf("ParseSubject() = %q, Read gives %q", got, msg.Subject)
+		}
+		if string(original) != input {
+			t.Errorf("ParseSubject() changed its input to %q", original)
+		}
 		stripped, blind, _, err := Read(bytes.NewReader(WithoutBlindCopies(msg.Raw)), ReadOptions{IgnoreDots: true, MaxSize: 1 << 16})
 		if err != nil {
 			t.Fatal(err)
@@ -295,6 +303,37 @@ func FuzzRead(f *testing.F) {
 			t.Errorf("WithoutBlindCopies(%q) keeps %+v or changes the text", msg.Raw, blind)
 		}
 	})
+}
+
+// TestParseSubject pins that ParseSubject, which parses only the header
+// block, gives the subject Read gives.
+func TestParseSubject(t *testing.T) {
+	for name, input := range map[string]string{
+		"encoded-words":    "Subject: =?utf-8?q?caf=C3=A9?= =?iso-8859-1?b?6Q==?=\n\nb\n",
+		"repeated":         "Subject: first\nSubject: second\n\nb\n",
+		"mbox-from":        "From root Mon Sep 28 10:00:00 2026\nSubject: after mbox\n\nb\n",
+		"mbox-from-twice":  "From a\nFrom b\nSubject: s\n\nb\n",
+		"malformed-header": "To: a\nnot a field\nSubject: in the body\n\nb\n",
+		"crlf-folded":      "Subject: one\r\n  two\r\n\r\nSubject: body\r\n",
+		"cr-only-line":     "To: a\n\r\r\nSubject: body\n",
+		"missing":          "To: a\n\nSubject: body\n",
+		"no-header":        "just text\nSubject: x\n",
+		"no-empty-line":    "Subject:   spaced\t out  ",
+		"leading-empty":    "\r\nSubject: body\n",
+		"dot-line":         "To: a\n.\nSubject: after the end\n\n",
+		"over-max-size":    "Subject: " + strings.Repeat("long ", 40) + "\n\nb\n",
+	} {
+		for _, ignoreDots := range []bool{false, true} {
+			opt := ReadOptions{IgnoreDots: ignoreDots, MaxSize: 64}
+			msg, _, _, err := Read(strings.NewReader(input), opt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := ParseSubject([]byte(input), opt); got != msg.Subject {
+				t.Errorf("%s, IgnoreDots %v: ParseSubject() = %q, Read gives %q", name, ignoreDots, got, msg.Subject)
+			}
+		}
+	}
 }
 
 func TestWithoutBlindCopies(t *testing.T) {

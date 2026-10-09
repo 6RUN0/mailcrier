@@ -245,6 +245,45 @@ func Read(r io.Reader, opt ReadOptions) (*Message, BlindCopies, []string, error)
 	return msg, blind, warnings, nil
 }
 
+// ParseSubject returns the Message.Subject that Read with opt returns for
+// the input raw, but normalizes and parses only the header block, so that
+// routing a stored message does not decode its body. raw stays unchanged.
+func ParseSubject(raw []byte, opt ReadOptions) string {
+	if opt.MaxSize > 0 && int64(len(raw)) > opt.MaxSize {
+		raw = raw[:opt.MaxSize]
+	}
+	header := normalize(bytes.Clone(raw[:firstEmptyLineEnd(raw)]), opt.IgnoreDots)
+	header = header[envelopeEnd(header):]
+	headerEnd, _, _ := scanHeader(header)
+	for name, value := range fields(string(header[:headerEnd])) {
+		if textproto.CanonicalMIMEHeaderKey(name) == "Subject" {
+			return collapseSpace(decodeHeader(value))
+		}
+	}
+	return ""
+}
+
+// firstEmptyLineEnd returns the offset past the first empty line of raw
+// that follows a line end, CRs before its LF included, or the end of raw.
+// The header block ends there at the latest, and since the prefix ends
+// with an LF, normalize turns it into the start of what it makes of raw.
+func firstEmptyLineEnd(raw []byte) int {
+	for pos := 0; ; {
+		n := bytes.IndexByte(raw[pos:], '\n')
+		if n < 0 {
+			return len(raw)
+		}
+		pos += n + 1
+		end := pos
+		for end < len(raw) && raw[end] == '\r' {
+			end++
+		}
+		if end < len(raw) && raw[end] == '\n' {
+			return end + 1
+		}
+	}
+}
+
 // firstValue returns current, or value when current is empty: the first
 // of repeated fields wins.
 func firstValue(current, value string) string {

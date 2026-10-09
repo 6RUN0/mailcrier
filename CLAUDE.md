@@ -312,7 +312,8 @@ with "build constraints exclude all Go files".
   spooled), direct chats, routes; no target gives `hold/` with
   `no route` and 64. `release` and `releaseInto` decide again through
   `routeHeld`, which reads the message only when there are rules or
-  `telegram_direct`; warnings of a repeated decision go to debug, as
+  `telegram_direct`, and then only its subject (`message.ParseSubject`,
+  checked against `Read` in `FuzzRead`); warnings of a repeated decision go to debug, as
   `drainOwn` runs `hold/` after every call. `queue.target` builds the copy
   `<chat>@telegram` of the `telegram_direct` target (`directTarget`) on
   every lookup, so a queued copy takes the configuration of its retry.
