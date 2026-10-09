@@ -151,11 +151,12 @@ func (inv *invocation) run(t testing.TB) int {
 			name, ok := testUsers[uid]
 			return name, ok
 		},
-		SpoolDir:     inv.spoolDir,
-		CatchSignals: inv.catchSignals,
-		deliver:      inv.deliver,
-		spoolSaved:   inv.spoolSaved,
-		entryLocked:  inv.entryLocked,
+		IsLogOnStderr: func() bool { return inv.isSyslogDown },
+		SpoolDir:      inv.spoolDir,
+		CatchSignals:  inv.catchSignals,
+		deliver:       inv.deliver,
+		spoolSaved:    inv.spoolSaved,
+		entryLocked:   inv.entryLocked,
 	}
 	ctx := inv.ctx
 	if ctx == nil {

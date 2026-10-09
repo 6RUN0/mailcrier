@@ -876,6 +876,7 @@ func (q *queue) runQueue(ctx context.Context) int {
 		}
 		if err != nil {
 			q.log.Error("queue run lock not taken", "err", err)
+			tellUser(q.d, q.redactor, "queue run lock not taken", err)
 			return exitIOErr
 		}
 		defer func() { _ = lock.Close() }()
@@ -886,6 +887,7 @@ func (q *queue) runQueue(ctx context.Context) int {
 	}
 	if err := q.run(ctx, limits); err != nil {
 		q.log.Error("queue not listed", "err", err)
+		tellUser(q.d, q.redactor, "queue not listed", err)
 		return exitIOErr
 	}
 	if limits.owner < 0 {
@@ -893,6 +895,10 @@ func (q *queue) runQueue(ctx context.Context) int {
 		if other != nil {
 			q.clean(other)
 		}
+	}
+	if q.hasPanicked || q.hasIOError {
+		// The records of the entries are in the log, one per entry.
+		tellUser(q.d, q.redactor, "queue run incomplete, see the mail log", nil)
 	}
 	if q.hasPanicked {
 		return exitSoftware
@@ -944,6 +950,7 @@ func (q *queue) listQueue(w io.Writer) int {
 	counts, lines, err := q.scan(q.d.Credentials.isPrivilegedCaller())
 	if err != nil {
 		q.log.Error("queue not listed", "err", err)
+		tellUser(q.d, q.redactor, "queue not listed", err)
 		return exitIOErr
 	}
 	if counts.queued+counts.held+counts.failed == 0 {
@@ -964,6 +971,7 @@ func (q *queue) status(w io.Writer) int {
 		var err error
 		if counts, _, err = q.scan(false); err != nil {
 			q.log.Error("queue not listed", "err", err)
+			tellUser(q.d, q.redactor, "queue not listed", err)
 			return exitIOErr
 		}
 	}
@@ -976,6 +984,7 @@ func (q *queue) status(w io.Writer) int {
 func (q *queue) print(w io.Writer, text string) int {
 	if _, err := io.WriteString(w, text); err != nil {
 		q.log.Error("queue listing not written", "err", err)
+		tellUser(q.d, q.redactor, "queue listing not written", err)
 		return exitIOErr
 	}
 	return exitOK

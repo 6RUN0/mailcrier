@@ -59,6 +59,7 @@ func SystemDeps() Deps {
 		NewLogger: func(tag string) *slog.Logger {
 			return newFallbackLogger(tag, dialSyslog, fallback)
 		},
+		IsLogOnStderr:  fallback.isDown,
 		ConfigFS:       os.DirFS("/"),
 		ConfigPath:     SystemConfigPath,
 		HTTP:           &http.Client{Transport: newTransport(creds.isElevated())},

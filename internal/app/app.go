@@ -124,6 +124,9 @@ type Deps struct {
 	// LookupUserName returns the login name of a uid from the user
 	// database; false when there is none.
 	LookupUserName func(uid int) (string, bool)
+	// IsLogOnStderr reports whether the log goes to stderr, without a
+	// syslog socket; nil means it never does.
+	IsLogOnStderr func() bool
 	// SpoolDir is the spool directory when the configuration sets none,
 	// and where a message goes when the configuration is rejected; empty
 	// turns the spool off.
@@ -375,8 +378,12 @@ func runQueueMode(ctx context.Context, d Deps, log *slog.Logger, newLogger func(
 	if inv.Mode == sendmail.ListQueue || inv.Mode == sendmail.Status {
 		if err != nil {
 			log.Warn("spool listed under a rejected configuration", "dir", settings.Dir)
+			tellUser(d, redactor, "spool listed under a rejected configuration", settings.Dir)
 		}
-		return listSpool(d, log, settings.Dir, inv.Mode)
+		return listSpool(d, log, redactor, settings.Dir, inv.Mode)
+	}
+	if err != nil {
+		tellUser(d, redactor, "configuration rejected", err)
 	}
 	q, openErr := newQueue(d, log, redactor, settings, targets)
 	if cfg != nil {
@@ -385,6 +392,7 @@ func runQueueMode(ctx context.Context, d Deps, log *slog.Logger, newLogger func(
 	}
 	if openErr != nil {
 		log.Error("spool not opened", "err", openErr)
+		tellUser(d, redactor, "spool not opened", openErr)
 		if cfg == nil {
 			return exitConfig
 		}
@@ -395,6 +403,7 @@ func runQueueMode(ctx context.Context, d Deps, log *slog.Logger, newLogger func(
 	if q.sp != nil {
 		if err := q.sp.CheckWritable(); err != nil {
 			log.Error("spool not writable, queue not run", "err", err)
+			tellUser(d, redactor, "spool not writable, queue not run", err)
 			if cfg == nil {
 				return exitConfig
 			}
@@ -438,8 +447,8 @@ func loadTargets(d Deps, log *slog.Logger, newLogger func(tag string) *slog.Logg
 // without creating anything in the spool. A missing directory holds
 // nothing for mailq, while --status, read by monitoring, reports it as an
 // error.
-func listSpool(d Deps, log *slog.Logger, dir string, mode sendmail.Mode) int {
-	q := &queue{d: d, log: log}
+func listSpool(d Deps, log *slog.Logger, redactor *redact.Redactor, dir string, mode sendmail.Mode) int {
+	q := &queue{d: d, log: log, redactor: redactor}
 	// What -q takes from the hold/ of the default directory into another
 	// one is listed with it, see queue.otherHold.
 	if d.SpoolDir != "" && dir != d.SpoolDir {
@@ -453,6 +462,7 @@ func listSpool(d Deps, log *slog.Logger, dir string, mode sendmail.Mode) int {
 		case errors.Is(err, fs.ErrNotExist) && mode == sendmail.ListQueue:
 		default:
 			log.Error("spool not opened", "err", err)
+			tellUser(d, redactor, "spool not opened", err)
 			return exitIOErr
 		}
 	}
@@ -465,12 +475,30 @@ func listSpool(d Deps, log *slog.Logger, dir string, mode sendmail.Mode) int {
 	if q.sp != nil {
 		if writeErr = q.sp.CheckWritable(); writeErr != nil {
 			log.Warn("spool not writable", "err", writeErr)
+			tellUser(d, redactor, "spool not writable", writeErr)
 		}
 	}
 	if code := q.status(d.Stdout); code != exitOK || writeErr == nil {
 		return code
 	}
 	return exitIOErr
+}
+
+// tellUser writes the line on stderr that tells the caller of -q, mailq or
+// --status what failed, as a usage error does, interactive or not: a
+// monitoring script reads stderr too, and the record in the mail log
+// carries the rest. An elevated caller gets the constant message alone, as
+// from the log without syslog; nothing is written when the log goes to
+// stderr already. detail, an error or a path, is redacted.
+func tellUser(d Deps, redactor *redact.Redactor, message string, detail any) {
+	if d.IsLogOnStderr != nil && d.IsLogOnStderr() {
+		return
+	}
+	line := "mailcrier: " + message
+	if detail != nil && !d.Credentials.isElevated() {
+		line += ": " + redactor.String(fmt.Sprint(detail))
+	}
+	_, _ = fmt.Fprintln(d.Stderr, line)
 }
 
 // notices returns the built-in notices with the configured ones in place.

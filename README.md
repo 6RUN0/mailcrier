@@ -991,6 +991,15 @@ preset = "generic-json"
   and only its targets are rejected, since a call holds its message
   there, the default directory otherwise, and log `spool listed under a
   rejected configuration` with the directory.
+- When `-q`, `mailq` or `--status` fails, or lists under a rejected
+  configuration, stderr gets one line per cause besides the record in
+  the log, interactive or not, such as `mailcrier: spool not opened:
+  stat /var/spool/mailcrier: no such file or directory`, or `mailcrier:
+  queue run incomplete, see the mail log` after a run with errors on
+  single entries. A setgid-elevated caller gets the message without the
+  cause, and without syslog only the records go to stderr. Under systemd
+  the journal then holds the line besides the record; the cron file of
+  the packages discards it (`MAILTO=`).
 
 ### Options, privileges and containers
 

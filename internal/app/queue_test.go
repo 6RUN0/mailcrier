@@ -1746,3 +1746,52 @@ func BenchmarkOwnMessage(b *testing.B) {
 		})
 	}
 }
+
+// TestQueueModesTellUser pins the line on stderr of -q, mailq and --status
+// when they fail: the cause for a caller without elevation, the constant
+// message alone for an elevated one, nothing when the log goes to stderr
+// already.
+func TestQueueModesTellUser(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing")
+	cases := []struct {
+		name         string
+		args         []string
+		config       string
+		creds        Credentials
+		isSyslogDown bool
+		code         int
+		want         string
+	}{
+		{"status-missing-spool", []string{"--status"}, twoTargets, plainUser, false, 74, "mailcrier: spool not opened: stat " + missing + ": no such file or directory\n"},
+		{"status-missing-spool-elevated", []string{"--status"}, twoTargets, elevatedUser, false, 74, "mailcrier: spool not opened\n"},
+		{"queue-run-missing-spool", []string{"-q"}, twoTargets, rootCaller, false, 74, "mailcrier: spool not opened: stat " + missing + ": no such file or directory\n"},
+		{"queue-run-rejected-file", []string{"-q"}, "[target.a]\n", rootCaller, false, 78,
+			"mailcrier: configuration rejected: /etc/mailcrier.conf:1:9: target \"a\": key \"type\" is required\nmailcrier: spool not opened: stat " + missing + ": no such file or directory\n"},
+		{"mailq-rejected-file", []string{"-bp"}, "[target.a]\n", rootCaller, false, 0, "mailcrier: spool listed under a rejected configuration: " + missing + "\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			inv := &invocation{config: tc.config, args: tc.args, creds: tc.creds, spoolDir: missing, isSyslogDown: tc.isSyslogDown}
+			if code := inv.run(t); code != tc.code || inv.stderr.String() != tc.want {
+				t.Errorf("Run() = %d, stderr %q; want %d, %q; output:\n%s", code, inv.stderr.String(), tc.code, tc.want, inv.output())
+			}
+		})
+	}
+	t.Run("log-on-stderr", func(t *testing.T) {
+		inv := &invocation{config: twoTargets, args: []string{"--status"}, creds: plainUser, spoolDir: missing, isSyslogDown: true}
+		if code := inv.run(t); code != 74 || strings.Contains(inv.stderr.String(), "mailcrier: spool not opened") ||
+			!strings.Contains(inv.stderr.String(), `level=ERROR msg="spool not opened"`) {
+			t.Errorf("Run() = %d, stderr:\n%s\nwant 74 and the record alone", code, inv.stderr.String())
+		}
+	})
+	t.Run("queue-run-incomplete", func(t *testing.T) {
+		c := newSpoolCase(t)
+		c.service.reply("a", delivery.Temp)
+		c.send("kept", plainUser)
+		c.corrupt(spool.QueueDir, testNow)
+		code, inv := c.queueRun(rootCaller)
+		if code != 74 || inv.stderr.String() != "mailcrier: queue run incomplete, see the mail log\n" {
+			t.Errorf("-q = %d, stderr %q; want 74 and one line", code, inv.stderr.String())
+		}
+	})
+}
