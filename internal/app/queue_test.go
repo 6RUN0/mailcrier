@@ -1060,6 +1060,22 @@ func TestQueueRun(t *testing.T) {
 			t.Errorf("output:\n%s", inv.output())
 		}
 	})
+	t.Run("target-removed-entry-finished-without-save", func(t *testing.T) {
+		c := newSpoolCase(t)
+		c.service.reply("b", delivery.Temp)
+		c.send("renamed", elevatedUser)
+		c.config = strings.Replace(twoTargets, "[target.b]", "[target.c]", 1)
+		c.clock.advance(time.Minute)
+		// A directory where Save writes the new sidecar fails it.
+		next := filepath.Join(c.dir, spool.TmpDir, c.ids(spool.QueueDir)[0]+".next.json")
+		if err := os.MkdirAll(filepath.Join(next, "keep"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		code, inv := c.queueRun(serviceCaller)
+		if code != 0 || len(c.ids(spool.QueueDir)) != 0 || strings.Contains(inv.output(), "spool entry not updated") {
+			t.Errorf("-q = %d, queue %v; output:\n%s", code, c.ids(spool.QueueDir), inv.output())
+		}
+	})
 	t.Run("entry-of-another-version-left-alone", func(t *testing.T) {
 		c := newSpoolCase(t)
 		c.service.reply("a", delivery.Temp)

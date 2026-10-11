@@ -753,7 +753,9 @@ func (q *queue) deliverEntry(ctx context.Context, rec *spool.Record) bool {
 		}
 	}
 	if len(due) == 0 {
-		if isChanged {
+		// finish removes or fails an entry no target waits for, so only
+		// one that still waits needs its new state written.
+		if isChanged && e.IsPending() {
 			q.save(rec)
 		}
 		return false
