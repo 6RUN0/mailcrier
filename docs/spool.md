@@ -189,3 +189,5 @@ preset = "generic-json"
   cause, and without syslog only the records go to stderr. Under systemd
   the journal then holds the line besides the record; the cron file of
   the packages discards it (`MAILTO=`).
+
+Russian: [spool.ru.md](spool.ru.md).

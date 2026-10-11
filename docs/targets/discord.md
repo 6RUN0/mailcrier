@@ -17,3 +17,5 @@ A target of this type makes one webhook execution per message with
 of the URL, such as `thread_id`, is kept. The text holds at most 2000
 characters (counted in UTF-16 units); up to 10 files of at most 20 MiB
 and 25 MiB together go in the same request.
+
+Russian: [discord.ru.md](discord.ru.md).

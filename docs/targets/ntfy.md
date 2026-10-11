@@ -20,3 +20,5 @@ the defaults of an ntfy server. ntfy.sh takes files of at most 2 MB, so
 a target there sets `max_file_size`. The URL must end with the topic,
 otherwise exit status 78; user information and a query such as `auth`
 are sent with every request.
+
+Russian: [ntfy.ru.md](ntfy.ru.md).

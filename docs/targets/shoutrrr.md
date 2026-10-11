@@ -29,3 +29,5 @@ and the [proxy rule](../configuration.md#timeouts-and-proxy); `smtp`,
 `xmpp` and `mqtt` open their own connections without a proxy, bounded
 only by `deadline`. Error texts of the library may quote the URL, which
 is masked in the log as every URL is.
+
+Russian: [shoutrrr.ru.md](shoutrrr.ru.md).

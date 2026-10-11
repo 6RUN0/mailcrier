@@ -241,3 +241,5 @@ writing `rpm_var_lib_t` (comm `rpm`), `systemd_logind_t` (9) or
 `systemd_user_runtimedir_t` (10) asking for `net_admin`, `init_t` reading
 `shadow_t` (9), `systemd_gpt_generator_t` asking for `sys_admin` and
 `kdump_dep_generator_t` reading `passwd_file_t` (10).
+
+Russian: [selinux.ru.md](selinux.ru.md).

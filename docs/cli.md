@@ -165,3 +165,5 @@ spool retries it; a temporary failure is also logged as `message queued
 for target` or `message queued`, or, without a spool entry, as `message
 lost for target` when another target accepted the message and as
 `message lost` when every target failed temporarily.
+
+Russian: [cli.ru.md](cli.ru.md).

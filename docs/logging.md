@@ -89,3 +89,5 @@ in every log record and in the debug output of the Go HTTP stack. A URL
 is masked whole, and so are its host, host labels, request URI, path
 segments and query values of 16 characters or more (the request URI also
 when it has a query) and its userinfo.
+
+Russian: [logging.ru.md](logging.ru.md).

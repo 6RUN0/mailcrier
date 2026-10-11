@@ -62,3 +62,5 @@ with access to `api.telegram.org`.
 
 A group that becomes a supergroup gets a new id, `-100...`; messages to
 the old id fail with status 400 until `chat_id` is changed.
+
+Russian: [telegram.ru.md](telegram.ru.md).

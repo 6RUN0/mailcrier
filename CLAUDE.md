@@ -374,6 +374,10 @@ with "build constraints exclude all Go files".
   pages under `docs/` (`releasing.md` is for the maintainer); the packages
   install them, so a new page goes into `userGuides` (`packaging_test.go`)
   and into `contents` of `.goreleaser.yaml` (`TestUserGuidesInstalled`).
+  Each page has a Russian translation `<page>.ru.md` beside it, changed in
+  the same commit: `TestGuideTranslations` wants the footer link to the
+  other language as the last line of both, the same heading levels, and
+  links to pages of the same language only.
   `TestDocExamplesLoad` loads every TOML block of them with `config.Load`;
   `TestDocTemplatesParse` builds every block that sets a template;
   `TestDocCheckConfigOutput` runs `--check-config` on the first TOML block

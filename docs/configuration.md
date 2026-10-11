@@ -135,3 +135,5 @@ missing; the token or URL is given as exactly one of the key and its
 | `max_file_size` | `telegram`, `discord`, `slack`, `ntfy` | | positive integer, bytes | the limit of the service |
 | `template` | `telegram`, `discord`, `slack`, `ntfy`, `http`, `shoutrrr` | | Go `text/template` | the built-in one |
 | `template_file` | `telegram`, `discord`, `slack`, `ntfy`, `http`, `shoutrrr` | | absolute path of a file holding the template | |
+
+Russian: [configuration.ru.md](configuration.ru.md).

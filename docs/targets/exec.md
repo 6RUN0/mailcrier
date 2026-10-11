@@ -73,3 +73,5 @@ goes into `argv`.
   not acceptable, the hook has to refuse to run as anyone but
   `mailcrier` (exit 75 keeps the message queued for the queue run of
   that user), and then reads what `mailcrier` reads, as said above.
+
+Russian: [exec.ru.md](exec.ru.md).

@@ -53,3 +53,5 @@ the spool retries; any other failure is permanent and is not retried.
 A timeout of `http_timeout` or `deadline` is temporary as well, see
 [Timeouts and proxy](configuration.md#timeouts-and-proxy); the rules of a
 type that differ from these are on its page.
+
+Russian: [targets.ru.md](targets.ru.md).

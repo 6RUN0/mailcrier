@@ -46,3 +46,5 @@ belongs:
 - A complete example with the spool on a volume and secrets in
   `/run/secrets`:
   [`packaging/examples/container.conf`](../packaging/examples/container.conf).
+
+Russian: [containers.ru.md](containers.ru.md).

@@ -107,3 +107,5 @@ the message, 69 when one rejected it, and 75 when one failed temporarily
 and none rejected it. root, the `mailcrier` user and a caller without
 the setgid bit may run it. Mail flags such as `-f` or `-t` are ignored,
 and of several mode options the last one wins.
+
+Russian: [checking.ru.md](checking.ru.md).

@@ -134,3 +134,5 @@ The binary goes to `/usr/sbin/mailcrier`, with `/usr/sbin/sendmail`,
 `/usr/lib/sendmail`, `/usr/bin/newaliases` and `/usr/bin/mailq` as links
 to it; ownership and modes are under [Privileges](privileges.md). The
 manual page is `docs/mailcrier.8`.
+
+Russian: [install.ru.md](install.ru.md).

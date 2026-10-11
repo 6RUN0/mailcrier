@@ -16,9 +16,12 @@ import (
 // this file does not carry it.
 const formerName = "slend" + "mail"
 
-// forkOrigin is the only text of the tree allowed to carry formerName: once,
-// as a whole line of README.md.
-const forkOrigin = "Started as a fork of github.com/iggy/" + formerName + "."
+// forkOrigins are the only texts of the tree allowed to carry formerName:
+// each once, as a whole line of its README.
+var forkOrigins = map[string]string{
+	"README.md":    "Started as a fork of github.com/iggy/" + formerName + ".",
+	"README.ru.md": "Начинался как форк github.com/iggy/" + formerName + ".",
+}
 
 // errNotOwnTree marks a directory that is not the top of a git work tree.
 var errNotOwnTree = errors.New("not the top of a git work tree")
@@ -51,9 +54,10 @@ func trackedFiles(dir string) ([]string, error) {
 }
 
 // TestFormerNameGone fails when the path or the content of a tracked file
-// carries the former name of the program in any case, except forkOrigin in
-// README.md. Outside its own git work tree it is skipped, unless CI is set: a
-// source archive has no index to list, CI must not pass without checking.
+// carries the former name of the program in any case, except forkOrigins in
+// the READMEs. Outside its own git work tree it is skipped, unless CI is
+// set: a source archive has no index to list, CI must not pass without
+// checking.
 func TestFormerNameGone(t *testing.T) {
 	dir, err := os.Getwd()
 	if err != nil {
@@ -85,9 +89,10 @@ func TestFormerNameGone(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		origin, hasOrigin := forkOrigins[file]
 		origins := 0
 		for i, line := range strings.Split(string(content), "\n") {
-			if file == "README.md" && line == forkOrigin {
+			if hasOrigin && line == origin {
 				origins++
 				continue
 			}
@@ -96,8 +101,8 @@ func TestFormerNameGone(t *testing.T) {
 				break
 			}
 		}
-		if file == "README.md" && origins != 1 {
-			t.Errorf("README.md has the line %q %d times, want once", forkOrigin, origins)
+		if hasOrigin && origins != 1 {
+			t.Errorf("%s has the line %q %d times, want once", file, origin, origins)
 		}
 	}
 }

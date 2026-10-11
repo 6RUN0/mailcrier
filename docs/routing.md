@@ -161,3 +161,5 @@ chat_id = -1001234567890
   once `telegram_direct` or its chat is gone from the file.
 - On the command line a negative id reads as an option: recipients go
   after `--`, as in `sendmail -- -1001234567890@telegram`.
+
+Russian: [routing.ru.md](routing.ru.md).

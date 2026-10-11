@@ -61,3 +61,5 @@ max_lines = 40          # optional, lines of the body in the text
   is `text rejected, file failed too` (warning) and the target fails with
   the error of the second attempt. Every 400 counts, a wrong `chat_id`
   included, which costs one more request.
+
+Russian: [long-messages.ru.md](long-messages.ru.md).

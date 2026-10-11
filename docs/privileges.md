@@ -28,3 +28,5 @@ setgid bit is under [Containers](containers.md).
   neither the configuration nor the spool is accessible to a caller other
   than root, the message is lost (`message lost, not held`) and the call
   exits 73.
+
+Russian: [privileges.ru.md](privileges.ru.md).

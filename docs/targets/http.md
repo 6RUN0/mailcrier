@@ -81,3 +81,5 @@ unescaped. A redirect is not followed and counts as a permanent failure,
 of the Location: its path repeats that of the target, where a topic or
 key is a secret of any length. The same holds for every target type,
 `shoutrrr` included.
+
+Russian: [http.ru.md](http.ru.md).

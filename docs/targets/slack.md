@@ -23,3 +23,5 @@ most 40000 characters; up to 10 files are sent. An answer with `"ok":
 false` is a failure; `ratelimited`, `internal_error`, `fatal_error`,
 `service_unavailable` and `request_timeout` are temporary. Several `slack`
 targets may post with different tokens to different channels.
+
+Russian: [slack.ru.md](slack.ru.md).

@@ -222,7 +222,7 @@ func expectedContents() map[[2]string]packageEntry {
 	for _, name := range configExamples {
 		contents[[2]string{"/usr/share/doc/mailcrier/examples/" + name, ""}] = packageEntry{"", "root", "root", 0o644}
 	}
-	for _, name := range userGuides {
+	for _, name := range installedGuides() {
 		contents[[2]string{"/usr/share/doc/mailcrier/" + name, ""}] = packageEntry{"", "root", "root", 0o644}
 	}
 	return contents
@@ -742,7 +742,8 @@ var configExamples = []string{"mailcrier.conf", "telegram.conf", "team-chat.conf
 
 // userGuides are the pages of the user documentation, installed in
 // /usr/share/doc/mailcrier with the layout of the repository, so that
-// their relative links between each other resolve there.
+// their relative links between each other resolve there; the Russian
+// translation of each (translationOf) goes beside it.
 var userGuides = []string{
 	"README.md",
 	"docs/checking.md", "docs/cli.md", "docs/configuration.md", "docs/containers.md",
@@ -753,11 +754,26 @@ var userGuides = []string{
 	"docs/targets/telegram.md", "docs/templates.md",
 }
 
-// TestUserGuidesInstalled fails when a page of docs is missing from
-// userGuides, and so from the packages, which TestPackageContents checks
-// against that list. releasing.md is for the maintainer and stays out.
+// translationOf names the Russian translation of an English page.
+func translationOf(page string) string {
+	return strings.TrimSuffix(page, ".md") + ".ru.md"
+}
+
+// installedGuides lists userGuides and their translations.
+func installedGuides() []string {
+	var pages []string
+	for _, page := range userGuides {
+		pages = append(pages, page, translationOf(page))
+	}
+	return pages
+}
+
+// TestUserGuidesInstalled fails when a page of docs or its translation is
+// missing from userGuides, and so from the packages, which
+// TestPackageContents checks against that list. releasing.md is for the
+// maintainer and stays out.
 func TestUserGuidesInstalled(t *testing.T) {
-	pages := []string{"README.md"}
+	pages := []string{"README.md", "README.ru.md"}
 	err := filepath.WalkDir("docs", func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -770,8 +786,9 @@ func TestUserGuidesInstalled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(slices.Sorted(slices.Values(pages)), slices.Sorted(slices.Values(userGuides))) {
-		t.Errorf("docs holds %v, userGuides lists %v", pages, userGuides)
+	want := installedGuides()
+	if !slices.Equal(slices.Sorted(slices.Values(pages)), slices.Sorted(slices.Values(want))) {
+		t.Errorf("docs holds %v, want %v", pages, want)
 	}
 }
 

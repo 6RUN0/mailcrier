@@ -125,3 +125,5 @@ The functions, besides those of `text/template` (`printf`, `len`,
   log records `request template failed, message not sent` (warning) with
   `target` and `err`. A parse error of one of them names `<target>.path`,
   `<target>.query.<name>` or `<target>.headers.<name>` and its line.
+
+Russian: [templates.ru.md](templates.ru.md).

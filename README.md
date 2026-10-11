@@ -119,3 +119,5 @@ first queue run after the file loads delivers them, see
 | [Command line](docs/cli.md) | sendmail flags, recipients, message parsing, exit statuses |
 | [SELinux](docs/selinux.md) | the module of the rpm package |
 | [mailcrier(8)](docs/mailcrier.8) | the manual page, also installed with the packages |
+
+Russian: [README.ru.md](README.ru.md).
