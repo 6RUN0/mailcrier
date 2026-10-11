@@ -173,8 +173,8 @@ func TestSmokeRuntime(t *testing.T) {
 		const marker = "smoke-nnp-61d0"
 		got := recv.expect(marker)
 		r := run(t, alice, "Subject: "+marker+"\n\nbody\n", "setpriv", "--no-new-privs", "/usr/sbin/sendmail", "-i", "ops@example.org")
-		if r.code != 78 {
-			t.Errorf("call under no_new_privs exited %d, want 78:\n%s", r.code, r.out)
+		if r.code != 73 {
+			t.Errorf("call under no_new_privs exited %d, want 73:\n%s", r.code, r.out)
 		}
 		if !isEmpty(got) {
 			t.Error("the message arrived without the setgid bit taking effect")

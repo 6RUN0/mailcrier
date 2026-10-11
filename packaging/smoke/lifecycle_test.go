@@ -114,7 +114,7 @@ func TestSmokeLifecycle(t *testing.T) {
 			const lostMarker, sentMarker = "smoke-setperms-lost-27b8", "smoke-setperms-sent-d40f"
 			lost, sent := recv.expect(lostMarker), recv.expect(sentMarker)
 			mustRun(t, "", "rpm", "--setperms", "mailcrier")
-			send(t, alice, lostMarker, 78)
+			send(t, alice, lostMarker, 73)
 			if !isEmpty(lost) || len(allSpoolMessages(t)) != 0 {
 				t.Errorf("a call without the setgid bit was delivered or spooled\n%s", report())
 			}
