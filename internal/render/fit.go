@@ -13,12 +13,10 @@ import (
 var ErrLimitTooSmall = errors.New("the rest of the template alone exceeds the length limit")
 
 // strictFormats are the formats a cut at an arbitrary character breaks for
-// the service: JSON that no longer parses, and Telegram MarkdownV2 with an
-// unclosed entity or escape, which the Bot API rejects. Telegram HTML is
-// cut by text.CutTelegramHTML instead, which closes what it leaves open.
+// the service: JSON that no longer parses. Telegram HTML is cut by
+// text.CutTelegramHTML instead, which closes what it leaves open.
 var strictFormats = map[text.Format]bool{
-	text.FormatTelegramMarkdownV2: true,
-	text.FormatMattermost:         true, text.FormatSlackWebhook: true, text.FormatGenericJSON: true,
+	text.FormatMattermost: true, text.FormatSlackWebhook: true, text.FormatGenericJSON: true,
 }
 
 // Fit renders d with t so that measure of the result is at most limit, in
@@ -251,12 +249,11 @@ func firstLines(body string, maxLines int) (string, bool) {
 // takes more than its share and leaves the body less room, while the limit
 // still holds.
 var subjectEscapers = map[text.Format]func(string) string{
-	text.FormatTelegramHTML:       text.EscapeTelegramHTML,
-	text.FormatTelegramMarkdownV2: text.EscapeTelegramMarkdownV2,
-	text.FormatSlackMrkdwn:        text.EscapeSlack,
-	text.FormatSlackWebhook:       text.EscapeSlack,
-	text.FormatDiscord:            text.EscapeDiscord,
-	text.FormatMattermost:         text.EscapeMattermostMarkdown,
+	text.FormatTelegramHTML: text.EscapeTelegramHTML,
+	text.FormatSlackMrkdwn:  text.EscapeSlack,
+	text.FormatSlackWebhook: text.EscapeSlack,
+	text.FormatDiscord:      text.EscapeDiscord,
+	text.FormatMattermost:   text.EscapeMattermostMarkdown,
 }
 
 // minSubjectShare is the length, in the unit of the target, to which Fit

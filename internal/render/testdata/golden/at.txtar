@@ -7,12 +7,6 @@ build finished
 <b>Output from your job 7</b>
 <i>host1.example.org: alice@host1.example.org</i>
 <pre>build finished</pre>
--- telegram-markdownv2 --
-*Output from your job 7*
-_host1\.example\.org: alice@host1\.example\.org_
-```
-build finished
-```
 -- slack-mrkdwn --
 *Output from your job 7*
 host1.example.org: _alice@host1.example.org_

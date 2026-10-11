@@ -7,12 +7,6 @@ host1 : 27 сен 10:00:00 : alice : пользователь НЕ в sudoers ; 
 <b>*** SECURITY information for host1 ***</b>
 <i>host1.example.org: alice</i>
 <pre>host1 : 27 сен 10:00:00 : alice : пользователь НЕ в sudoers ; TTY=pts/0 ; COMMAND=/usr/bin/id</pre>
--- telegram-markdownv2 --
-*\*\*\* SECURITY information for host1 \*\*\**
-_host1\.example\.org: alice_
-```
-host1 : 27 сен 10:00:00 : alice : пользователь НЕ в sudoers ; TTY=pts/0 ; COMMAND=/usr/bin/id
-```
 -- slack-mrkdwn --
 **** SECURITY information for host1 ****
 host1.example.org: _alice_

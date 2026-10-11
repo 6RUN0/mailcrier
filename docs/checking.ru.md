@@ -70,7 +70,7 @@ warning: /etc/mailcrier.conf:14:3: routes have no rule without conditions: a mes
 | `first element of key "argv" is not an executable file` | программы цели `exec` нет или у неё нет бита выполнения | установите её, `chmod +x` |
 | `template fails on the sample message, the built-in one is used` | шаблон из конфигурации не срабатывает или не укладывается в лимит цели | исправьте шаблон; до тех пор вызовы используют встроенный |
 | `request template fails on the sample message, the target gets nothing` | не срабатывает шаблон `path`, `query` или `headers` | исправьте шаблон; до тех пор цель не получает писем |
-| `the sample message does not render, the target gets nothing` | встроенный шаблон не укладывается в `max_text`, для JSON или MarkdownV2 | увеличьте `max_text` |
+| `the sample message does not render, the target gets nothing` | встроенный шаблон не укладывается в `max_text`, для JSON | увеличьте `max_text` |
 
 Четыре проверки прав выполняются, только если к процессу применился бит
 setgid, а так бывает у root и у пользователя `mailcrier` с другой

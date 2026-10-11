@@ -9,13 +9,6 @@ mandb: can't update index cache
 <i>host1.example.org: Anacron &lt;root&gt;</i>
 <pre>/etc/cron.daily/man-db:
 mandb: can't update index cache</pre>
--- telegram-markdownv2 --
-*Anacron job 'cron\.daily' on host1*
-_host1\.example\.org: Anacron <root\>_
-```
-/etc/cron.daily/man-db:
-mandb: can't update index cache
-```
 -- slack-mrkdwn --
 *Anacron job 'cron.daily' on host1*
 host1.example.org: _Anacron &lt;root&gt;_

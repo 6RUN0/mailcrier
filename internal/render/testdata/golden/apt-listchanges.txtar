@@ -11,14 +11,6 @@ example-tool (2.0-1) unstable; urgency=medium
 <pre>example-tool (2.0-1) unstable; urgency=medium
 
   * The configuration moved to /etc/example-tool.d.</pre>
--- telegram-markdownv2 --
-*apt\-listchanges: news for host1*
-_host1\.example\.org: alice@host1\.example\.org_
-```
-example-tool (2.0-1) unstable; urgency=medium
-
-  * The configuration moved to /etc/example-tool.d.
-```
 -- slack-mrkdwn --
 *apt-listchanges: news for host1*
 host1.example.org: _alice@host1.example.org_

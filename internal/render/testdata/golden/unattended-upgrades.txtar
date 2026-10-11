@@ -21,19 +21,6 @@ Packages that were upgraded:
 Package installation log:
 Log started: 2026-09-27  06:25:01
 Preparing to unpack .../example-lib_2.0-1_amd64.deb ...</pre>
--- telegram-markdownv2 --
-*unattended\-upgrades result for host1: SUCCESS*
-_host1\.example\.org: root_
-```
-Unattended upgrade result: All upgrades installed
-
-Packages that were upgraded:
- example-lib example-tool
-
-Package installation log:
-Log started: 2026-09-27  06:25:01
-Preparing to unpack .../example-lib_2.0-1_amd64.deb ...
-```
 -- slack-mrkdwn --
 *unattended-upgrades result for host1: SUCCESS*
 host1.example.org: _root_

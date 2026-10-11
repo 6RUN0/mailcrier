@@ -9,13 +9,6 @@ host1.example.org: (Cron Daemon) <alice>
 <i>host1.example.org: (Cron Daemon) &lt;alice&gt;</i>
 <pre>Файловая система  Размер  Использовано
 /dev/sda2         50G     47G</pre>
--- telegram-markdownv2 --
-*Cron <alice@host1\> df \-h /home*
-_host1\.example\.org: \(Cron Daemon\) <alice\>_
-```
-Файловая система  Размер  Использовано
-/dev/sda2         50G     47G
-```
 -- slack-mrkdwn --
 *Cron &lt;alice@host1&gt; df -h /home*
 host1.example.org: _(Cron Daemon) &lt;alice&gt;_

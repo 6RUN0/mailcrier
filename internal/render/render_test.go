@@ -200,7 +200,7 @@ func TestBuiltinNotSent(t *testing.T) {
 	d.Attachments = []Attachment{{Name: "dump.tar", ContentType: "application/x-tar", Size: 60 << 20, IsSkipped: true}, {Name: "small.log", ContentType: "text/plain", Size: 10}}
 	want := map[text.Format]string{
 		text.FormatPlain: "[not sent]", text.FormatNtfy: "[not sent]", text.FormatDiscord: `\[not sent\]`,
-		text.FormatSlackMrkdwn: "[not sent]", text.FormatTelegramHTML: "[not sent]", text.FormatTelegramMarkdownV2: `\[not sent\]`,
+		text.FormatSlackMrkdwn: "[not sent]", text.FormatTelegramHTML: "[not sent]",
 	}
 	for format, out := range renderAll(t, d) {
 		notice, isListed := want[format]
@@ -256,16 +256,6 @@ func TestBuiltinMarkupStaysValid(t *testing.T) {
 		}
 		if strings.Contains(outputs[text.FormatSlackMrkdwn], "<!channel>") {
 			t.Errorf("slack-mrkdwn keeps a mention: %s", outputs[text.FormatSlackMrkdwn])
-		}
-	})
-	t.Run("T-TPL-13/markdownv2-escapes-body", func(t *testing.T) {
-		want := "*" + text.EscapeTelegramMarkdownV2(d.Subject) + "*\n_" + text.EscapeTelegramMarkdownV2(d.Hostname) + ": " +
-			text.EscapeTelegramMarkdownV2(d.From.String()) + "_\n```\n" + text.EscapeTelegramMarkdownV2Code(strings.TrimRight(d.Body, "\n")) + "\n```"
-		if got := outputs[text.FormatTelegramMarkdownV2]; got != want {
-			t.Errorf("telegram-markdownv2 =\n%s\nwant\n%s", got, want)
-		}
-		if strings.Contains(outputs[text.FormatTelegramMarkdownV2], "host1.example") {
-			t.Error("an unescaped dot reaches MarkdownV2 outside code")
 		}
 	})
 	t.Run("code-blocks-stay-closed", func(t *testing.T) {

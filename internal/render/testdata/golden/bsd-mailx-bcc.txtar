@@ -7,12 +7,6 @@ all green
 <b>nightly report</b>
 <i>host1.example.org: alice@example.org</i>
 <pre>all green</pre>
--- telegram-markdownv2 --
-*nightly report*
-_host1\.example\.org: alice@example\.org_
-```
-all green
-```
 -- slack-mrkdwn --
 *nightly report*
 host1.example.org: _alice@example.org_

@@ -11,14 +11,6 @@ The jail sshd has been started successfully.
 <pre>Hi,
 
 The jail sshd has been started successfully.</pre>
--- telegram-markdownv2 --
-*\[Fail2Ban\] sshd: started on host1\.example\.org*
-_host1\.example\.org: Fail2Ban <root@host1\.example\.org\>_
-```
-Hi,
-
-The jail sshd has been started successfully.
-```
 -- slack-mrkdwn --
 *[Fail2Ban] sshd: started on host1.example.org*
 host1.example.org: _Fail2Ban &lt;root@host1.example.org&gt;_

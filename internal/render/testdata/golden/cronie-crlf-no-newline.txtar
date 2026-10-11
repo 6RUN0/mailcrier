@@ -7,12 +7,6 @@ done
 <b>Cron &lt;root@host1&gt; printf done</b>
 <i>host1.example.org: (Cron Daemon) &lt;root&gt;</i>
 <pre>done</pre>
--- telegram-markdownv2 --
-*Cron <root@host1\> printf done*
-_host1\.example\.org: \(Cron Daemon\) <root\>_
-```
-done
-```
 -- slack-mrkdwn --
 *Cron &lt;root@host1&gt; printf done*
 host1.example.org: _(Cron Daemon) &lt;root&gt;_

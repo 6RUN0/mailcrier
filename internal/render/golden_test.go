@@ -20,7 +20,7 @@ const callersDir = "../../testdata/callers"
 // builtinFormats are the formats with a built-in template, in golden file
 // order.
 var builtinFormats = []text.Format{
-	text.FormatPlain, text.FormatTelegramHTML, text.FormatTelegramMarkdownV2, text.FormatSlackMrkdwn,
+	text.FormatPlain, text.FormatTelegramHTML, text.FormatSlackMrkdwn,
 	text.FormatDiscord, text.FormatNtfy, text.FormatMattermost, text.FormatSlackWebhook, text.FormatGenericJSON,
 }
 

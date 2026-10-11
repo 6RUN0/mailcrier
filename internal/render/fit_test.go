@@ -296,29 +296,20 @@ func TestFit(t *testing.T) {
 		}
 	})
 	t.Run("attachment-list-cut", func(t *testing.T) {
-		for _, format := range []text.Format{text.FormatTelegramHTML, text.FormatTelegramMarkdownV2} {
-			tmpl, err := Builtin(format)
-			if err != nil {
-				t.Fatal(err)
-			}
-			d := fitData("short body\n")
-			for i := range 150 {
-				d.Attachments = append(d.Attachments, Attachment{Name: fmt.Sprintf("report-%03d.log", i), ContentType: "text/plain", Size: 1234})
-			}
-			m := measures[0]
-			if format == text.FormatTelegramMarkdownV2 {
-				m = measures[1]
-			}
-			out, truncated, err := Fit(tmpl, d, 4096, m.measure)
-			checkFitOutput(t, tmpl, d, 4096, m, out, truncated, err)
-			listed := strings.Count(out, "report")
-			more := fmt.Sprintf(d.Strings.MoreAttachments, 150-listed)
-			if format == text.FormatTelegramMarkdownV2 {
-				more = text.EscapeTelegramMarkdownV2(more)
-			}
-			if err != nil || !truncated || !strings.Contains(out, "short body") || listed < 50 || listed >= 150 || !strings.HasSuffix(out, "\n"+more+"\n") && !strings.HasSuffix(out, "\n"+more) {
-				t.Errorf("%s: truncated = %v, err = %v, %d listed, ends %q", format, truncated, err, listed, out[max(0, len(out)-80):])
-			}
+		tmpl, err := Builtin(text.FormatTelegramHTML)
+		if err != nil {
+			t.Fatal(err)
+		}
+		d := fitData("short body\n")
+		for i := range 150 {
+			d.Attachments = append(d.Attachments, Attachment{Name: fmt.Sprintf("report-%03d.log", i), ContentType: "text/plain", Size: 1234})
+		}
+		out, truncated, err := Fit(tmpl, d, 4096, measures[0].measure)
+		checkFitOutput(t, tmpl, d, 4096, measures[0], out, truncated, err)
+		listed := strings.Count(out, "report")
+		more := fmt.Sprintf(d.Strings.MoreAttachments, 150-listed)
+		if err != nil || !truncated || !strings.Contains(out, "short body") || listed < 50 || listed >= 150 || !strings.HasSuffix(out, "\n"+more+"\n") && !strings.HasSuffix(out, "\n"+more) {
+			t.Errorf("truncated = %v, err = %v, %d listed, ends %q", truncated, err, listed, out[max(0, len(out)-80):])
 		}
 	})
 	t.Run("attachment-list-and-body-cut", func(t *testing.T) {
@@ -337,7 +328,7 @@ func TestFit(t *testing.T) {
 		}
 	})
 	t.Run("strict-format-too-long-without-subject", func(t *testing.T) {
-		for _, format := range []text.Format{text.FormatTelegramMarkdownV2, text.FormatGenericJSON} {
+		for _, format := range []text.Format{text.FormatGenericJSON, text.FormatMattermost} {
 			tmpl, err := Builtin(format)
 			if err != nil {
 				t.Fatal(err)
@@ -631,7 +622,7 @@ func TestFitKeepsTheLongestBody(t *testing.T) {
 // counts it as nothing, so a body that starts with far more such text
 // than the limit still keeps the text after it.
 func TestFitSearchesBodyMeasuredAsNothing(t *testing.T) {
-	tmpl, err := Builtin(text.FormatTelegramMarkdownV2)
+	tmpl, err := Builtin(text.FormatPlain)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -675,7 +666,7 @@ func TestFitRendersTheWholeBodyOnce(t *testing.T) {
 // longer than the limit that the measure counts as nothing still goes
 // whole, with the attachments that fit beside it.
 func TestFitListsAttachmentsBesideBodyMeasuredAsNothing(t *testing.T) {
-	tmpl, err := Builtin(text.FormatTelegramMarkdownV2)
+	tmpl, err := Builtin(text.FormatPlain)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -17,17 +17,6 @@ Here is more information about 198.51.100.7 :
 
 netname:        EXAMPLE-NET
 descr:          Société Exemple</pre>
--- telegram-markdownv2 --
-*\[Fail2Ban\] sshd: banned 198\.51\.100\.7 from host1\.example\.org*
-_host1\.example\.org: Fail2Ban <root@host1\.example\.org\>_
-```
-Hi,
-
-Here is more information about 198.51.100.7 :
-
-netname:        EXAMPLE-NET
-descr:          Société Exemple
-```
 -- slack-mrkdwn --
 *[Fail2Ban] sshd: banned 198.51.100.7 from host1.example.org*
 host1.example.org: _Fail2Ban &lt;root@host1.example.org&gt;_

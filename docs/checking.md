@@ -69,7 +69,7 @@ warning: /etc/mailcrier.conf:14:3: routes have no rule without conditions: a mes
 | `first element of key "argv" is not an executable file` | the program of an `exec` target is missing or has no execute bit | install it, `chmod +x` |
 | `template fails on the sample message, the built-in one is used` | the template from the configuration fails or does not fit the limit of the target | fix the template; calls use the built-in one meanwhile |
 | `request template fails on the sample message, the target gets nothing` | a `path`, `query` or `headers` template fails | fix the template; the target gets no message meanwhile |
-| `the sample message does not render, the target gets nothing` | the built-in template does not fit `max_text`, for JSON or MarkdownV2 | raise `max_text` |
+| `the sample message does not render, the target gets nothing` | the built-in template does not fit `max_text`, for JSON | raise `max_text` |
 
 The four checks of permissions run only when the setgid bit applied to
 the process, which is the case for root and for the `mailcrier` user with

@@ -18,15 +18,14 @@ type Format string
 
 // Built-in formats.
 const (
-	FormatPlain              Format = "plain"
-	FormatTelegramHTML       Format = "telegram-html"
-	FormatTelegramMarkdownV2 Format = "telegram-markdownv2"
-	FormatSlackMrkdwn        Format = "slack-mrkdwn"
-	FormatDiscord            Format = "discord"
-	FormatNtfy               Format = "ntfy"
-	FormatMattermost         Format = "mattermost"
-	FormatSlackWebhook       Format = "slack-webhook"
-	FormatGenericJSON        Format = "generic-json"
+	FormatPlain        Format = "plain"
+	FormatTelegramHTML Format = "telegram-html"
+	FormatSlackMrkdwn  Format = "slack-mrkdwn"
+	FormatDiscord      Format = "discord"
+	FormatNtfy         Format = "ntfy"
+	FormatMattermost   Format = "mattermost"
+	FormatSlackWebhook Format = "slack-webhook"
+	FormatGenericJSON  Format = "generic-json"
 )
 
 // zeroWidthSpace separates characters that would otherwise form markup,

@@ -9,13 +9,6 @@ success -- /etc/backup.d/20.rdiff
 <i>host1.example.org: alice@host1.example.org</i>
 <pre>success -- /etc/backup.d/10.sys
 success -- /etc/backup.d/20.rdiff</pre>
--- telegram-markdownv2 --
-*backupninja: host1*
-_host1\.example\.org: alice@host1\.example\.org_
-```
-success -- /etc/backup.d/10.sys
-success -- /etc/backup.d/20.rdiff
-```
 -- slack-mrkdwn --
 *backupninja: host1*
 host1.example.org: _alice@host1.example.org_

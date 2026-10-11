@@ -9,13 +9,6 @@ x cron-daily-backup.service - [Cron] "/etc/cron.daily/backup"
 <i>host1.example.org: systemd-cron &lt;root&gt;</i>
 <pre>x cron-daily-backup.service - [Cron] &quot;/etc/cron.daily/backup&quot;
      Active: failed (Result: exit-code)</pre>
--- telegram-markdownv2 --
-*\[host1\] Failure: /etc/cron\.daily/backup*
-_host1\.example\.org: systemd\-cron <root\>_
-```
-x cron-daily-backup.service - [Cron] "/etc/cron.daily/backup"
-     Active: failed (Result: exit-code)
-```
 -- slack-mrkdwn --
 *[host1] Failure: /etc/cron.daily/backup*
 host1.example.org: _systemd-cron &lt;root&gt;_

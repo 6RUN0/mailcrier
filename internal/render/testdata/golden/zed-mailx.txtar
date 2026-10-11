@@ -9,13 +9,6 @@ acceptable levels. ZFS has marked the device as faulted.
 <i>host1.example.org: alice@host1.example.org</i>
 <pre>The number of I/O errors associated with a ZFS device exceeded
 acceptable levels. ZFS has marked the device as faulted.</pre>
--- telegram-markdownv2 --
-*ZFS device fault for pool tank on host1*
-_host1\.example\.org: alice@host1\.example\.org_
-```
-The number of I/O errors associated with a ZFS device exceeded
-acceptable levels. ZFS has marked the device as faulted.
-```
 -- slack-mrkdwn --
 *ZFS device fault for pool tank on host1*
 host1.example.org: _alice@host1.example.org_

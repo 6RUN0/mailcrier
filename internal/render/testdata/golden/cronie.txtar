@@ -9,13 +9,6 @@ backup: done in 12 s
 <i>host1.example.org: (Cron Daemon) &lt;root&gt;</i>
 <pre>backup: 3 files copied to /srv/backup
 backup: done in 12 s</pre>
--- telegram-markdownv2 --
-*Cron <root@host1\> /usr/local/bin/backup\.sh*
-_host1\.example\.org: \(Cron Daemon\) <root\>_
-```
-backup: 3 files copied to /srv/backup
-backup: done in 12 s
-```
 -- slack-mrkdwn --
 *Cron &lt;root@host1&gt; /usr/local/bin/backup.sh*
 host1.example.org: _(Cron Daemon) &lt;root&gt;_

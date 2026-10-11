@@ -7,12 +7,6 @@ check: load 4.2
 <b>cron: /etc/periodic/15min/check</b>
 <i>host1.example.org: alice@host1.example.org</i>
 <pre>check: load 4.2</pre>
--- telegram-markdownv2 --
-*cron: /etc/periodic/15min/check*
-_host1\.example\.org: alice@host1\.example\.org_
-```
-check: load 4.2
-```
 -- slack-mrkdwn --
 *cron: /etc/periodic/15min/check*
 host1.example.org: _alice@host1.example.org_

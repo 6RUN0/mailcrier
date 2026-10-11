@@ -7,12 +7,6 @@ example-tool (2.0-1) unstable; urgency=medium
 <b>apt-listchanges: news for hôst</b>
 <i>host1.example.org: alice@host1.example.org</i>
 <pre>example-tool (2.0-1) unstable; urgency=medium</pre>
--- telegram-markdownv2 --
-*apt\-listchanges: news for hôst*
-_host1\.example\.org: alice@host1\.example\.org_
-```
-example-tool (2.0-1) unstable; urgency=medium
-```
 -- slack-mrkdwn --
 *apt-listchanges: news for hôst*
 host1.example.org: _alice@host1.example.org_

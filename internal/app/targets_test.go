@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -19,7 +21,29 @@ import (
 	"github.com/6RUN0/mailcrier/internal/config"
 	"github.com/6RUN0/mailcrier/internal/delivery"
 	"github.com/6RUN0/mailcrier/internal/redact"
+	"github.com/6RUN0/mailcrier/internal/text"
 )
+
+// TestBuiltinTemplatesSelected fails on a built-in template that no target
+// type or http preset of buildTargets selects: its escaping, strictness
+// and golden output would be kept up for nothing.
+func TestBuiltinTemplatesSelected(t *testing.T) {
+	t.Parallel()
+	selected := []text.Format{text.FormatTelegramHTML, text.FormatDiscord, text.FormatSlackMrkdwn, text.FormatNtfy, text.FormatGenericJSON, text.FormatPlain}
+	for _, format := range presetFormats {
+		selected = append(selected, format)
+	}
+	entries, err := os.ReadDir("../render/defaults")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		format, _ := strings.CutSuffix(entry.Name(), ".tmpl")
+		if !slices.Contains(selected, text.Format(format)) {
+			t.Errorf("built-in template %s is selected by no target", entry.Name())
+		}
+	}
+}
 
 // TestRunServiceStatuses pins the exit status for the answers of a
 // service when it is the only target: without a queue a temporary failure

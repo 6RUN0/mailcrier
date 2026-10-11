@@ -7,12 +7,6 @@ host1.example.org: alice@host1.example.org
 <b>/var/log/empty.log.1</b>
 <i>host1.example.org: alice@host1.example.org</i>
 <pre>(empty body)</pre>
--- telegram-markdownv2 --
-*/var/log/empty\.log\.1*
-_host1\.example\.org: alice@host1\.example\.org_
-```
-(empty body)
-```
 -- slack-mrkdwn --
 */var/log/empty.log.1*
 host1.example.org: _alice@host1.example.org_

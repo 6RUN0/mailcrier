@@ -186,8 +186,8 @@ with "build constraints exclude all Go files".
   then binary searches over the attachment list, the raw body and the
   subject, measured after escaping; when nothing fits, Telegram HTML is
   cut hard by `text.CutTelegramHTML`, any other lenient format at a
-  character boundary, and the JSON formats and MarkdownV2 (`strictFormats`)
-  give `ErrLimitTooSmall`; strictness comes from the format a template is
+  character boundary, and the JSON formats (`strictFormats`) give
+  `ErrLimitTooSmall`; strictness comes from the format a template is
   parsed for, not from who wrote it; `FitLines` adds `max_lines`). Golden
   output of every template for every caller fixture is in
   `internal/render/testdata/golden`. `Parse` takes a template from the

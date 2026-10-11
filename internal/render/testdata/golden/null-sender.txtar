@@ -7,12 +7,6 @@ disk usage of / is 91%
 <b>disk check on host1</b>
 <i>host1.example.org: (no sender)</i>
 <pre>disk usage of / is 91%</pre>
--- telegram-markdownv2 --
-*disk check on host1*
-_host1\.example\.org: \(no sender\)_
-```
-disk usage of / is 91%
-```
 -- slack-mrkdwn --
 *disk check on host1*
 host1.example.org: _(no sender)_

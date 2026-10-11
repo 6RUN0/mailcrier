@@ -172,7 +172,6 @@ T-TPL-09	low	done	join takes the separator first and works in pipelines over str
 T-TPL-10	low	done	date and tz format the message date in a zone; an unknown zone is an execution error	https://github.com/prometheus/alertmanager/blob/6a79679/template/template.go#L335-L345
 T-TPL-11	critical	done	Bcc never reaches template data, even with -t	https://github.com/marlam/msmtp/blob/755df9f0d3ac/tests/test-header-handling.sh#L35-L55
 T-TPL-12	critical	done	A bot token or webhook URL never appears in logs or exit messages; it is replaced by ***	https://github.com/KostyaEsmukov/smtp_to_telegram/blob/279f5fc/smtp_to_telegram.go#L644-L646
-T-TPL-13	critical	done	The default MarkdownV2 template escapes the body, so dots and dashes do not cause an API error	https://github.com/nadiamoe/sendmail-telegram/blob/b76fa85b4572/sendmail-telegram.go
 T-TPL-14	critical	done	An ISO-8859-1 base64 body and a Q-encoded ISO-8859-1 Subject reach the template as UTF-8	https://github.com/KostyaEsmukov/smtp_to_telegram/blob/279f5fc/smtp_to_telegram_test.go#L641
 T-TPL-15	critical	done	--check-config reports a template parse error with the target and exits 78	https://github.com/binwiederhier/ntfy/blob/6560158/docs/publish.md
 T-TPL-16	critical	done	A path template result that does not start with a single slash, names another host, or holds a dot segment, ? or # fails the target permanently before any request	https://www.rfc-editor.org/rfc/rfc3986#section-5.2.4
