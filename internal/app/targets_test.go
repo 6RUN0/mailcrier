@@ -320,17 +320,25 @@ func TestLogResultLevel(t *testing.T) {
 }
 
 // TestRegisterHeaderSecrets pins which header values the redactor masks:
-// the whole value and the credential after a scheme, but not a value too
-// short to be a credential, which would mask parts of every record.
+// the whole value and the credential after a scheme of every header but
+// a public one, whatever its name says, and neither a value too short to
+// be a credential nor the value of a public header such as Content-Type,
+// which would mask parts of every record.
 func TestRegisterHeaderSecrets(t *testing.T) {
 	t.Parallel()
 	cfg := &config.Config{Targets: map[string]config.Target{"api": {Type: config.TypeHTTP, Headers: map[string]string{
 		"Authorization": "Bearer api-token-123", "X-Api-Key": "k3y-v4lue-long", "X-Retry": "1",
+		"proxy-authorization": "Basic cHJveHk6cGFzcw==", "Cookie": "session=c00kie-value",
+		"X-Signature": "sha256=s1gnature-value", "X-Session": "sess10n-value", "X-Foo": "f00-value-long",
+		"Content-Type": "application/json", "x-title": "backup-server-01",
 	}}}}
 	redactor := &redact.Redactor{}
 	registerSecrets(redactor, cfg)
-	got := redactor.String("auth Bearer api-token-123, token api-token-123, key k3y-v4lue-long, status 401")
-	if want := "auth ***, token ***, key ***, status 401"; got != want {
+	got := redactor.String("auth Bearer api-token-123, token api-token-123, key k3y-v4lue-long, status 401, " +
+		"proxy cHJveHk6cGFzcw==, cookie session=c00kie-value, sha256=s1gnature-value, sess10n-value, f00-value-long, " +
+		"type application/json, title backup-server-01")
+	if want := "auth ***, token ***, key ***, status 401, proxy ***, cookie ***, ***, ***, ***, " +
+		"type application/json, title backup-server-01"; got != want {
 		t.Errorf("redacted = %q, want %q", got, want)
 	}
 }

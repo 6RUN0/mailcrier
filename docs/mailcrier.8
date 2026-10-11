@@ -699,8 +699,13 @@ An
 .Cm exec
 program runs with the real user and group ids of the caller.
 .Pp
-Tokens, URLs and the literal text of header, query and path templates are
-masked as
+Tokens, URLs and the literal text of query, path and header templates
+.Po but those of Content-Type , Accept , Accept-Language , User-Agent ,
+Title , Priority , Tags , X-Title , X-Priority
+and
+X-Tags
+.Pc
+are masked as
 .Li ***
 in everything logged, and configuration errors never quote a value.
 Without the setgid bit, as in a container, the process runs with the ids

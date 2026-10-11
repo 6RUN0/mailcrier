@@ -461,8 +461,9 @@ with "build constraints exclude all Go files".
 - The http target (`webhook.buildURL`) appends the rendered path and query
   to the configured URL and checks the result against its scheme, host,
   port and user: `backend` never imports `render`, so the parts arrive as
-  strings. `app.registerSecrets` registers the text of header, query and
-  path templates outside `{{ }}`, never what the actions render.
+  strings. `app.registerSecrets` registers the text of query and path
+  templates and of every header template but those `isPublicHeader`
+  names outside `{{ }}`, never what the actions render.
 - nFPM writes the mtime of a script file into the apk, which neither
   `mtime` nor `SOURCE_DATE_EPOCH` changes; `make snapshot` sets it to the
   commit time first, so a workflow that publishes packages runs make, not

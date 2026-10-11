@@ -74,14 +74,18 @@ break or NUL fails the target permanently before any request; an escaped
 exit status 78. A value from the message goes into a path segment through
 `pathSegment`, which escapes `/` as well, but not dots: a value that is
 `.` or `..`, or holds `/../`, still fails the target for that message. The
-text of header and query values outside the `{{ }}` actions, 8 characters
-or more, and the credential after a scheme such as `Bearer`, are masked in
-the log like tokens, and so is every piece of the text of `path` outside
-the actions between two slashes of 16 characters or more, as written and
-unescaped. A redirect is not followed and counts as a permanent failure,
-`redirect to https://host not followed` with only the scheme and host
-of the Location: its path repeats that of the target, where a topic or
-key is a secret of any length. The same holds for every target type,
-`shoutrrr` included.
+text of query values outside the `{{ }}` actions, 8 characters or more, is
+masked in the log like tokens, and so is that of every header, with the
+credential after a scheme such as `Bearer` on its own as well, whatever
+its name: `X-Signature` or `X-Session` carry a secret as `Authorization`
+does. Only the values of `Content-Type`, `Accept`, `Accept-Language`,
+`User-Agent`, `Title`, `Priority`, `Tags`, `X-Title`, `X-Priority` and
+`X-Tags`, names in any case, are logged as they are. Every piece of the
+text of `path` outside the actions between two slashes of 16 characters
+or more is masked as well, as written and unescaped. A redirect is not
+followed and counts as a permanent failure, `redirect to https://host not
+followed` with only the scheme and host of the Location: its path repeats
+that of the target, where a topic or key is a secret of any length. The
+same holds for every target type, `shoutrrr` included.
 
 Russian: [http.ru.md](http.ru.md).

@@ -88,6 +88,9 @@ Tokens and URLs, including the content of `*_file`, are replaced by `***`
 in every log record and in the debug output of the Go HTTP stack. A URL
 is masked whole, and so are its host, host labels, request URI, path
 segments and query values of 16 characters or more (the request URI also
-when it has a query) and its userinfo.
+when it has a query) and its userinfo. The literal text of the query,
+path and header templates of an `http` target is masked as well, but for
+a few headers that carry no secret:
+[HTTP and Mattermost](targets/http.md).
 
 Russian: [logging.ru.md](logging.ru.md).

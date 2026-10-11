@@ -800,23 +800,46 @@ func failureCause(err error) error {
 // longer.
 const minHeaderSecret = 8
 
+// publicHeaders are the names, in lower case, of the headers whose
+// literal text registerSecrets leaves unmasked: they describe the request
+// or the notification and carry no credential, and masking a value such as
+// "application/json" would hide that text in every record.
+var publicHeaders = []string{
+	"content-type", "accept", "accept-language", "user-agent",
+	"title", "priority", "tags", "x-title", "x-priority", "x-tags",
+}
+
+// isPublicHeader reports whether the header name, in any case, is one of
+// publicHeaders. Any other header may carry a credential under a name no
+// list foresees, as X-Signature or X-Session do, so its text is masked.
+func isPublicHeader(name string) bool {
+	return slices.Contains(publicHeaders, strings.ToLower(name))
+}
+
 // registerSecrets hands every value that may hold a secret to the redactor:
 // tokens and URLs, including those read from *_file, and the values of
-// extra HTTP headers, such as Authorization, with the credential after
-// the scheme ("Bearer <token>") on its own as well. Header and query
-// values and the path are templates: what they write as it is, outside
-// the {{ }} actions, is registered the same way, and so is every fragment
-// of such path text between slashes, as written and unescaped, from
-// minPathSecret characters on; what the actions render comes from the
-// message and is never logged. config.SecretKeys lists the keys covered
-// here and grows with this function: a file that writes one of them out is
-// one --check-config warns about.
+// the extra HTTP headers but those of isPublicHeader, such as
+// Authorization, with the credential after the scheme ("Bearer <token>")
+// on its own as well. Header and query values and the path are templates:
+// what they write as it is, outside the {{ }} actions, is registered the
+// same way, and so is every fragment of such path text between slashes,
+// as written and unescaped, from minPathSecret characters on; what the
+// actions render comes from the message and is never logged.
+// config.SecretKeys lists the keys covered here and grows with this
+// function: a file that writes one of them out is one --check-config
+// warns about.
 func registerSecrets(redactor *redact.Redactor, cfg *config.Config) {
 	for _, name := range cfg.TargetNames() {
 		target := cfg.Targets[name]
 		redactor.Add(target.Token)
 		redactor.AddURL(target.URL)
-		for _, source := range slices.Concat(slices.Collect(maps.Values(target.Headers)), slices.Collect(maps.Values(target.Query))) {
+		sources := slices.Collect(maps.Values(target.Query))
+		for header, value := range target.Headers {
+			if !isPublicHeader(header) {
+				sources = append(sources, value)
+			}
+		}
+		for _, source := range sources {
 			for _, value := range templateText(source) {
 				secrets := []string{strings.TrimSpace(value)}
 				if fields := strings.Fields(value); len(fields) > 1 {
