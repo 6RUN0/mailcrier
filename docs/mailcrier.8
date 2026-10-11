@@ -233,7 +233,7 @@ Scheme, host and port come from
 .Ic url
 alone: a path that renders empty appends nothing, and a rendered path that
 does not start with a single slash, or holds
-.Dq ? ,
+.Dq \&? ,
 .Dq # ,
 a backslash, a control character or a dot segment, and a rendered header
 value with a line break or NUL, fail the target permanently before any
@@ -796,7 +796,7 @@ when the built-in template stood in for a failed one.
 Exits 0 when every target took the message, 69 when one rejected it, 75
 when one failed temporarily and none rejected it.
 A configuration it cannot use goes to standard error as
-.Li mailcrier: Ns Ar error .
+.Li mailcrier: Ar error .
 .El
 .Pp
 Of several mode options the last one wins.
@@ -967,6 +967,26 @@ Check it, then send a test message to that target alone:
 # mailcrier --probe -- ops-telegram
 target=ops-telegram class=ok
 .Ed
+.Pp
+Send a message the way cron does, then read its records in the log:
+.Bd -literal -offset indent
+# printf 'Subject: test\en\enhello\en' | sendmail root
+# journalctl -t mailcrier --since -5min
+.Ed
+.Pp
+The records
+.Dq message received
+and
+.Dq target delivered
+show the delivery; without journald they are in
+.Pa /var/log/mail.log
+or
+.Pa /var/log/maillog .
 .Sh SEE ALSO
 .Xr syslog 3 ,
 .Xr cron 8
+.Pp
+The guides, one per task and per target type, are installed in
+.Pa /usr/share/doc/mailcrier/
+and kept at
+.Lk https://github.com/6RUN0/mailcrier/tree/main/docs .
