@@ -43,9 +43,9 @@ var strictFormats = map[text.Format]bool{
 // characters kept: at most about log2 of that number renderings. When
 // the rendering of the first limit + text.WordWindow + 1 characters of the
 // body is over the limit, the search over the body goes no further, and
-// for a built-in template the step over attachments is left out. A body
-// of megabytes then costs one whole rendering, one more when the subject
-// is cut, and renderings of about the limit.
+// for a built-in template the rendering with the cut subject and the step
+// over attachments are left out. A body of megabytes then costs one whole
+// rendering and renderings of about the limit.
 //
 // The body is cut before escaping, so a cut never splits an entity, and
 // the rendering is measured after escaping, because escaping grows the
@@ -112,13 +112,6 @@ func fitLines(t *Template, d Data, limit, maxLines int, measure func(string) int
 	if escape, ok := subjectEscapers[t.format]; ok {
 		measureSubject = func(s string) int { return measure(escape(s)) }
 	}
-	if share := max(limit/4, minSubjectShare); measureSubject(subject) > share {
-		subjectLength = longestSubject(subject, share, measureSubject)
-		d.Subject = cutSubject(subject, subjectLength)
-		if out, fits, err := render(); err != nil || fits {
-			return out, true, err
-		}
-	}
 	keepAttachments := func(kept int) {
 		d.Attachments, d.MoreAttachments = attachments[:kept], len(attachments)-kept
 	}
@@ -145,25 +138,34 @@ func fitLines(t *Template, d Data, limit, maxLines int, measure func(string) int
 		}
 		return longestFit(total, renderBody)
 	}
+	isCutSubject := false
+	if share := max(limit/4, minSubjectShare); measureSubject(subject) > share {
+		subjectLength = longestSubject(subject, share, measureSubject)
+		d.Subject = cutSubject(subject, subjectLength)
+		isCutSubject = true
+	}
 	// isBodyOver reports that the first bound characters of the body,
-	// with no attachment, are over the limit already: then no number of
-	// attachments fits the whole body, and the search over them is spared
-	// its renderings of the whole body. Only for a built-in template: one
-	// from the configuration may write the body unescaped, and a prefix
-	// cut inside a tag can measure more than the whole body.
-	isBodyOver := func() bool {
-		whole := d.Body
-		if t.user != nil || bound <= 0 || utf8.RuneCountInString(whole) <= bound {
-			return false
+	// with no attachment and the subject as cut, are over the limit
+	// already: then no rendering of the whole body fits, and the rendering
+	// with the cut subject and the search over the attachments are spared,
+	// so the prefix is rendered only when one of them would run. Only for
+	// a built-in template: one from the configuration may write the body
+	// unescaped, and a prefix cut inside a tag can measure more than the
+	// whole body.
+	isBodyOver := false
+	if t.user == nil && (isCutSubject || len(attachments) > 0) && bound > 0 && utf8.RuneCountInString(d.Body) > bound {
+		prefix := d
+		prefix.Body, prefix.Attachments, prefix.MoreAttachments = text.TruncateRunes(d.Body, bound), nil, len(attachments)
+		out, err := t.Execute(prefix)
+		isBodyOver = err == nil && measure(out) > limit
+	}
+	if isCutSubject && !isBodyOver {
+		if out, fits, err := render(); err != nil || fits {
+			return out, true, err
 		}
-		d.Body = text.TruncateRunes(whole, bound)
-		keepAttachments(0)
-		_, fits, err := render()
-		d.Body = whole
-		return err == nil && !fits
 	}
 	if len(attachments) > 0 {
-		if !isBodyOver() {
+		if !isBodyOver {
 			if best, found, err := longestFit(len(attachments), renderAttachments); err != nil || found {
 				return best, true, err
 			}

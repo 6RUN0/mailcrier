@@ -536,6 +536,29 @@ func BenchmarkFit(b *testing.B) {
 	}
 }
 
+// BenchmarkFitLongSubject is BenchmarkFit with a subject that Fit cuts
+// to a quarter of the limit:
+// go test -run '^$' -bench FitLongSubject -benchmem ./internal/render
+func BenchmarkFitLongSubject(b *testing.B) {
+	tmpl, err := Builtin(text.FormatTelegramHTML)
+	if err != nil {
+		b.Fatal(err)
+	}
+	for _, body := range benchBodies {
+		b.Run(body.name, func(b *testing.B) {
+			d := fitData(benchBody(body.size))
+			d.Subject = strings.Repeat("long subject ", 200)
+			b.SetBytes(int64(body.size))
+			b.ReportAllocs()
+			for b.Loop() {
+				if _, _, err := Fit(tmpl, d, 4096, text.MeasureTelegramHTML); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
 // benchBodies are the body sizes of BenchmarkFit.
 var benchBodies = []struct {
 	name string
@@ -584,6 +607,50 @@ func TestExecuteWhole(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// TestFitLinesOverEqualsFitLines pins that FitLinesOver, which skips the
+// whole rendering and spares the steps a body over the bound rules out,
+// gives what FitLines gives wherever ExecuteWhole finds the whole
+// rendering over the limit: built-in formats, measures, bodies about the
+// bound, a subject cut or not, and attachments or none.
+func TestFitLinesOverEqualsFitLines(t *testing.T) {
+	subjects := []string{fitSubject, strings.Repeat("long subject & <x> ", 30)}
+	attachmentSets := [][]Attachment{nil, {{Name: "a.log", ContentType: "text/plain", Size: 10}, {Name: "b.log", ContentType: "text/plain", Size: 2000}, {Name: "c.log", ContentType: "text/plain", Size: 30}}}
+	const limit, bound = 300, 300 + text.WordWindow + 1
+	compared := 0
+	for _, format := range builtinFormats {
+		tmpl, err := Builtin(format)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range measures {
+			for _, n := range []int{limit / 2, bound - 1, bound + 1, 3 * bound} {
+				body := strings.Repeat("word & <x> .\n", n/13+1)[:n]
+				for _, maxLines := range []int{0, 3} {
+					for _, subject := range subjects {
+						for _, attachments := range attachmentSets {
+							d := fitData(body)
+							d.Subject, d.Attachments = subject, attachments
+							if whole, truncated, err := ExecuteWhole(tmpl, d, limit, maxLines, m.measure); err != nil || !truncated || whole != "" {
+								continue
+							}
+							compared++
+							fitOut, fitTruncated, fitErr := FitLines(tmpl, d, limit, maxLines, m.measure)
+							overOut, overTruncated, overErr := FitLinesOver(tmpl, d, limit, maxLines, m.measure)
+							if overOut != fitOut || overTruncated != fitTruncated || !errors.Is(overErr, fitErr) {
+								t.Errorf("%s/%s/%d body of %d, subject of %d, %d attachments: FitLinesOver gives %q, %v, %v; FitLines %q, %v, %v",
+									format, m.name, maxLines, n, len(subject), len(attachments), overOut, overTruncated, overErr, fitOut, fitTruncated, fitErr)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	if compared == 0 {
+		t.Error("no whole rendering over the limit")
 	}
 }
 
@@ -662,26 +729,30 @@ func TestFitSearchesBodyMeasuredAsNothing(t *testing.T) {
 
 // TestFitRendersTheWholeBodyOnce pins the cost of a body far over the
 // limit: the whole rendering is measured once, every other rendering
-// holds a part of the body of about the limit, also with attachments.
+// holds a part of the body of about the limit, also with attachments and
+// with a subject that Fit cuts.
 func TestFitRendersTheWholeBodyOnce(t *testing.T) {
 	tmpl, err := Builtin(text.FormatTelegramHTML)
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := fitData(benchBody(1 << 20))
-	d.Attachments = []Attachment{{Name: "a.log", ContentType: "text/plain", Size: 1000}, {Name: "b.log", ContentType: "text/plain", Size: 1000}}
-	long := 0
-	measure := func(s string) int {
-		if len(s) > 64<<10 {
-			long++
+	for _, subject := range []string{fitSubject, strings.Repeat("long subject ", 200)} {
+		d := fitData(benchBody(1 << 20))
+		d.Subject = subject
+		d.Attachments = []Attachment{{Name: "a.log", ContentType: "text/plain", Size: 1000}, {Name: "b.log", ContentType: "text/plain", Size: 1000}}
+		long := 0
+		measure := func(s string) int {
+			if len(s) > 64<<10 {
+				long++
+			}
+			return text.MeasureTelegramHTML(s)
 		}
-		return text.MeasureTelegramHTML(s)
-	}
-	if _, truncated, err := Fit(tmpl, d, 4096, measure); err != nil || !truncated {
-		t.Fatalf("truncated = %v, err = %v", truncated, err)
-	}
-	if long != 1 {
-		t.Errorf("%d renderings over 64 KiB measured, want the whole one only", long)
+		if _, truncated, err := Fit(tmpl, d, 4096, measure); err != nil || !truncated {
+			t.Fatalf("subject of %d bytes: truncated = %v, err = %v", len(subject), truncated, err)
+		}
+		if long != 1 {
+			t.Errorf("subject of %d bytes: %d renderings over 64 KiB measured, want the whole one only", len(subject), long)
+		}
 	}
 }
 
