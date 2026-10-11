@@ -190,7 +190,8 @@ func (q *queue) deliverOwn(ctx context.Context, targets []delivery.Target, msg *
 // result, for logResults to log after the result itself.
 func (q *queue) send(ctx context.Context, targets []delivery.Target, env message.Envelope, data render.Data, files []message.Attachment, raw []byte, rec *spool.Record) (results []delivery.Result, saveErrs map[string]error, donePanic *backend.PanicError) {
 	// applied holds the targets whose result is in the entry; recorded
-	// those whose entry was written, or its write failure logged, after.
+	// those whose entry was written, or its write failure kept in
+	// saveErrs, after.
 	applied, recorded := map[string]bool{}, map[string]bool{}
 	saveErrs = map[string]error{}
 	record := func(r delivery.Result) {
@@ -213,6 +214,9 @@ func (q *queue) send(ctx context.Context, targets []delivery.Target, env message
 				q.d.spoolSaved(rec.Entry)
 			}
 			return
+		}
+		if q.d.spoolSaving != nil {
+			q.d.spoolSaving(rec.Entry)
 		}
 		if err := rec.Save(); err != nil {
 			q.hasIOError = true

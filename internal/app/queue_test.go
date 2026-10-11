@@ -670,6 +670,17 @@ func (h panicOnceHandler) WithGroup(name string) slog.Handler {
 	return panicOnceHandler{h.Handler.WithGroup(name), h.msg, h.isDone}
 }
 
+// panicOnceSaving returns a spoolSaving hook that panics at its first
+// call, as a bug in the write of the entry would.
+func panicOnceSaving() func(*spool.Entry) {
+	var isDone atomic.Bool
+	return func(*spool.Entry) {
+		if isDone.CompareAndSwap(false, true) {
+			panic("bug in saving the entry")
+		}
+	}
+}
+
 // TestSendRecordsAfterCallbackPanic pins what send does with a result whose
 // recording panicked in the goroutine of its target: it records it once
 // more after the targets finished, and moves the entry to failed/ when the
@@ -680,10 +691,13 @@ func TestSendRecordsAfterCallbackPanic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	unavailable := &backend.Error{Class: backend.Temporary, Err: errors.New("unavailable")}
 	for _, tc := range []struct {
 		name    string
 		targets []delivery.Target
-		check   func(t *testing.T, q *queue, rec *spool.Record, logs string)
+		// spoolSaving is the hook of Deps, nil for none.
+		spoolSaving func(e *spool.Entry)
+		check       func(t *testing.T, q *queue, rec *spool.Record, logs string)
 	}{
 		{name: "recorded-again", targets: []delivery.Target{
 			{ID: "a", Sender: errSender{}, Template: tmpl},
@@ -691,6 +705,14 @@ func TestSendRecordsAfterCallbackPanic(t *testing.T) {
 		}, check: func(t *testing.T, q *queue, rec *spool.Record, _ string) {
 			if b := rec.Entry.Targets["b"]; b.State != spool.Failed || b.LastError != "unavailable" || q.sp.Has(spool.QueueDir, rec.ID()) {
 				t.Errorf("b = %+v, entry in queue/ %v; want b failed and the entry removed", b, q.sp.Has(spool.QueueDir, rec.ID()))
+			}
+		}},
+		{name: "applied-once", targets: []delivery.Target{
+			{ID: "b", Sender: errSender{err: unavailable}, Template: tmpl},
+		}, spoolSaving: panicOnceSaving(), check: func(t *testing.T, _ *queue, rec *spool.Record, _ string) {
+			// Applied twice, the retry would count two attempts.
+			if b := rec.Entry.Targets["b"]; b.State != spool.Pending || b.Attempts != 1 {
+				t.Errorf("b = %+v, want pending after one attempt", b)
 			}
 		}},
 		{name: "repeated-panic-fails-entry", targets: []delivery.Target{
@@ -709,7 +731,7 @@ func TestSendRecordsAfterCallbackPanic(t *testing.T) {
 			settings := config.DefaultSpool()
 			settings.Dir = t.TempDir()
 			var logs strings.Builder
-			q, err := newQueue(Deps{Now: func() time.Time { return testNow }}, slog.New(slog.NewTextHandler(&logs, nil)), &redact.Redactor{}, settings, tc.targets)
+			q, err := newQueue(Deps{Now: func() time.Time { return testNow }, spoolSaving: tc.spoolSaving}, slog.New(slog.NewTextHandler(&logs, nil)), &redact.Redactor{}, settings, tc.targets)
 			if err != nil {
 				t.Fatal(err)
 			}
