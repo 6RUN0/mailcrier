@@ -879,6 +879,25 @@ func TestDeliverCutTextUnderFilesSize(t *testing.T) {
 	}
 }
 
+// TestDeliverCutLinesWithShorterSizeNotice pins the whole rendering of
+// lines cut after MaxLines with no file sent: the notice with the full
+// size of the configuration is shorter than the Truncated one ExecuteWhole
+// wrote, so the first lines fit whole although that rendering did not.
+func TestDeliverCutLinesWithShorterSizeNotice(t *testing.T) {
+	d := testData()
+	d.Body = strings.Repeat("a line of the body\n", 10)
+	d.Strings.Truncated, d.Strings.TruncatedSize = strings.Repeat("t", 80), "[cut %s]"
+	sender := &fakeSender{caps: backend.Caps{MaxText: 100, MaxFiles: 10}}
+	target := Target{ID: "t", Sender: sender, Template: plainTemplate(t), MaxLines: 3, OnLong: OnLongTruncate}
+	result := Deliver(context.Background(), []Target{target}, d, nil)[0]
+	if result.Status != OK || len(sender.sent) != 1 {
+		t.Fatalf("result = %+v", result)
+	}
+	if text := sender.sent[0].Text; !strings.HasSuffix(text, "\n\n"+strings.Repeat("a line of the body\n", 3)+"[cut 207 B]") {
+		t.Errorf("text without the three lines whole:\n%s", text)
+	}
+}
+
 // sizedFiles adds attachments f0, f1, ... of the sizes to d and returns
 // their files.
 func sizedFiles(d *render.Data, sizes ...int) []message.Attachment {

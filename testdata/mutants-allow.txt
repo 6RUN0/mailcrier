@@ -216,6 +216,7 @@ internal/delivery/delivery.go	CONDITIONALS_BOUNDARY	10	case perm > 0:	baseline 2
 internal/delivery/delivery.go	CONDITIONALS_BOUNDARY	10	case temp > 0 && queue == Queued:	baseline 2026-10-11, not triaged
 internal/delivery/delivery.go	CONDITIONALS_BOUNDARY	10	case temp > 0 && queue == QueueNotCreated:	baseline 2026-10-11, not triaged
 internal/delivery/delivery.go	CONDITIONALS_BOUNDARY	10	case temp > 0 && queue == QueueNotWritten:	baseline 2026-10-11, not triaged
+internal/delivery/delivery.go	CONDITIONALS_BOUNDARY	108	if isWholeOver && (out.isLongFileSent && caps.MaxFilesSize == 0 || !out.isLongFileSent && j.target.MaxLines <= 0) {	perf-only: MaxLines 0 renders the whole data again with render.FitLines, the skipped rendering gives the same output, pinned by TestFitLinesOverEqualsFitLines
 internal/delivery/delivery.go	CONDITIONALS_BOUNDARY	22	case j.target.MaxText > 0:	baseline 2026-10-11, not triaged
 internal/delivery/delivery.go	CONDITIONALS_BOUNDARY	31	(caps.MaxFileSize == 0 || size <= caps.MaxFileSize) &&	baseline 2026-10-11, not triaged
 internal/delivery/delivery.go	CONDITIONALS_BOUNDARY	5	if i < len(marked) {	baseline 2026-10-11, not triaged
@@ -384,21 +385,17 @@ internal/redact/redact.go	CONDITIONALS_BOUNDARY	53	if _, value, _ := strings.Cut
 internal/redact/redact.go	CONDITIONALS_NEGATION	14	if len(attrs) == 0 {	baseline 2026-10-11, not triaged
 internal/redact/redact.go	CONDITIONALS_NEGATION	53	if username := parsed.User.Username(); len(username) >= minFragmentLength {	baseline 2026-10-11, not triaged
 internal/redact/redact.go	CONDITIONALS_NEGATION	70	if _, err := io.WriteString(w.dst, w.redactor.String(string(p))); err != nil {	baseline 2026-10-11, not triaged
-internal/render/fit.go	ARITHMETIC_BASE	33	bound := limit + text.WordWindow + 1	baseline 2026-10-11, not triaged
-internal/render/fit.go	ARITHMETIC_BASE	36	d.Subject = cutSubject(subject, kept+1)	baseline 2026-10-11, not triaged
-internal/render/fit.go	ARITHMETIC_BASE	47	if best, found, err := longestFit(subjectLength-1, renderSubject); err != nil || found {	baseline 2026-10-11, not triaged
-internal/render/fit.go	CONDITIONALS_BOUNDARY	20	if len(attachments) > 0 {	baseline 2026-10-11, not triaged
-internal/render/fit.go	CONDITIONALS_BOUNDARY	22	if bound > 0 && total > bound {	baseline 2026-10-11, not triaged
-internal/render/fit.go	CONDITIONALS_BOUNDARY	26	if t.user != nil || bound <= 0 || utf8.RuneCountInString(whole) <= bound {	baseline 2026-10-11, not triaged
-internal/render/fit.go	CONDITIONALS_BOUNDARY	40	if measure(cutSubject(subject, middle)) <= share {	baseline 2026-10-11, not triaged
-internal/render/fit.go	CONDITIONALS_BOUNDARY	64	if t.user != nil || bound <= 0 || utf8.RuneCountInString(whole) <= bound {	baseline 2026-10-11, not triaged
-internal/render/fit.go	CONDITIONALS_BOUNDARY	67	if share := max(limit/4, minSubjectShare); measureSubject(subject) > share {	baseline 2026-10-11, not triaged
-internal/render/fit.go	CONDITIONALS_BOUNDARY	8	if next < 0 {	baseline 2026-10-11, not triaged
-internal/render/fit.go	CONDITIONALS_BOUNDARY	9	if bound > 0 && total > bound {	baseline 2026-10-11, not triaged
-internal/render/fit.go	CONDITIONALS_BOUNDARY	9	if limit > 0 && errors.Is(err, errOutputLimit) {	baseline 2026-10-11, not triaged
-internal/render/fit.go	CONDITIONALS_NEGATION	41	if best, found, err := searchBody(); err != nil || found {	baseline 2026-10-11, not triaged
-internal/render/fit.go	CONDITIONALS_NEGATION	76	if best, found, err := longestFit(len(attachments), renderAttachments); err != nil || found {	baseline 2026-10-11, not triaged
-internal/render/fit.go	INVERT_NEGATIVES	47	if best, found, err := longestFit(subjectLength-1, renderSubject); err != nil || found {	baseline 2026-10-11, not triaged
+internal/render/fit.go	ARITHMETIC_BASE	33	bound := limit + text.WordWindow + 1	equivalent: CutAtWord keeps kept-WordWindow characters or more, so a body kept past limit+WordWindow-1 fits only cut at the white space after character limit, where the bound 2 lower cuts it too
+internal/render/fit.go	ARITHMETIC_BASE	47	if best, found, err := longestFit(subjectLength-1, renderSubject); err != nil || found {	equivalent: subjects of subjectLength characters and more did not fit beside the Truncated notice in the body search, so the longer search keeps the same subject
+internal/render/fit.go	CONDITIONALS_BOUNDARY	106	if t.user == nil && (isCutSubject || len(attachments) > 0) && bound > 0 && utf8.RuneCountInString(d.Body) > bound {	perf-only: with exactly bound characters the prefix is the whole body, over the limit only when every rendering of it is; the skipped rendering gives the same output, pinned by TestFitLinesOverEqualsFitLines
+internal/render/fit.go	CONDITIONALS_BOUNDARY	20	if len(attachments) > 0 {	equivalent: with no attachment the step repeats a rendering over the limit or a body search that found nothing
+internal/render/fit.go	CONDITIONALS_BOUNDARY	22	if bound > 0 && total > bound {	equivalent: for total == bound the check sets total to its own value
+internal/render/fit.go	CONDITIONALS_BOUNDARY	40	isBodyOver = err == nil && measure(out) > limit	perf-only: a prefix measuring exactly limit leaves out one body character or more of one unit or more, so no rendering of the whole body fits either; the skipped rendering gives the same output, pinned by TestFitLinesOverEqualsFitLines
+internal/render/fit.go	CONDITIONALS_BOUNDARY	54	if t.user == nil && (isCutSubject || len(attachments) > 0) && bound > 0 && utf8.RuneCountInString(d.Body) > bound {	perf-only: the prefix is rendered also when no step reads isBodyOver, the output stays, pinned by TestFitLinesOverEqualsFitLines
+internal/render/fit.go	CONDITIONALS_BOUNDARY	67	if share := max(limit/4, minSubjectShare); measureSubject(subject) > share {	equivalent: longestSubject keeps a subject measuring exactly share whole, which adds only the whole rendering, known over the limit
+internal/render/fit.go	CONDITIONALS_BOUNDARY	68	if t.user == nil && (isCutSubject || len(attachments) > 0) && bound > 0 && utf8.RuneCountInString(d.Body) > bound {	equivalent: bound is 0 only for limit -101, where measureWhole fits the whole rendering first and ExecuteWhole never reports it over
+internal/render/fit.go	CONDITIONALS_BOUNDARY	9	if bound > 0 && total > bound {	equivalent: bound is 0 only for limit -101, where measureWhole fits the whole rendering first and ExecuteWhole never reports it over
+internal/render/fit.go	INVERT_NEGATIVES	47	if best, found, err := longestFit(subjectLength-1, renderSubject); err != nil || found {	equivalent: subjects of subjectLength characters and more did not fit beside the Truncated notice in the body search, so the longer search keeps the same subject
 internal/render/render.go	CONDITIONALS_NEGATION	15	case (v.Kind() == reflect.Slice || v.Kind() == reflect.Map) && v.Len() == 0:	not run: gremlins finds no coverage block on a case expression of a tagless switch; TestFunctions kills it
 internal/render/render.go	CONDITIONALS_NEGATION	44	case (v.Kind() == reflect.Slice || v.Kind() == reflect.Map) && v.Len() == 0:	not run: gremlins finds no coverage block on a case expression of a tagless switch; TestFunctions kills it
 internal/render/render.go	CONDITIONALS_NEGATION	71	case (v.Kind() == reflect.Slice || v.Kind() == reflect.Map) && v.Len() == 0:	not run: gremlins finds no coverage block on a case expression of a tagless switch; TestFunctions kills it

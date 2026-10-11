@@ -196,6 +196,17 @@ func TestUserTemplateOutputLimit(t *testing.T) {
 			t.Errorf("err = %v", err)
 		}
 	})
+	t.Run("over-limit-without-a-length-limit", func(t *testing.T) {
+		// Nothing to fit, the failure of the template stays, although the
+		// Truncated notice alone would be within the output limit.
+		small := mustParse(t, "{{ .Body }}", text.FormatPlain)
+		small.user.maxOutput = 4
+		d := Data{Body: "123456", Strings: DefaultStrings()}
+		d.Strings.Truncated = "-"
+		if out, _, err := Fit(small, d, 0, text.RuneCount); !errors.Is(err, errOutputLimit) {
+			t.Errorf("Fit = %q, %v; want the output limit error", out, err)
+		}
+	})
 }
 
 // functionData is the data of the function cases.

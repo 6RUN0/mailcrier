@@ -429,6 +429,7 @@ func TestFitLines(t *testing.T) {
 	t.Run("lines-at-the-limit", check("one\ntwo\n", 2, "one\ntwo", false))
 	t.Run("trailing-blank-lines-ignored", check("one\ntwo\n\n \n", 2, "one\ntwo", false))
 	t.Run("no-limit", check("one\ntwo\nthree\n", 0, "one\ntwo\nthree", false))
+	t.Run("empty-line-counted", check("one\n\nthree\nfour\n", 2, "one\n[truncated]", true))
 	t.Run("then-cut-to-the-length-limit", func(t *testing.T) {
 		d := fitData(strings.Repeat("a long line of the body\n", 50))
 		out, truncated, err := FitLines(tmpl, d, 100, 40, text.RuneCount)
@@ -613,8 +614,9 @@ func TestExecuteWhole(t *testing.T) {
 // TestFitLinesOverEqualsFitLines pins that FitLinesOver, which skips the
 // whole rendering and spares the steps a body over the bound rules out,
 // gives what FitLines gives wherever ExecuteWhole finds the whole
-// rendering over the limit: built-in formats, measures, bodies about the
-// bound, a subject cut or not, and attachments or none.
+// rendering over the limit, and that it fits and is not empty: built-in
+// formats, measures,
+// bodies about the bound, a subject cut or not, and attachments or none.
 func TestFitLinesOverEqualsFitLines(t *testing.T) {
 	subjects := []string{fitSubject, strings.Repeat("long subject & <x> ", 30)}
 	attachmentSets := [][]Attachment{nil, {{Name: "a.log", ContentType: "text/plain", Size: 10}, {Name: "b.log", ContentType: "text/plain", Size: 2000}, {Name: "c.log", ContentType: "text/plain", Size: 30}}}
@@ -638,6 +640,10 @@ func TestFitLinesOverEqualsFitLines(t *testing.T) {
 							}
 							compared++
 							fitOut, fitTruncated, fitErr := FitLines(tmpl, d, limit, maxLines, m.measure)
+							if fitErr == nil && (fitOut == "" || m.measure(fitOut) > limit) {
+								t.Errorf("%s/%s/%d body of %d, subject of %d, %d attachments: FitLines gives %d over %d: %q",
+									format, m.name, maxLines, n, len(subject), len(attachments), m.measure(fitOut), limit, fitOut)
+							}
 							overOut, overTruncated, overErr := FitLinesOver(tmpl, d, limit, maxLines, m.measure)
 							if overOut != fitOut || overTruncated != fitTruncated || !errors.Is(overErr, fitErr) {
 								t.Errorf("%s/%s/%d body of %d, subject of %d, %d attachments: FitLinesOver gives %q, %v, %v; FitLines %q, %v, %v",
@@ -651,6 +657,39 @@ func TestFitLinesOverEqualsFitLines(t *testing.T) {
 	}
 	if compared == 0 {
 		t.Error("no whole rendering over the limit")
+	}
+}
+
+// TestFitCutsSubjectToTheLongest pins the length of a cut subject: the
+// longest that measures at most its share, and when even the body cut to
+// the Truncated notice does not fit beside it, the longest below it that
+// does. The host name takes the rest of the limit.
+func TestFitCutsSubjectToTheLongest(t *testing.T) {
+	tmpl, err := Builtin(text.FormatPlain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name        string
+		hostname    string
+		attachments []Attachment
+		want        string
+	}{
+		// The cut subject measures exactly a quarter of the limit.
+		{"share", "host1.example.org", nil, strings.Repeat("x", 97) + subjectCutMark},
+		// One character less than the share leaves exactly the limit.
+		{"below-the-share", strings.Repeat("h", 274), nil, strings.Repeat("x", 96) + subjectCutMark},
+		// The same after the body searches with and without the file.
+		{"below-the-share-with-attachments", strings.Repeat("h", 259), []Attachment{{Name: "a", ContentType: "text/plain", Size: 1}}, strings.Repeat("x", 96) + subjectCutMark},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := fitData(strings.Repeat("b", 50))
+			d.Subject, d.Hostname, d.Attachments = strings.Repeat("x", 600), tc.hostname, tc.attachments
+			out, truncated, err := Fit(tmpl, d, 400, text.RuneCount)
+			if subject, _, _ := strings.Cut(out, "\n"); err != nil || !truncated || subject != tc.want || text.RuneCount(out) > 400 {
+				t.Errorf("Fit = %q, %v, %v; want the subject %q", out, truncated, err, tc.want)
+			}
+		})
 	}
 }
 
