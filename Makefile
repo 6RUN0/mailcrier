@@ -131,6 +131,14 @@ MUTANTS_DIR ?= .
 MUTANTS_WORKERS ?= 4
 MUTANTS_WORK := $(CURDIR)/.mutants
 
+# bench runs the benchmarks matching BENCH, BENCHCOUNT times each for
+# BENCHTIME, and keeps the output in .bench/<commit>.txt: runs of two
+# commits compare with benchstat, which wants at least 6 runs of each.
+BENCH ?= .
+BENCHTIME ?= 1s
+BENCHCOUNT ?= 6
+BENCH_DIR := $(CURDIR)/.bench
+
 CHANGELOG_START := 12340d0
 
 # Form of a release tag; release.yml runs on any v* tag. grep matches line
@@ -153,7 +161,7 @@ CI_JOBS := $(filter-out make,$(subst $(comma), ,$(RELEASE_JOBS)))
 
 .DEFAULT_GOAL := help
 
-.PHONY: help ci-local check cover mutants lint lint-go lint-yaml lint-actions lint-docs lint-symbols lint-man tidy test fuzz build licenses vuln check-refs check-commits snapshot release-prepare release-gate release release-guard setgid-e2e units-verify \
+.PHONY: help ci-local check cover mutants bench lint lint-go lint-yaml lint-actions lint-docs lint-symbols lint-man tidy test fuzz build licenses vuln check-refs check-commits snapshot release-prepare release-gate release release-guard setgid-e2e units-verify \
 	smoke smoke-dist smoke-previous $(addprefix smoke-,$(SMOKE_DISTROS)) \
 	selinux-images $(addprefix selinux-,$(SELINUX_DISTROS)) $(addprefix selinux-image-,$(SELINUX_DISTROS)) FORCE
 
@@ -195,6 +203,12 @@ mutants: ## mutation testing of MUTANTS_DIR, survivors against testdata/mutants-
 	cd $(MUTANTS_WORK)/src && $(GREMLINS) unleash --config .gremlins.yaml --workers $(MUTANTS_WORKERS) \
 		-o $(MUTANTS_WORK)/report.json ./$(MUTANTS_DIR)
 	$(GO) run ./scripts/check-mutants -allow testdata/mutants-allow.txt $(MUTANTS_DIR)=$(MUTANTS_WORK)/report.json
+
+bench: ## benchmarks matching BENCH, output in .bench/<commit>.txt
+	mkdir -p $(BENCH_DIR)
+	out=$(BENCH_DIR)/$$(git rev-parse --short HEAD).txt; \
+	$(GO) test -run '^$$' -bench '$(BENCH)' -benchmem -benchtime $(BENCHTIME) -count $(BENCHCOUNT) ./... >"$$out"; \
+	status=$$?; cat "$$out"; exit $$status
 
 ci-local: ## the jobs of ci.yml here, needs docker; make -j4 -O ci-local
 	$(MAKE) $(filter check snapshot,$(CI_JOBS))
