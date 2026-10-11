@@ -7,6 +7,10 @@ code in this repository.
 
 ```sh
 make check        # the CI job make check; govulncheck only warns here
+make mutants MUTANTS_DIR=internal/text  # gremlins on a directory, default
+                  # the module (about 2 h, weekly in mutants.yml); a new
+                  # survivor fails: kill it with a test or list it with a
+                  # reason in testdata/mutants-allow.txt
 make cover        # coverage of both builds, part of check: fails below
                   # COVER_MIN of the Makefile; report .cover/cover.html,
                   # in CI the artifact coverage of the job make check

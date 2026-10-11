@@ -1,14 +1,15 @@
 GO ?= go
 UVX ?= uvx
 
-# Each tool module pins one set of tools; actionlint, goreleaser and
+# Each tool module pins one set of tools; actionlint, goreleaser, gremlins and
 # go-licenses have their own because their dependencies conflict with
 # golangci-lint's.
 TOOL := $(GO) tool -modfile=tools/go.mod
 ACTIONLINT := $(GO) tool -modfile=tools/actionlint/go.mod actionlint
 GORELEASER := $(GO) tool -modfile=tools/goreleaser/go.mod goreleaser
 GO_LICENSES := $(GO) tool -modfile=tools/licenses/go.mod go-licenses
-TOOL_MODULES := tools tools/actionlint tools/goreleaser tools/licenses
+GREMLINS := $(GO) tool -modfile=tools/gremlins/go.mod gremlins
+TOOL_MODULES := tools tools/actionlint tools/goreleaser tools/gremlins tools/licenses
 
 # The noshoutrrr tag builds the binary without the shoutrrr library, whose
 # targets are then a configuration error; test, build and lint-go cover
@@ -118,6 +119,18 @@ SELINUX_SUM_rocky10 := 9fc9e9ff16888bb68ac39b0392e25c9c92684d50c85f1cce6ab549363
 COVER_DIR := $(CURDIR)/.cover
 COVER_MIN := 91
 
+# mutants runs gremlins on MUTANTS_DIR, a directory of the module, in a
+# copy of the tracked and new files under .mutants: gremlins copies the
+# whole module directory for each worker, .e2e and dist included, and a
+# dry run of internal/backend did not end in 20 minutes on that copy.
+# timeout-coefficient 10 of .gremlins.yaml: with the default a loaded host
+# timed out 86 of 165 mutants of internal/text and hid 19 survivors.
+# Survivors are checked against testdata/mutants-allow.txt by
+# scripts/check-mutants.
+MUTANTS_DIR ?= .
+MUTANTS_WORKERS ?= 4
+MUTANTS_WORK := $(CURDIR)/.mutants
+
 CHANGELOG_START := 12340d0
 
 # Form of a release tag; release.yml runs on any v* tag. grep matches line
@@ -140,7 +153,7 @@ CI_JOBS := $(filter-out make,$(subst $(comma), ,$(RELEASE_JOBS)))
 
 .DEFAULT_GOAL := help
 
-.PHONY: help ci-local check cover lint lint-go lint-yaml lint-actions lint-docs lint-symbols lint-man tidy test fuzz build licenses vuln check-refs check-commits snapshot release-prepare release-gate release release-guard setgid-e2e units-verify \
+.PHONY: help ci-local check cover mutants lint lint-go lint-yaml lint-actions lint-docs lint-symbols lint-man tidy test fuzz build licenses vuln check-refs check-commits snapshot release-prepare release-gate release release-guard setgid-e2e units-verify \
 	smoke smoke-dist smoke-previous $(addprefix smoke-,$(SMOKE_DISTROS)) \
 	selinux-images $(addprefix selinux-,$(SELINUX_DISTROS)) $(addprefix selinux-image-,$(SELINUX_DISTROS)) FORCE
 
@@ -175,6 +188,13 @@ cover: ## statement coverage of both builds, below COVER_MIN fails; .cover/cover
 	$(GO) tool cover -html=$(COVER_DIR)/cover.out -o $(COVER_DIR)/cover.html
 	@$(GO) tool cover -func=$(COVER_DIR)/cover.out | awk -v min=$(COVER_MIN) '/^total:/ { sub("%", "", $$NF); \
 		print "statements covered: " $$NF "%, floor " min "%"; if ($$NF + 0 < min) exit 1 }'
+
+mutants: ## mutation testing of MUTANTS_DIR, survivors against testdata/mutants-allow.txt
+	rm -rf $(MUTANTS_WORK) && mkdir -p $(MUTANTS_WORK)/src
+	git ls-files -z -co --exclude-standard | tar --null -T - -cf - | tar -C $(MUTANTS_WORK)/src -xf -
+	cd $(MUTANTS_WORK)/src && $(GREMLINS) unleash --config .gremlins.yaml --workers $(MUTANTS_WORKERS) \
+		-o $(MUTANTS_WORK)/report.json ./$(MUTANTS_DIR)
+	$(GO) run ./scripts/check-mutants -allow testdata/mutants-allow.txt $(MUTANTS_DIR)=$(MUTANTS_WORK)/report.json
 
 ci-local: ## the jobs of ci.yml here, needs docker; make -j4 -O ci-local
 	$(MAKE) $(filter check snapshot,$(CI_JOBS))

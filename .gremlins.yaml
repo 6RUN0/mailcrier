@@ -1,0 +1,7 @@
+---
+unleash:
+  timeout-coefficient: 10
+  exclude-files:
+    - "^cmd/"
+    - "^scripts/"
+    - "^internal/golden/"
