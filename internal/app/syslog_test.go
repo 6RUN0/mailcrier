@@ -186,10 +186,15 @@ func TestRunClosesSyslog(t *testing.T) {
 		syslogSocket: path,
 	}
 	inv.run(t)
+	// A dial over testSyslogTimeout sends the log to stderr, and Accept
+	// would wait for a connection that never comes.
+	if err := listener.(*net.UnixListener).SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
 	for _, tag := range []string{"mailcrier", "other"} {
 		conn, err := listener.Accept()
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("connection %s not accepted: %v", tag, err)
 		}
 		if err := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
 			t.Fatal(err)
