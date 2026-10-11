@@ -65,7 +65,7 @@ The fields a template reads:
 | `.Attachments`, `.MoreAttachments` | `.Name`, `.ContentType`, `.Size`, `.IsSkipped` (listed, not sent) of each attachment listed, and the number left out |
 | `.Hostname`, `.Target`, `.Limit` | host name, target name, text limit of the target (0: none) |
 | `.IsCollapsed` | the cut body belongs in a collapsed block (`on_long = "blockquote"`) |
-| `.Strings` | the notices of `[strings]`: `.Strings.NoSubject`, `.Strings.EmptyBody`, `.Strings.Truncated`, `.Strings.MoreAttachments`, `.Strings.NotSent` |
+| `.Strings` | the notices of `[strings]`: `.Strings.NoSubject`, `.Strings.NoSender`, `.Strings.EmptyBody`, `.Strings.Truncated`, `.Strings.MoreAttachments`, `.Strings.NotSent` |
 
 ## Functions
 

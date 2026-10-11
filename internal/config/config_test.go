@@ -779,11 +779,11 @@ func TestLoadSpool(t *testing.T) {
 func TestLoadStrings(t *testing.T) {
 	const target = "\n[target.hook]\ntype = \"http\"\npreset = \"generic-json\"\nurl = \"https://example.org\"\n"
 	t.Run("configured", func(t *testing.T) {
-		cfg, err := load(t, "[strings]\nno_subject = \"(ohne Betreff)\"\nempty_body = \"(leer)\"\ntruncated = \"[gekürzt]\"\ntruncated_size = \"[gekürzt, %s]\"\nmore_attachments = \"und %d weitere\"\nnot_sent = \"[nicht gesendet]\"\n"+target, nil)
+		cfg, err := load(t, "[strings]\nno_subject = \"(ohne Betreff)\"\nno_sender = \"(ohne Absender)\"\nempty_body = \"(leer)\"\ntruncated = \"[gekürzt]\"\ntruncated_size = \"[gekürzt, %s]\"\nmore_attachments = \"und %d weitere\"\nnot_sent = \"[nicht gesendet]\"\n"+target, nil)
 		if err != nil {
 			t.Fatalf("Load() error = %v", err)
 		}
-		if want := (Strings{NoSubject: "(ohne Betreff)", EmptyBody: "(leer)", Truncated: "[gekürzt]", TruncatedSize: "[gekürzt, %s]", MoreAttachments: "und %d weitere", NotSent: "[nicht gesendet]"}); cfg.Strings != want {
+		if want := (Strings{NoSubject: "(ohne Betreff)", NoSender: "(ohne Absender)", EmptyBody: "(leer)", Truncated: "[gekürzt]", TruncatedSize: "[gekürzt, %s]", MoreAttachments: "und %d weitere", NotSent: "[nicht gesendet]"}); cfg.Strings != want {
 			t.Errorf("Strings = %+v, want %+v", cfg.Strings, want)
 		}
 	})

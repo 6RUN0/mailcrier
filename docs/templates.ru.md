@@ -67,7 +67,7 @@ template = '''
 | `.Attachments`, `.MoreAttachments` | `.Name`, `.ContentType`, `.Size`, `.IsSkipped` (в списке, но не отправлено) каждого перечисленного вложения и число не вошедших в список |
 | `.Hostname`, `.Target`, `.Limit` | имя хоста, имя цели, лимит текста цели (0: нет) |
 | `.IsCollapsed` | обрезанное тело должно идти в свёрнутом блоке (`on_long = "blockquote"`) |
-| `.Strings` | уведомления из `[strings]`: `.Strings.NoSubject`, `.Strings.EmptyBody`, `.Strings.Truncated`, `.Strings.MoreAttachments`, `.Strings.NotSent` |
+| `.Strings` | уведомления из `[strings]`: `.Strings.NoSubject`, `.Strings.NoSender`, `.Strings.EmptyBody`, `.Strings.Truncated`, `.Strings.MoreAttachments`, `.Strings.NotSent` |
 
 ## Функции
 

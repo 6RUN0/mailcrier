@@ -68,7 +68,9 @@ option: `-f --probe` names a sender.
   name of the caller's uid at the host name. A setgid-elevated process
   skips the environment and uses the login name of the uid. When the uid
   has no entry in the user database, as in a container started with a
-  numeric user, the sender is empty.
+  numeric user, the sender is empty. The built-in texts that show the
+  sender show an empty one, also the null sender of a message without
+  `From`, as `(no sender)`, or the `no_sender` text of `[strings]`.
 - A line break in `-f`, `-r`, `-F` or a recipient argument exits 64. An
   address of a `From`, `To`, `Cc` or `Bcc` header or of their `Resent-`
   counterparts that holds a control character is dropped with a warning.

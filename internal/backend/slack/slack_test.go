@@ -147,6 +147,19 @@ func TestDeliverSlack(t *testing.T) {
 			t.Errorf("%d uploads, completed %v; want message.txt with the full body", len(api.uploads), api.completed)
 		}
 	})
+	t.Run("T-LIM-12/long-text-without-blocks", func(t *testing.T) {
+		api := newWebAPI(t)
+		body := strings.Repeat("a line of a long cron report\n", 2000)
+		result := deliverTo(t, api.sender(), render.Data{Subject: "s", Body: body}, nil)
+		if result.Status != delivery.OK || len(api.posts) != 1 {
+			t.Fatalf("result = %+v", result)
+		}
+		got, _ := api.posts[0]["text"].(string)
+		// 3000 characters is the most a section block takes.
+		if _, hasBlocks := api.posts[0]["blocks"]; hasBlocks || text.UTF16Len(got) <= 3000 {
+			t.Errorf("blocks %t, text of %d units; want no blocks and more than 3000", hasBlocks, text.UTF16Len(got))
+		}
+	})
 	t.Run("upload-failure-is-partial", func(t *testing.T) {
 		api := newWebAPI(t)
 		api.failUpload = true

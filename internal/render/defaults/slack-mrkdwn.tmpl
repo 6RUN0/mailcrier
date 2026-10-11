@@ -1,5 +1,5 @@
 *{{ .Subject | default .Strings.NoSubject | slackEscape }}*
-{{ .Hostname | slackEscape }}: _{{ .From.String | slackEscape }}_
+{{ .Hostname | slackEscape }}: _{{ .From.String | default .Strings.NoSender | slackEscape }}_
 ```{{ .Body | default .Strings.EmptyBody | trimEnd | slackCode }}```
 {{- range .Attachments }}
 {{ .Name | slackEscape }} ({{ .ContentType | slackEscape }}, {{ humanizeBytes .Size }}){{ if .IsSkipped }} {{ $.Strings.NotSent | slackEscape }}{{ end }}

@@ -1,5 +1,5 @@
 **{{ .Subject | default .Strings.NoSubject | discordEscape }}**
-*{{ .Hostname | discordEscape }}: {{ .From.String | discordEscape }}*
+*{{ .Hostname | discordEscape }}: {{ .From.String | default .Strings.NoSender | discordEscape }}*
 ```
 {{ .Body | default .Strings.EmptyBody | trimEnd | discordCode }}
 ```

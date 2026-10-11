@@ -56,6 +56,7 @@ deadline = "30s"                # optional, delivery to all targets
 
 [strings]                       # optional, notices in place of missing content
 no_subject = "(no subject)"
+no_sender = "(no sender)"
 empty_body = "(empty body)"
 truncated = "[truncated]"
 truncated_size = "[truncated, %s in full]"
@@ -72,12 +73,13 @@ preset = "generic-json"
   `token_file`. A `*_file` key takes an absolute path; the file content, with
   surrounding whitespace removed, is used as the value.
 - `[strings]` replaces the English notices that stand in for missing
-  content: `no_subject` for a message without a subject, `empty_body` for
-  a body without visible text, `truncated` at the end of a body cut to the
-  length limit of a target, `truncated_size` in its place when the full
-  text does not go along as a file, with `%s` for its size (exactly one
-  `%s` and no other `%`, else exit status 78; when only `truncated` is set,
-  it stands there too, without the size), `more_attachments` after a
+  content: `no_subject` for a message without a subject, `no_sender` for
+  an empty sender, `empty_body` for a body without visible text,
+  `truncated` at the end of a body cut to the length limit of a target,
+  `truncated_size` in its place when the full text does not go along as a
+  file, with `%s` for its size (exactly one `%s` and no other `%`, else
+  exit status 78; when only `truncated` is set, it stands there too,
+  without the size), `more_attachments` after a
   list of attachments cut to that limit, with `%d` for the number left out
   (exactly one `%d` and no other `%`, else exit status 78), `not_sent` after
   an attachment listed in the text but not sent because it exceeds a file

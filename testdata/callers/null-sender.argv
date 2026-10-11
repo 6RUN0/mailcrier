@@ -1,0 +1,5 @@
+sendmail
+-i
+-f
+<>
+root

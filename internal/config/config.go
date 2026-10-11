@@ -236,6 +236,8 @@ func DefaultSpool() Spool {
 type Strings struct {
 	// NoSubject stands in for a missing subject.
 	NoSubject string `toml:"no_subject"`
+	// NoSender stands in for an empty sender.
+	NoSender string `toml:"no_sender"`
 	// EmptyBody stands in for a body without visible text.
 	EmptyBody string `toml:"empty_body"`
 	// Truncated ends a body cut to the length limit of a target.
@@ -580,7 +582,7 @@ func validate(cfg *Config, keys keyIndex) *Error {
 		return keys.errorf([]string{"spool", "dir"}, "value of key %q must be an absolute path or empty", "dir")
 	}
 	for _, notice := range []struct{ key, value string }{
-		{"no_subject", cfg.Strings.NoSubject}, {"empty_body", cfg.Strings.EmptyBody}, {"truncated", cfg.Strings.Truncated},
+		{"no_subject", cfg.Strings.NoSubject}, {"no_sender", cfg.Strings.NoSender}, {"empty_body", cfg.Strings.EmptyBody}, {"truncated", cfg.Strings.Truncated},
 		{"truncated_size", cfg.Strings.TruncatedSize}, {"more_attachments", cfg.Strings.MoreAttachments}, {"not_sent", cfg.Strings.NotSent},
 	} {
 		if keys.has("strings", notice.key) && strings.TrimSpace(notice.value) == "" {

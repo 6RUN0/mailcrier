@@ -1,5 +1,5 @@
 {{ .Subject | default .Strings.NoSubject }}
-{{ .Hostname }}: {{ .From }}
+{{ .Hostname }}: {{ .From.String | default .Strings.NoSender }}
 
 {{ .Body | default .Strings.EmptyBody | trimEnd }}
 {{- range .Attachments }}

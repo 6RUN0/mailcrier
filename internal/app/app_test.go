@@ -499,18 +499,9 @@ func TestRunLogsResultFields(t *testing.T) {
 func TestRunTagsRecordsWithCall(t *testing.T) {
 	t.Parallel()
 	server := echoServer(t, http.StatusBadGateway)
-	cases := []struct {
-		name      string
-		header    string
-		wantMsgID string
-	}{
-		{"no-message-id", "", ""},
-		{"message-id", "Message-ID: <1@h>\n", "msgid=<1@h> "},
-		{"long-message-id", "Message-ID: <" + strings.Repeat("x", 1000) + ">\n", "msgid=<" + strings.Repeat("x", 255) + " "},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			inv := &invocation{config: httpTargetConfig(server.URL), stdin: strings.NewReader(tc.header + "Subject: t\n\nb\n")}
+	tagged := func(header, wantMsgID string) func(*testing.T) {
+		return func(t *testing.T) {
+			inv := &invocation{config: httpTargetConfig(server.URL), stdin: strings.NewReader(header + "Subject: t\n\nb\n")}
 			if code := inv.run(t); code != 69 {
 				t.Fatalf("Run() = %d, want 69", code)
 			}
@@ -523,12 +514,15 @@ func TestRunTagsRecordsWithCall(t *testing.T) {
 			if len(lines) < 2 || len(ids) != 1 || ids[""] {
 				t.Errorf("records do not share one call id:\n%s", raw)
 			}
-			if got := inv.log("mailcrier"); tc.wantMsgID == "" && strings.Contains(got, "msgid=") ||
-				tc.wantMsgID != "" && !strings.Contains(got, `msg="target failed" `+tc.wantMsgID+"target=hook") {
-				t.Errorf("msgid field wrong, want %q:\n%s", tc.wantMsgID, got)
+			if got := inv.log("mailcrier"); wantMsgID == "" && strings.Contains(got, "msgid=") ||
+				wantMsgID != "" && !strings.Contains(got, `msg="target failed" `+wantMsgID+"target=hook") {
+				t.Errorf("msgid field wrong, want %q:\n%s", wantMsgID, got)
 			}
-		})
+		}
 	}
+	t.Run("T-MTA-21/no-message-id-not-invented", tagged("", ""))
+	t.Run("T-MTA-21/message-id-logged", tagged("Message-ID: <1@h>\n", "msgid=<1@h> "))
+	t.Run("long-message-id", tagged("Message-ID: <"+strings.Repeat("x", 1000)+">\n", "msgid=<"+strings.Repeat("x", 255)+" "))
 }
 
 // TestRunLogsSizeLimit pins the fields of the warning for a message over

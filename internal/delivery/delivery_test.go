@@ -809,17 +809,17 @@ func BenchmarkFitTarget(b *testing.B) {
 func TestDeliverCutText(t *testing.T) {
 	limit300 := backend.Caps{MaxText: 300, Measure: text.MeasureTelegramHTML, MaxFiles: 10}
 	limit4096 := backend.Caps{MaxText: 4096, Measure: text.MeasureTelegramHTML, MaxFiles: 10}
-	const head, fullText, attached = "<b>s</b>\n<i>h: </i>\n", "\nmessage.txt (text/plain; charset=utf-8, 1.9 KiB)", "\na.log (text/plain, 8 B)"
+	const head, fullText, attached = "<b>s</b>\n<i>h: (no sender)</i>\n", "\nmessage.txt (text/plain; charset=utf-8, 1.9 KiB)", "\na.log (text/plain, 8 B)"
 	lines := func(n int) string { return strings.Repeat("a line of the body\n", n) }
 	withFile, withoutFile := []string{"message.txt", "a.log"}, []string{"a.log"}
 	for _, tc := range []cutTextCase{
 		{"fits", Target{}, limit4096, false, head + "<pre>" + strings.TrimSuffix(longBody, "\n") + "</pre>" + attached, withoutFile},
-		{"truncate", Target{OnLong: OnLongTruncate}, limit300, true, head + "<pre>" + lines(12) + "a line of the\n[truncated, 1.9 KiB in full]</pre>" + attached, withoutFile},
-		{"file", Target{}, limit300, true, head + "<pre>" + lines(11) + "[truncated]</pre>" + fullText + attached, withFile},
-		{"blockquote", Target{OnLong: OnLongBlockquote}, limit300, true, head + "<blockquote expandable>" + lines(11) + "[truncated]</blockquote>" + fullText + attached, withFile},
-		{"text-only-target", Target{}, backend.Caps{MaxText: 300, Measure: text.MeasureTelegramHTML}, true, head + "<pre>" + lines(12) + "a line of the\n[truncated, 1.9 KiB in full]</pre>" + attached, nil},
+		{"truncate", Target{OnLong: OnLongTruncate}, limit300, true, head + "<pre>" + lines(12) + "a\n[truncated, 1.9 KiB in full]</pre>" + attached, withoutFile},
+		{"file", Target{}, limit300, true, head + "<pre>" + lines(10) + "a line\n[truncated]</pre>" + fullText + attached, withFile},
+		{"blockquote", Target{OnLong: OnLongBlockquote}, limit300, true, head + "<blockquote expandable>" + lines(10) + "a line\n[truncated]</blockquote>" + fullText + attached, withFile},
+		{"text-only-target", Target{}, backend.Caps{MaxText: 300, Measure: text.MeasureTelegramHTML}, true, head + "<pre>" + lines(12) + "a\n[truncated, 1.9 KiB in full]</pre>" + attached, nil},
 		{"max-lines-within-the-limit", Target{MaxLines: 3}, limit4096, true, head + "<pre>" + lines(3) + "[truncated]</pre>" + fullText + attached, withFile},
-		{"max-lines-then-the-limit", Target{MaxLines: 50}, limit300, true, head + "<pre>" + lines(11) + "[truncated]</pre>" + fullText + attached, withFile},
+		{"max-lines-then-the-limit", Target{MaxLines: 50}, limit300, true, head + "<pre>" + lines(10) + "a line\n[truncated]</pre>" + fullText + attached, withFile},
 		{"max-lines-truncate", Target{MaxLines: 3, OnLong: OnLongTruncate}, limit4096, true, head + "<pre>" + lines(3) + "[truncated, 1.9 KiB in full]</pre>" + attached, withoutFile},
 	} {
 		t.Run(tc.name, tc.check)

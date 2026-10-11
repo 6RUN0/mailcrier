@@ -129,7 +129,7 @@ func TestRunExitStatusMatrix(t *testing.T) {
 			t.Fatalf("Run() = %d, want 78", code)
 		}
 	})
-	t.Run("unreadable-input", func(t *testing.T) {
+	t.Run("T-MTA-37/unreadable-input-exits-66", func(t *testing.T) {
 		inv := &invocation{config: twoTargets, stdin: iotest.ErrReader(errors.New("input/output error"))}
 		if code := inv.run(t); code != 66 {
 			t.Fatalf("Run() = %d, want 66", code)
@@ -252,6 +252,17 @@ func TestRunEmptyBody(t *testing.T) {
 	t.Parallel()
 	t.Run("T-ADJ-10/empty-stdin", runEmptyBodyCase{[]string{"-t"}, ""}.check)
 	t.Run("T-MTA-07/empty-stdin-with-argument-recipient", runEmptyBodyCase{[]string{"root"}, ""}.check)
+	t.Run("T-CALL-23/empty-stdin-no-subject", func(t *testing.T) {
+		runEmptyBodyCase{[]string{"root"}, ""}.check(t)
+		rec := &recorder{}
+		inv := &invocation{config: twoTargets, args: []string{"root"}, stdin: strings.NewReader(""), deliver: rec.deliver}
+		if code := inv.run(t); code != 0 {
+			t.Fatalf("Run() = %d, want 0", code)
+		}
+		if want := render.DefaultStrings().NoSubject; len(rec.data) != 2 || !strings.HasPrefix(plainText(t, rec.data[0]), want+"\n") {
+			t.Errorf("deliveries = %+v, want 2 with the text starting %q", rec.data, want)
+		}
+	})
 	t.Run("T-CALL-21/headers-only", runEmptyBodyCase{[]string{"-i", "alice"}, "Subject: Output from your job 7\nTo: alice\n\n"}.check)
 	t.Run("T-ADJ-36/whitespace-only", runEmptyBodyCase{[]string{"root"}, "   \n\t\n   "}.check)
 	// Recipients and subject show that the header block ending at EOF was
@@ -563,8 +574,8 @@ func TestRunCronieCommandLine(t *testing.T) {
 // one and an absent one keeps it.
 func TestNotices(t *testing.T) {
 	t.Parallel()
-	got := notices(config.Strings{NoSubject: "a", EmptyBody: "b", Truncated: "c", TruncatedSize: "%s f", MoreAttachments: "%d d", NotSent: "e"})
-	want := render.Strings{NoSubject: "a", EmptyBody: "b", Truncated: "c", TruncatedSize: "%s f", MoreAttachments: "%d d", NotSent: "e"}
+	got := notices(config.Strings{NoSubject: "a", NoSender: "s", EmptyBody: "b", Truncated: "c", TruncatedSize: "%s f", MoreAttachments: "%d d", NotSent: "e"})
+	want := render.Strings{NoSubject: "a", NoSender: "s", EmptyBody: "b", Truncated: "c", TruncatedSize: "%s f", MoreAttachments: "%d d", NotSent: "e"}
 	if got != want {
 		t.Errorf("notices = %+v, want %+v", got, want)
 	}

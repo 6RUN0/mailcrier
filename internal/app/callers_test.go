@@ -58,6 +58,36 @@ func TestCallers(t *testing.T) {
 	}
 }
 
+// TestCallersMailxSubject pins that the subject of mail -s, which mailx
+// writes as a Subject header before it runs sendmail, reaches the targets:
+// mailcrier has no -s and no mail mode of its own.
+func TestCallersMailxSubject(t *testing.T) {
+	t.Parallel()
+	t.Run("T-CALL-24/mailx-subject-reaches-targets", func(t *testing.T) {
+		for name, want := range map[string]string{
+			"smartd-mailx":    "SMART error (EmailTest) detected on host: host1",
+			"logrotate-mailx": "/var/log/app.log.1",
+			"zed-mailx":       "ZFS device fault for pool tank on host1",
+			"s-nail":          "s-nail test",
+		} {
+			argvData, err := os.ReadFile(filepath.Join(callersDir, name+".argv"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			input, err := os.ReadFile(filepath.Join(callersDir, name+".eml"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			argv := strings.Split(strings.TrimSuffix(string(argvData), "\n"), "\n")
+			rec := &recorder{}
+			inv := &invocation{program: argv[0], args: argv[1:], config: twoTargets, stdin: strings.NewReader(string(input)), deliver: rec.deliver}
+			if code := inv.run(t); code != 0 || len(rec.data) != 2 || rec.data[0].Subject != want || rec.data[1].Subject != want {
+				t.Errorf("%s: Run() = %d, data %+v; want 0 and the subject %q for both targets", name, code, rec.data, want)
+			}
+		}
+	})
+}
+
 // callerArchive renders the outcome of one fixture.
 func callerArchive(code int, rec *recorder, inv *invocation) golden.Archive {
 	envelope := fmt.Sprintf("sender: %q\nsender-name: %q\nrecipients: %q\n", rec.env.Sender, rec.env.SenderName, rec.env.Recipients)

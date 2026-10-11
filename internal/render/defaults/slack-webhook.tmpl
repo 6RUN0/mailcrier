@@ -1,1 +1,1 @@
-{"text": {{ toJson (print "*" (.Subject | default .Strings.NoSubject | slackEscape) "*\n" (.Hostname | slackEscape) ": _" (.From.String | slackEscape) "_\n```" (.Body | default .Strings.EmptyBody | trimEnd | slackCode) "```") }}}
+{"text": {{ toJson (print "*" (.Subject | default .Strings.NoSubject | slackEscape) "*\n" (.Hostname | slackEscape) ": _" (.From.String | default .Strings.NoSender | slackEscape) "_\n```" (.Body | default .Strings.EmptyBody | trimEnd | slackCode) "```") }}}

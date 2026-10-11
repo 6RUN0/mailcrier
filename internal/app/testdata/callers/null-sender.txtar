@@ -1,0 +1,13 @@
+-- exit --
+0
+-- envelope --
+sender: ""
+sender-name: ""
+recipients: ["root"]
+-- payloads --
+2
+-- title --
+disk check on host1
+-- text --
+disk usage of / is 91%
+-- warnings --

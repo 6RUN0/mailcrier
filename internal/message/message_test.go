@@ -55,6 +55,10 @@ func TestRead(t *testing.T) {
 	t.Run("folded-subject", readCase{"Subject: first\n  second\n\tthird\n\nb\n", false, "first second third", "", "b\n"}.check)
 	t.Run("empty-header-block", readCase{"\nbody\n", false, "", "", "body\n"}.check)
 	t.Run("leading-continuation-is-body", readCase{" indented\nSubject: s\n\nb\n", false, "", "", " indented\nSubject: s\n\nb\n"}.check)
+	t.Run("T-MTA-40/long-body-line", readCase{"Subject: s\n\n" + strings.Repeat("x", 5000) + "\n", false, "s", "", strings.Repeat("x", 5000) + "\n"}.check)
+	t.Run("T-MTA-40/long-header-line", readCase{"Subject: " + strings.Repeat("y", 2000) + "\n\nb\n", false, strings.Repeat("y", 2000), "", "b\n"}.check)
+	t.Run("T-MTA-41/content-length-ignored", readCase{"Content-Length: 3\nSubject: s\n\nlonger body\n", false, "s", "", "longer body\n"}.check)
+	t.Run("T-CALL-25/trailing-space-trimmed", readCase{"Subject: backupninja: host1 \t\n\nb\n", false, "backupninja: host1", "", "b\n"}.check)
 }
 
 type readCase struct {
@@ -347,6 +351,12 @@ func TestWithoutBlindCopies(t *testing.T) {
 	if string(input) != raw {
 		t.Error("the input was changed")
 	}
+	t.Run("T-MTA-41/return-path-and-content-length-kept", func(t *testing.T) {
+		raw := "Return-Path: <x@example.org>\nContent-Length: 3\nSubject: s\n\nlonger body\n"
+		if got := string(WithoutBlindCopies([]byte(raw))); got != raw {
+			t.Errorf("got %q, want the input unchanged", got)
+		}
+	})
 }
 
 // allocatedBytes returns the bytes Read allocates for input.

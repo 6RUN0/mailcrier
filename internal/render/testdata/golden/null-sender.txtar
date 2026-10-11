@@ -1,0 +1,33 @@
+-- plain --
+disk check on host1
+host1.example.org: (no sender)
+
+disk usage of / is 91%
+-- telegram-html --
+<b>disk check on host1</b>
+<i>host1.example.org: (no sender)</i>
+<pre>disk usage of / is 91%</pre>
+-- telegram-markdownv2 --
+*disk check on host1*
+_host1\.example\.org: \(no sender\)_
+```
+disk usage of / is 91%
+```
+-- slack-mrkdwn --
+*disk check on host1*
+host1.example.org: _(no sender)_
+```disk usage of / is 91%```
+-- discord --
+**disk check on host1**
+*host1.example.org: (no sender)*
+```
+disk usage of / is 91%
+```
+-- ntfy --
+disk usage of / is 91%
+-- mattermost --
+{"text": "#### disk check on host1\n_host1.example.org: (no sender)_\n```\ndisk usage of / is 91%\n```"}
+-- slack-webhook --
+{"text": "*disk check on host1*\nhost1.example.org: _(no sender)_\n```disk usage of / is 91%```"}
+-- generic-json --
+{"subject": "disk check on host1", "body": "disk usage of / is 91%\n", "hostname": "host1.example.org"}

@@ -783,11 +783,11 @@ func TestSpoolNotAvailable(t *testing.T) {
 			t.Errorf("output lacks %s alone:\n%s", want, inv.output())
 		}
 	})
-	t.Run("missing-directory-delivered-exits-0", func(t *testing.T) {
+	t.Run("T-ADJ-34/missing-directory-delivered-exits-0", func(t *testing.T) {
 		c := newSpoolCase(t)
 		c.dir = filepath.Join(c.dir, "missing")
-		if code, inv := c.send("fine", elevatedUser); code != 0 || !strings.Contains(inv.output(), `level=WARN msg="message not spooled"`) {
-			t.Fatalf("Run() = %d, want 0 and a warning; output:\n%s", code, inv.output())
+		if code, inv := c.send("fine", elevatedUser); code != 0 || len(c.service.got("a")) != 1 || !strings.Contains(inv.output(), `level=WARN msg="message not spooled"`) {
+			t.Fatalf("Run() = %d, sent %v, want 0, a direct delivery and a warning; output:\n%s", code, c.service.got("a"), inv.output())
 		}
 	})
 	t.Run("T-MTA-36/unwritable-queue-exits-74", func(t *testing.T) {
@@ -880,6 +880,25 @@ func TestQueueRun(t *testing.T) {
 		c.queueRun(serviceCaller)
 		if ids := c.ids(spool.QueueDir); len(ids) != 0 || !slices.Equal(c.service.got("b"), []string{"retry"}) {
 			t.Errorf("queue/ = %v, b got %v, want empty and b sent once", ids, c.service.got("b"))
+		}
+	})
+	t.Run("T-ADJ-22/headers-only-entry-delivered", func(t *testing.T) {
+		c := newSpoolCase(t)
+		c.service.reply("a", delivery.Temp)
+		c.sendInput("Subject: s", "root")
+		ids := c.ids(spool.QueueDir)
+		if len(ids) != 1 {
+			t.Fatalf("queue/ = %v, want one entry", ids)
+		}
+		if stored, err := os.ReadFile(filepath.Join(c.dir, spool.QueueDir, ids[0]+".eml")); err != nil || string(stored) != "Subject: s" {
+			t.Fatalf("stored message = %q, %v; want the input without a separator", stored, err)
+		}
+		c.clock.advance(time.Minute)
+		if code, inv := c.queueRun(serviceCaller); code != 0 {
+			t.Fatalf("-q = %d; output:\n%s", code, inv.output())
+		}
+		if got := c.service.got("a"); !slices.Equal(got, []string{"s", "s"}) || len(c.ids(spool.QueueDir)) != 0 {
+			t.Errorf("a got %v, queue/ = %v; want s retried and the queue empty", got, c.ids(spool.QueueDir))
 		}
 	})
 	t.Run("T-MTA-34/q-with-interval-runs-once", func(t *testing.T) {

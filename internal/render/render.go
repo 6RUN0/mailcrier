@@ -29,6 +29,9 @@ import (
 type Strings struct {
 	// NoSubject stands in for an empty Subject.
 	NoSubject string
+	// NoSender stands in for an empty sender: a null sender without a From
+	// header, or a uid without a login.
+	NoSender string
 	// EmptyBody stands in for a body without visible text: services reject
 	// an empty message.
 	EmptyBody string
@@ -49,6 +52,7 @@ type Strings struct {
 func DefaultStrings() Strings {
 	return Strings{
 		NoSubject:       "(no subject)",
+		NoSender:        "(no sender)",
 		EmptyBody:       "(empty body)",
 		Truncated:       "[truncated]",
 		TruncatedSize:   "[truncated, %s in full]",

@@ -121,12 +121,38 @@ func TestNewDataFromFallsBackToSender(t *testing.T) {
 	}
 }
 
+// TestNewDataToIsHeaderOnly pins that .To holds the To header alone: an
+// argv recipient is in .Recipients, not made up into a To address.
+func TestNewDataToIsHeaderOnly(t *testing.T) {
+	t.Run("T-MTA-43/argv-recipient-not-in-to", func(t *testing.T) {
+		d := readData(t, "Subject: s\n\nb\n", "root@example.org")
+		if len(d.To) != 0 || !slices.Equal(d.Recipients, []string{"root@example.org"}) {
+			t.Errorf("To = %+v, Recipients = %q; want no To and the argv recipient", d.To, d.Recipients)
+		}
+	})
+}
+
 func TestBuiltinNotices(t *testing.T) {
 	t.Run("T-TPL-02/empty-subject-and-body", func(t *testing.T) {
 		checkNotices(t, "To: root\n\n")
 	})
 	t.Run("T-CALL-21/whitespace-only-body", func(t *testing.T) {
 		checkNotices(t, "To: root\nSubject: \n\n \n\t\n")
+	})
+	// An empty sender would leave the italics of the host line ending in a
+	// space, which Markdown does not close, so the services show the markers.
+	t.Run("T-ADJ-43/empty-sender", func(t *testing.T) {
+		d := readData(t, "Subject: s\n\nb\n")
+		d.From = message.Address{}
+		for format, out := range renderAll(t, d) {
+			if format == text.FormatNtfy || format == text.FormatGenericJSON {
+				continue
+			}
+			// Every escaper keeps the letters of the notice.
+			if !strings.Contains(out, "no sender") {
+				t.Errorf("%s: text lacks the notice %q: %q", format, DefaultStrings().NoSender, out)
+			}
+		}
 	})
 	t.Run("configured-notices", func(t *testing.T) {
 		d := readData(t, "To: root\n\n")

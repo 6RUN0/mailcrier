@@ -1,5 +1,5 @@
 *{{ .Subject | default .Strings.NoSubject | tgMDv2 }}*
-_{{ .Hostname | tgMDv2 }}: {{ .From.String | tgMDv2 }}_
+_{{ .Hostname | tgMDv2 }}: {{ .From.String | default .Strings.NoSender | tgMDv2 }}_
 ```
 {{ .Body | default .Strings.EmptyBody | trimEnd | tgMDv2Code }}
 ```
