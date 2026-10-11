@@ -38,6 +38,8 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
         with:
           enable-cache: false
+      - name: Install mandoc
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mandoc
       - name: Select base revision
         id: base
         env:

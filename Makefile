@@ -28,6 +28,16 @@ LICENSE_EXCEPTIONS := github.com/eclipse/paho.golang
 pinned = $(shell sed -n 's/^$(1)==//p' tools/requirements.txt)
 YAMLLINT := $(UVX) yamllint@$(call pinned,yamllint)
 ZIZMOR := $(UVX) zizmor@$(call pinned,zizmor)
+RUMDL := $(UVX) rumdl@$(call pinned,rumdl)
+MANDOC ?= mandoc
+
+# lint-docs checks the user documentation in one run: links to an anchor of
+# another page (MD051) are resolved only when that page is in the same run.
+DOCS := README.md README.ru.md docs
+
+# Typographic characters a keyboard does not type, refused by lint-symbols
+# in tracked and new files. PCRE needs a UTF-8 locale for \x{} above 0xff.
+TYPOGRAPHIC := [\x{2010}-\x{2015}\x{2018}-\x{201F}\x{2026}\x{00AB}\x{00BB}\x{00A0}\x{00AD}\x{200B}\x{2190}-\x{21FF}\x{2713}\x{2717}\x{2022}\x{2500}-\x{257F}\x{00D7}\x{00F7}\x{2264}\x{2265}]
 
 # Online audits need GH_TOKEN; CI clears the flag and provides the token.
 ZIZMOR_FLAGS ?= --offline
@@ -115,56 +125,76 @@ is-release-tag = case "$$TAG" in *[!0-9A-Za-z.-]*|'') false;; esac && echo "$$TA
 # to the jobs ci.yml runs on push.
 RELEASE_JOBS := make check,make snapshot,make smoke-debian,make smoke-rocky9,make smoke-rocky10,make smoke-alpine,make setgid-e2e,make units-verify
 
-.PHONY: check lint lint-go lint-yaml lint-actions tidy test fuzz build licenses vuln check-refs check-commits snapshot release-prepare release-gate release release-guard setgid-e2e units-verify \
+.DEFAULT_GOAL := help
+
+.PHONY: help check lint lint-go lint-yaml lint-actions lint-docs lint-symbols lint-man tidy test fuzz build licenses vuln check-refs check-commits snapshot release-prepare release-gate release release-guard setgid-e2e units-verify \
 	smoke smoke-dist smoke-previous $(addprefix smoke-,$(SMOKE_DISTROS)) \
 	selinux-images $(addprefix selinux-,$(SELINUX_DISTROS)) $(addprefix selinux-image-,$(SELINUX_DISTROS)) FORCE
 
-check: lint tidy test fuzz build licenses check-refs check-commits
+# A static pattern rule is listed as its pattern with % read as <distro>;
+# a target without "## " is internal and stays out of the list.
+help: ## list the targets
+	@grep -hE '^[^#[:space:]][^=]*:.*## ' $(MAKEFILE_LIST) | \
+		sed -E 's/^\$$\([^)]*\)\)?: *([a-z-]+)%:/\1<distro>:/' | \
+		awk 'BEGIN { FS = ":.*## " } { printf "  %-22s %s\n", $$1, $$2 }'
+
+check: lint tidy test fuzz build licenses check-refs check-commits ## the CI job make check; vuln only warns here
 	-$(MAKE) vuln
 
-lint: lint-go lint-yaml lint-actions
+lint: lint-go lint-yaml lint-actions lint-docs lint-symbols lint-man ## all linters
 
-lint-go:
+lint-docs: ## rumdl over README and docs, links and anchors included
+	$(RUMDL) check $(DOCS)
+
+lint-symbols: ## no typographic characters in tracked and new files
+	@LC_ALL=C.UTF-8 git grep -nIP --untracked '$(TYPOGRAPHIC)'; status=$$?; \
+	if [ $$status = 0 ]; then echo "typographic characters above; type ASCII punctuation instead" >&2; exit 1; fi; \
+	[ $$status = 1 ]
+
+lint-man: ## mandoc lint of the manual page
+	$(MANDOC) -T lint -W warning docs/mailcrier.8
+
+lint-go: ## golangci-lint, also under the build tags of the e2e tests
 	$(TOOL) golangci-lint run ./...
 	$(TOOL) golangci-lint run --build-tags setgid_e2e,noshoutrrr,smoke,selinux ./...
 
-lint-yaml:
+lint-yaml: ## yamllint --strict
 	$(YAMLLINT) --strict .
 
-lint-actions:
+lint-actions: ## actionlint and zizmor over the workflows
 	$(ACTIONLINT)
 	$(ZIZMOR) $(ZIZMOR_FLAGS) .
 
-tidy:
+tidy: ## go mod tidy -diff of the module and the tool modules
 	$(GO) mod tidy -diff
 	for dir in $(TOOL_MODULES); do (cd $$dir && $(GO) mod tidy -diff) || exit 1; done
 
-test:
+test: ## go test -race, with and without shoutrrr
 	$(GO) test -race ./...
 	$(GO) test -race -tags noshoutrrr ./...
 
-fuzz:
+fuzz: ## each fuzz target FUZZTIME long, FUZZPARALLEL processes
 	for target in $(FUZZ_TARGETS); do \
 		$(GO) test -run '^$$' -fuzz "^$${target#*:}$$" -fuzztime $(FUZZTIME) -parallel $(FUZZPARALLEL) "$${target%%:*}" || exit 1; \
 	done
 
-build:
+build: ## the binary ./mailcrier, and the build without shoutrrr
 	$(GO) build -o mailcrier ./cmd/mailcrier
 	$(GO) build -tags noshoutrrr -o /dev/null ./cmd/mailcrier
 
-licenses:
+licenses: ## licenses of the linked modules
 	$(GO_LICENSES) check ./cmd/... --allowed_licenses=$(ALLOWED_LICENSES) $(addprefix --ignore=,$(LICENSE_EXCEPTIONS))
 
-vuln:
+vuln: ## govulncheck
 	$(TOOL) govulncheck ./...
 
-check-refs:
+check-refs: ## no plan or review references since BASE
 	$(GO) run ./scripts/check-refs -base $(BASE)
 
-check-commits:
+check-commits: ## commit messages of BASE..HEAD
 	$(GO) run ./scripts/check-commits -base $(BASE)
 
-snapshot: release-prepare
+snapshot: release-prepare ## packages of HEAD in dist/
 	$(GORELEASER) release --snapshot --clean
 
 # nFPM writes the mtime of a script file into the apk, untouched by mtime and
@@ -175,7 +205,7 @@ release-prepare:
 # The tag must name a commit that is in main and develop, with main not ahead
 # of develop (so a commit in main is in develop too), and whose push run of ci.yml on develop passed. "In main", not
 # "the head of main": a rerun after the next fast-forward still passes.
-release-gate:
+release-gate: ## gate of release.yml for TAG
 	@$(is-release-tag) || { echo "release-gate needs TAG=vX.Y.Z[-rcN]" >&2; exit 2; }
 	@[ "$$(git rev-parse -q --verify "refs/tags/$$TAG^{commit}")" = "$$(git rev-parse HEAD)" ] || \
 		{ echo "tag $$TAG does not point at HEAD" >&2; exit 1; }
@@ -197,7 +227,7 @@ release-gate:
 # The notes run from the last final tag before the tagged commit, so an rc
 # and the final release on its commit get the same notes; without one they
 # start at CHANGELOG_START.
-release: release-guard release-prepare
+release: release-guard release-prepare ## publish TAG; release.yml only
 	prev=$$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-*' "refs/tags/$$TAG^" 2>/dev/null) || \
 		prev=$(CHANGELOG_START)^; \
 	GORELEASER_CURRENT_TAG="$$TAG" GORELEASER_PREVIOUS_TAG="$$prev" $(GORELEASER) release --clean
@@ -206,7 +236,7 @@ release-guard:
 	@[ "$$GITHUB_ACTIONS" = true ] || { echo "release publishes to GitHub; run it from release.yml" >&2; exit 2; }
 	@$(is-release-tag) || { echo "release needs TAG=vX.Y.Z[-rcN]" >&2; exit 2; }
 
-setgid-e2e:
+setgid-e2e: ## TestSetgid* in a root container (docker)
 	mkdir -p $(E2E_DIR)
 	CGO_ENABLED=0 $(GO) build -o $(E2E_DIR)/mailcrier ./cmd/mailcrier
 	CGO_ENABLED=0 $(GO) test -c -tags setgid_e2e -o $(E2E_DIR)/app.test ./internal/app
@@ -214,7 +244,7 @@ setgid-e2e:
 	docker run --rm --network none --cap-add SYS_PTRACE -v $(E2E_DIR):/e2e:ro $(E2E_IMAGE) \
 		/e2e/app.test -test.run '^TestSetgid' -test.v -mailcrier-binary /e2e/mailcrier
 
-units-verify:
+units-verify: ## systemd-analyze verify of the queue units (docker)
 	mkdir -p $(E2E_DIR)
 	CGO_ENABLED=0 $(GO) build -o $(E2E_DIR)/mailcrier ./cmd/mailcrier
 	docker build -t $(UNITS_IMAGE) testdata/units-verify
@@ -224,11 +254,11 @@ units-verify:
 		$(foreach unit,$(UNITS),-v $(CURDIR)/packaging/systemd/$(unit):/etc/systemd/system/$(unit):ro) \
 		$(UNITS_IMAGE) systemd-analyze verify $(addprefix /etc/systemd/system/,$(UNITS))
 
-smoke: $(addprefix smoke-,$(SMOKE_DISTROS))
+smoke: $(addprefix smoke-,$(SMOKE_DISTROS)) ## smoke tests of dist/ on every distribution
 
 # Each test function runs even when an earlier one failed: they share no
 # state, and every failure is worth seeing.
-$(addprefix smoke-,$(SMOKE_DISTROS)): smoke-%: smoke-dist smoke-previous $(E2E_DIR)/smoke.test $(E2E_DIR)/app.test
+$(addprefix smoke-,$(SMOKE_DISTROS)): smoke-%: smoke-dist smoke-previous $(E2E_DIR)/smoke.test $(E2E_DIR)/app.test ## smoke tests of dist/ on one distribution of SMOKE_DISTROS
 	docker build --target plain -t mailcrier-smoke-$* packaging/smoke/$*
 	$(if $(filter $*,$(SMOKE_SYSTEMD_DISTROS)),docker build --target systemd -t mailcrier-smoke-$*-systemd packaging/smoke/$*)
 	status=0; for test in $(SMOKE_TESTS); do \
@@ -271,7 +301,7 @@ smoke-dist:
 # A file is fetched only when missing and moved in place only once its sum
 # matches, so an interrupted download leaves nothing in place and a rerun
 # needs no network; every run checks all of them again.
-smoke-previous:
+smoke-previous: ## fetch the packages of SMOKE_PREVIOUS
 	mkdir -p $(SMOKE_PREVIOUS_DIR)/partial
 	cd $(SMOKE_PREVIOUS_DIR) && for file in checksums.txt $(SMOKE_PREVIOUS_FILES); do \
 		[ -f "$$file" ] && continue; \
@@ -291,7 +321,7 @@ smoke-previous:
 # The run leaves its output in $(SELINUX_DIR)/<distro>, and the test reads
 # it also after a failed run, to name the step. The container runs as root
 # for /dev/kvm and ssh; run.sh hands its files to OWNER.
-$(addprefix selinux-,$(SELINUX_DISTROS)): selinux-%: smoke-dist smoke-previous selinux-image-%
+$(addprefix selinux-,$(SELINUX_DISTROS)): selinux-%: smoke-dist smoke-previous selinux-image-% ## SELinux check of dist/ in a VM (docker, /dev/kvm)
 	docker build -t $(SELINUX_IMAGE) testdata/selinux
 	mkdir -p $(SELINUX_DIR)/$*
 	status=0; \
@@ -303,7 +333,7 @@ $(addprefix selinux-,$(SELINUX_DISTROS)): selinux-%: smoke-dist smoke-previous s
 	$(GO) test -tags selinux -count=1 -run '^TestSELinux$$' . -args -selinux-log $(SELINUX_DIR)/$*/check.log || status=1; \
 	exit $$status
 
-selinux-images: $(addprefix selinux-image-,$(SELINUX_DISTROS))
+selinux-images: $(addprefix selinux-image-,$(SELINUX_DISTROS)) ## fetch the Rocky cloud images
 
 # Fetched like smoke-previous: moved in place only once the sum matches,
 # checked again on every run.

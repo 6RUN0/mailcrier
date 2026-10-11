@@ -7,8 +7,8 @@ code in this repository.
 
 ```sh
 make check        # the CI job make check; govulncheck only warns here
-make lint         # lint-go lint-yaml lint-actions; other targets: tidy test
-                  # fuzz build licenses vuln check-refs check-commits snapshot
+make lint         # lint-go lint-yaml lint-actions lint-docs lint-symbols
+                  # lint-man; `make` alone lists every target (help)
 make fuzz FUZZTIME=10m   # longer fuzzing; check runs each target 10s
 make fuzz FUZZPARALLEL=8  # fuzzing processes per target, default 4
 make setgid-e2e   # needs docker: TestSetgid* in a root container
@@ -26,7 +26,9 @@ go test ./internal/backend/webhook -update   # rewrite golden files
 go test ./internal/app -run TestCallers -update   # caller golden files
 go test ./internal/app -run TestJournalGolden -update   # whole log, stderr
 go test ./internal/render -run TestBuiltinGolden -update   # template golden
-mandoc -T lint -W warning docs/mailcrier.8   # man page; not in make check
+make lint-docs    # rumdl over README.md, README.ru.md and docs at once:
+                  # anchors into another page are checked only so
+make lint-man     # mandoc -T lint -W warning docs/mailcrier.8; CI installs it
 make release-gate TAG=v0.1.0   # gate of release.yml; check-release needs
                                # GH_TOKEN and GITHUB_REPOSITORY
 make release TAG=v0.1.0        # publishes; refuses without GITHUB_ACTIONS=true
@@ -39,8 +41,8 @@ The release procedure is `docs/releasing.md`.
   goreleaser in `tools/goreleaser/go.mod`, go-licenses in
   `tools/licenses/go.mod` (run as `go tool -modfile=...`; separate modules
   because their dependencies conflict with golangci-lint's),
-  yamllint and zizmor in `tools/requirements.txt` (run through `uvx`, the
-  `Makefile` reads the versions from that file).
+  yamllint, zizmor and rumdl in `tools/requirements.txt` (run through
+  `uvx`, the `Makefile` reads the versions from that file).
 - `go get -tool` records tool modules as `// indirect`, which Dependabot
   skips; each one is named in the `allow` list of the tools entry in
   `.github/dependabot.yml`, and `TestDependabotCoversTools` fails when a tool
