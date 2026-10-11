@@ -83,7 +83,7 @@ func checkFitOutput(t *testing.T, tmpl *Template, d Data, limit int, m measureFu
 
 // telegramMarkup matches a tag or an entity of the built-in Telegram HTML
 // template.
-var telegramMarkup = regexp.MustCompile(`</?(?:b|i|pre|blockquote)>|<blockquote expandable>|&(?:amp|lt|gt);`)
+var telegramMarkup = regexp.MustCompile(`</?(?:b|i|pre|blockquote)>|<blockquote expandable>|&(?:amp|lt|gt|quot);`)
 
 // checkTelegramHTML checks that every tag of out is closed in order and
 // that no <, > or & stands outside a tag or an entity.
@@ -395,7 +395,7 @@ func TestFitAtTheLimit(t *testing.T) {
 				t.Fatalf("one more character: truncated = %v, ends %q", truncated, out[max(0, len(out)-60):])
 			}
 			_, keptBody, _ := strings.Cut(kept, "<pre>")
-			raw := strings.NewReplacer("&lt;", "<", "&gt;", ">", "&amp;", "&").Replace(keptBody)
+			raw := strings.NewReplacer("&lt;", "<", "&gt;", ">", "&quot;", `"`, "&amp;", "&").Replace(keptBody)
 			lost := text.RuneCount(body) - text.RuneCount(raw)
 			if !strings.HasPrefix(body, raw) || lost > 100+len("[truncated]")+1 {
 				t.Errorf("kept %d of %d characters, %d lost", text.RuneCount(raw), text.RuneCount(body), lost)
@@ -472,6 +472,7 @@ func FuzzFit(f *testing.F) {
 	f.Add("@here", "```\n@channel\n", 3, uint8(6), uint8(2))
 	f.Add(strings.Repeat("&<> ", 300), "b", 300, uint8(1), uint8(0))
 	f.Add(strings.Repeat("\"x\\ ", 300), "b", 200, uint8(8), uint8(3))
+	f.Add("", "ж😀\"", 100, uint8(1), uint8(0))
 	f.Fuzz(func(t *testing.T, subject, body string, limit int, format, unit uint8) {
 		if !utf8.ValidString(subject) || !utf8.ValidString(body) {
 			return
