@@ -276,7 +276,12 @@ with "build constraints exclude all Go files".
 - `internal/delivery`: `Deliver` runs one goroutine per target that picks
   the files within `Caps` (`Target.MaxFileSize` over `Caps.MaxFileSize`),
   fits the target's template with `render.FitLines` (`Target.MaxText`
-  over `Caps.MaxText`, `MaxLines`),
+  over `Caps.MaxText`, `MaxLines`), or `render.FitLinesOver`, which skips
+  the whole rendering for a built-in template: only when `ExecuteWhole`
+  found it over the limit and the data of the fit renders no shorter (the
+  file of the full text sent without `Caps.MaxFilesSize`, under which it
+  can let in files skipped before, or no file sent and `MaxLines` <= 0);
+  `TestFitLinesOverEqualsFitLines` (delivery, render) compares both,
   puts the full text first among the files of a cut text per `OnLong`
   (`message.txt` in the plain template, or `message.eml` from
   `message.WithoutBlindCopies`, also the `Raw` of `Payload.Message`),
@@ -299,9 +304,13 @@ with "build constraints exclude all Go files".
   `DeliverEach` also hands each result to a callback as its target
   finishes (the spool marks `Done` there); a panic of the callback comes
   back beside the results, `queue.send` records again what it left
-  unrecorded (applying each result once; a second panic moves the entry
-  to `failed/`), the own message raises it after logging the results, and
-  a queue run logs it and keeps the entry.
+  unrecorded (applying each result once, pinned by a panic of
+  `Deps.spoolSaving` before the write; a second panic moves the entry to
+  `failed/`), the own message raises it after logging the results, and a
+  queue run logs it and keeps the entry. A failed write of the entry
+  after a result is kept in `saveErrs` and logged as `spool entry not
+  updated` after the record of that target
+  (`testdata/journal/entry-not-updated.txtar` of `app`).
   `ExitCode(results, queue)` is the exit status matrix, rules in order:
   Temp without a spool entry 73/74, any OK 0, any Perm 69, Temp queued 0,
   else 69.
@@ -317,8 +326,9 @@ with "build constraints exclude all Go files".
   sidecar from `tmp/` last, so a `.eml` always has its sidecar beside it;
   the message is flocked since `tmp/`. No spool lock is ever waited for:
   every flock is `LOCK_NB`. Move writes the new sidecar into the target
-  area, renames the message, and removes the old sidecar last. So only
-  Remove (sidecar first) leaves a `.eml` without sidecar, and `Lock`
+  area, renames the message, and removes the old sidecar last; Save and
+  Move after Remove give `ErrRemoved` and write nothing. So only Remove
+  (sidecar first) leaves a `.eml` without sidecar, and `Lock`
   deletes such a file as finished; a stray `.json` without `.eml` is
   harmless and `RemoveStale` deletes it after an hour. The entry lock is
   `flock(LOCK_EX|LOCK_NB)` on the `.eml`, opened `O_NOFOLLOW`; after taking
@@ -438,9 +448,9 @@ with "build constraints exclude all Go files".
   `/bin/sh`, and also `dash` and `busybox sh` where installed,
   `TestPackageConfigExample` loads the configuration file.
   `TestConfigExamplesLoad` runs `--check-config` on each file of
-  `packaging/examples` (the reference with `## ` lines dropped and `# `
-  removed) and wants no finding; a new example goes into `configExamples`
-  and into `contents` of `.goreleaser.yaml`.
+  `packaging/examples` (the reference with its `##` lines dropped and the
+  `#` of the others removed) and wants no finding; a new example goes
+  into `configExamples` and into `contents` of `.goreleaser.yaml`.
 
 ## Gotchas
 
