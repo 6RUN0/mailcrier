@@ -36,8 +36,10 @@ const (
 	maxEnvTotal = 64 << 10
 )
 
-// maxOutput bounds what the log record keeps of stdout and stderr; the
-// rest is read and dropped, so that a chatty hook does not block.
+// maxOutput bounds what the log record keeps of stdout and stderr, as
+// read and again as quoted in logfmt, where a NUL takes 4 bytes; the rest
+// is read and dropped, so that a chatty hook does not block. One record
+// stays under the 8 KiB rsyslog accepts by default.
 const maxOutput = 4 << 10
 
 // waitDelay bounds the wait for the pipes after the hook exited or was
@@ -227,7 +229,30 @@ func (s *Sender) logOutput(ctx context.Context, output *cappedBuffer, err error)
 	if err != nil {
 		level = slog.LevelWarn
 	}
-	log.Log(context.Background(), level, "hook output", "target", s.opts.Name, "output", strings.ToValidUTF8(output.String(), ""), "output_size", output.size)
+	text := cutQuoted(strings.ToValidUTF8(output.String(), ""), maxOutput)
+	log.Log(context.Background(), level, "hook output", "target", s.opts.Name, "output", text, "output_size", output.size)
+}
+
+// cutQuoted returns the longest prefix of s, cut at a character, whose
+// strconv.Quote form, the one slog's text handler writes, fits in limit
+// bytes. s is valid UTF-8.
+func cutQuoted(s string, limit int) string {
+	size := len(`""`)
+	for i, r := range s {
+		// QuoteRune escapes ' and not ", Quote the other way round.
+		width := len(strconv.QuoteRune(r)) - len(`''`)
+		switch r {
+		case '"':
+			width = len(`\"`)
+		case '\'':
+			width = 1
+		}
+		size += width
+		if size > limit {
+			return s[:i]
+		}
+	}
+	return s
 }
 
 // buildEnv returns the environment of a hook: fixedEnv, TZ when the

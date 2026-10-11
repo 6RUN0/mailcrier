@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -331,6 +332,46 @@ func TestSendLogsOutput(t *testing.T) {
 	}
 	if strings.Count(record, "x") > maxOutput {
 		t.Errorf("record keeps more than %d bytes of output", maxOutput)
+	}
+}
+
+// TestSendLogsOutputQuotedWithinLimit pins that the output is cut after
+// logfmt quoting, where a NUL takes 4 bytes, so that the record stays
+// under the 8 KiB of rsyslog.
+func TestSendLogsOutputQuotedWithinLimit(t *testing.T) {
+	path, _ := writeHook(t, "head -c 10000 /dev/zero\n")
+	var logs bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&logs, nil))
+	if err := New(Options{Name: "run", Argv: []string{path}, Process: Process{Log: log}}).Send(context.Background(), backend.Payload{Message: testMessage()}); err != nil {
+		t.Fatalf("Send() error = %v", err)
+	}
+	_, quoted, _ := strings.Cut(logs.String(), " output=")
+	quoted, _, _ = strings.Cut(quoted, " output_size=")
+	if len(quoted) > maxOutput || len(quoted) < maxOutput-len(`\x00`) || !strings.HasPrefix(quoted, `"\x00`) {
+		t.Errorf("output of %d bytes, want up to %d:\n%s", len(quoted), maxOutput, logs.String())
+	}
+}
+
+func TestCutQuoted(t *testing.T) {
+	for _, tc := range []struct {
+		in    string
+		limit int
+		want  string
+	}{
+		{"abc", 5, "abc"},
+		{"abcd", 5, "abc"},
+		{`a"b`, 4, "a"},
+		{"a'b", 5, "a'b"},
+		{"\x00b", 6, "\x00"},
+		{"\u200bx", 8, "\u200b"},
+		{"\u00e9x", 4, "\u00e9"},
+	} {
+		if got := cutQuoted(tc.in, tc.limit); got != tc.want {
+			t.Errorf("cutQuoted(%q, %d) = %q, want %q", tc.in, tc.limit, got, tc.want)
+		}
+		if got := cutQuoted(tc.in, tc.limit); len(strconv.Quote(got)) > tc.limit {
+			t.Errorf("cutQuoted(%q, %d) quotes to %d bytes", tc.in, tc.limit, len(strconv.Quote(got)))
+		}
 	}
 }
 

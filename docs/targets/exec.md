@@ -56,7 +56,10 @@ goes into `argv`.
   survive and finish on their own.
 - Output: stdout and stderr together, the first 4096 bytes, go into one
   `hook output` record with `target`, `output` and `output_size` (all
-  bytes printed), the secrets of the configuration masked.
+  bytes printed), the secrets of the configuration masked. `output` is
+  cut at a character to 4096 bytes once quoted as well, where a NUL
+  takes 4 bytes, so the record stays under the 8 KiB that rsyslog
+  accepts by default.
 - Ids: a setgid call starts the hook with the real uid and gid of the
   caller and the caller's supplementary groups, without the `mailcrier`
   group, so the hook reads neither the configuration nor the spool. A
