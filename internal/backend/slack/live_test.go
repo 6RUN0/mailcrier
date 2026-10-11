@@ -66,11 +66,12 @@ func TestLiveSlack(t *testing.T) {
 				t.Fatalf("rendered text lacks %s: %q", escaped, want)
 			}
 		}
+		sentAfter := time.Now().Add(-time.Minute)
 		result := delivery.Deliver(context.Background(), []delivery.Target{{ID: "sl", Sender: live.sender, Template: tmpl}}, d, files)[0]
 		if result.Status != delivery.OK || result.Err != nil {
 			t.Fatalf("result: status %v, err %v", result.Status, result.Err)
 		}
-		posted := live.findMessage(t, marker)
+		posted := live.findMessage(t, marker, sentAfter)
 		if posted.TS != live.capture.ts {
 			t.Errorf("message with the marker has ts %q, chat.postMessage answered %q", posted.TS, live.capture.ts)
 		}
@@ -139,20 +140,23 @@ type historyMessage struct {
 	Text string `json:"text"`
 }
 
-// findMessage returns the newest of the last 50 messages of the channel
-// whose text carries marker.
-func (a *liveAPI) findMessage(t *testing.T, marker string) historyMessage {
+// findMessage returns the newest message of the channel posted after
+// sentAfter whose text carries marker. The minute taken off the send time
+// covers a clock of this host behind the one of Slack; a busy channel
+// still gives at most a minute of messages to search.
+func (a *liveAPI) findMessage(t *testing.T, marker string, sentAfter time.Time) historyMessage {
 	t.Helper()
 	var answer struct {
 		Messages []historyMessage `json:"messages"`
 	}
-	a.get(t, "conversations.history", url.Values{"channel": {a.channel}, "limit": {"50"}}, &answer)
+	oldest := fmt.Sprintf("%d.%06d", sentAfter.Unix(), sentAfter.Nanosecond()/1000)
+	a.get(t, "conversations.history", url.Values{"channel": {a.channel}, "oldest": {oldest}, "limit": {"200"}}, &answer)
 	for _, msg := range answer.Messages {
 		if strings.Contains(msg.Text, marker) {
 			return msg
 		}
 	}
-	t.Fatalf("none of the %d newest messages carries the marker %s", len(answer.Messages), marker)
+	t.Fatalf("none of the %d messages since %s carries the marker %s", len(answer.Messages), oldest, marker)
 	return historyMessage{}
 }
 
