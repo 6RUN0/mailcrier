@@ -136,7 +136,7 @@ T-CALL-32	critical	done	Every caller fixture (eml plus argv) produces its golden
 T-ESC-01	critical	done	MarkdownV2 escaping puts one backslash before each of the 18 special characters	https://core.telegram.org/bots/api#markdownv2-style
 T-ESC-02	critical	done	MarkdownV2 escaping doubles a backslash	https://core.telegram.org/bots/api#markdownv2-style
 T-ESC-03	critical	done	Inside MarkdownV2 pre and code only the backquote and the backslash are escaped	https://core.telegram.org/bots/api#markdownv2-style
-T-ESC-05	critical	done	Telegram HTML escaping turns <, > and & into entities; quotes may become numeric entities	https://core.telegram.org/bots/api#html-style
+T-ESC-05	critical	done	Telegram HTML escaping turns <, >, & and " into the named entities &lt;, &gt;, &amp; and &quot;	https://core.telegram.org/bots/api#html-style
 T-ESC-06	high	done	A body with tags outside the Telegram whitelist arrives as literal text and the API accepts it	https://core.telegram.org/bots/api#html-style
 T-ESC-07	critical	done	Slack escaping replaces only &, < and >, leaves *, _, ~ and non-ASCII alone, and is applied exactly once	https://docs.slack.dev/messaging/formatting-message-text/
 T-ESC-08	critical	done	<!channel> or <@U123> in a message reaches Slack as text, not as a mention	https://github.com/nicholas-fedor/shoutrrr/blob/c19db02256c2/pkg/services/chat/slack/slack_json.go#L63-L95
