@@ -41,8 +41,8 @@
 | `telegram` | 4096 символов | 10, не больше 50 MB каждый |
 | `discord` | 2000 единиц UTF-16 | 10, не больше 20 MiB каждый и 25 MiB вместе |
 | `slack` | 40000 единиц UTF-16 | 10, без лимита размера |
-| `ntfy` | 4096 байт | 10, не больше 15 MiB каждый (ntfy.sh: 2 MB) |
-| `http` | `slack-webhook` 40000 единиц UTF-16, у `mattermost` и `generic-json` нет | нет |
+| `ntfy` | 4095 байт | 10, не больше 15 MiB каждый (ntfy.sh: 2 MB) |
+| `http` | `slack-webhook` 40000 единиц UTF-16, `mattermost` 16383 символа, у `generic-json` нет | нет |
 | `exec` | само письмо на stdin | нет |
 | `shoutrrr` | у mailcrier нет, обрезает сервис | нет |
 

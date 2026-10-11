@@ -199,7 +199,7 @@ Web API
 with the bot token, text of at most 40000 characters, and up to 10 files
 shared in the thread of the message.
 .It Cm ntfy
-A JSON publish with the subject as title, text of at most 4096 bytes, and one
+A JSON publish with the subject as title, text of at most 4095 bytes, and one
 more message per attachment, up to 10 files of 15 MiB.
 .It Cm http
 One POST, or PUT or PATCH with
@@ -241,9 +241,12 @@ request; what
 .Ic path
 writes before its first action is checked so when the configuration is
 loaded.
-Only
 .Cm slack-webhook
-is cut, to 40000 characters, unless
+is cut to 40000 characters and
+.Cm mattermost
+to 16383 characters, which Mattermost would split into several posts;
+.Cm generic-json
+is cut only when
 .Ic max_text
 sets a limit.
 .It Cm exec

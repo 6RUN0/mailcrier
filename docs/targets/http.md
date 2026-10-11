@@ -42,8 +42,10 @@ no Content-Type, so it takes none of `preset`, `template`, `template_file`,
 `max_text` and `max_lines`; the message reaches the service through `path`,
 `query` and the headers.
 `slack-webhook` is cut to 40000 characters, the length Slack keeps;
-`mattermost` has no limit, since Mattermost splits a long text into
-several posts, nor has `generic-json`. `mattermost` posts
+`mattermost` to 16383 characters, as Mattermost splits a longer text
+into several posts anywhere, also inside its code block; `generic-json`
+has no limit. A cut text ends with the size of the full one, since no
+file goes with it. `mattermost` posts
 `{"text": ...}` with subject, host, sender and body in Markdown,
 `@channel`, `@all` and `@here` disarmed, and `username` and `channel`
 added when set; a set `channel` must not be blank, white space around

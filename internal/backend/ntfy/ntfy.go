@@ -17,11 +17,14 @@ import (
 )
 
 // Limits of an ntfy server with the default configuration (server/config.go
-// and docs/publish.md of binwiederhier/ntfy): a message of 4096 bytes,
-// longer ones become an attachment; a title of 1 KB, longer ones get 400;
-// attachments of 15 MB. maxFiles bounds the messages one mail produces.
+// and docs/publish.md of binwiederhier/ntfy): a title of 1 KB, longer ones
+// get 400; attachments of 15 MB. The message of a JSON publish must stay
+// below 4096 bytes: ntfy 2.28.0 answers a message of 4096 bytes with 500
+// when it keeps attachments and with 400 when it does not, 4095 bytes pass
+// (make contract runs that server). maxFiles bounds the messages one mail
+// produces.
 const (
-	maxText     = 4096
+	maxText     = 4095
 	maxTitle    = 1024
 	maxFiles    = 10
 	maxFileSize = 15 << 20

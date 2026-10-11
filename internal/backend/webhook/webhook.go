@@ -60,13 +60,27 @@ func New(opts Options) *Sender {
 // UTF-16 units, which the text inside never exceeds.
 const slackWebhookMaxText = 40000
 
+// mattermostMaxText is the limit of the mattermost preset: Mattermost
+// 11.11.1 splits the text of an incoming webhook into posts of 16383
+// characters, counted as code points (16383 ASCII, Cyrillic or non-BMP
+// characters make one post, one more makes a second one), anywhere, also
+// inside the code block of the preset (make contract runs that server).
+// It applies to the whole JSON document, which the text inside never
+// exceeds.
+const mattermostMaxText = 16383
+
 // Caps reports no files, since a JSON document carries none, and a length
-// limit only for slack-webhook. Mattermost splits a long text of an
-// incoming webhook into several posts, and the receiver of generic-json
-// is unknown, so both have none.
+// limit for slack-webhook and mattermost; the receiver of generic-json is
+// unknown, so it has none.
 func (s *Sender) Caps() backend.Caps {
-	if s.opts.Format == text.FormatSlackWebhook && s.opts.Method != http.MethodGet {
+	if s.opts.Method == http.MethodGet {
+		return backend.Caps{}
+	}
+	switch s.opts.Format {
+	case text.FormatSlackWebhook:
 		return backend.Caps{MaxText: slackWebhookMaxText, Measure: text.UTF16Len}
+	case text.FormatMattermost:
+		return backend.Caps{MaxText: mattermostMaxText, Measure: text.RuneCount}
 	}
 	return backend.Caps{}
 }

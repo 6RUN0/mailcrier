@@ -325,12 +325,18 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
 
 // TestCapsPerPreset pins the length limit of each preset: 40000 UTF-16
-// units for slack-webhook, none for mattermost and generic-json.
+// units for slack-webhook, 16383 code points for mattermost, none for
+// generic-json. "\u044f\U0001F600" is 2 code points and 3 UTF-16 units.
 func TestCapsPerPreset(t *testing.T) {
-	for format, want := range map[text.Format]int{text.FormatSlackWebhook: 40000, text.FormatMattermost: 0, text.FormatGenericJSON: 0} {
+	for format, want := range map[text.Format]struct{ maxText, measured int }{
+		text.FormatSlackWebhook: {40000, 3}, text.FormatMattermost: {16383, 2}, text.FormatGenericJSON: {0, 0},
+	} {
 		caps := New(Options{Format: format, Client: &http.Client{}}).Caps()
-		if caps.MaxText != want || caps.MaxFiles != 0 || (want > 0) != (caps.Measure != nil) {
-			t.Errorf("%s: Caps = %+v, want MaxText %d", format, caps, want)
+		if caps.MaxText != want.maxText || caps.MaxFiles != 0 || (want.maxText > 0) != (caps.Measure != nil) {
+			t.Errorf("%s: Caps = %+v, want MaxText %d", format, caps, want.maxText)
+		}
+		if caps.Measure != nil && caps.Measure("\u044f\U0001F600") != want.measured {
+			t.Errorf("%s: Measure = %d, want %d", format, caps.Measure("\u044f\U0001F600"), want.measured)
 		}
 	}
 }

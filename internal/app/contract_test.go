@@ -15,6 +15,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 // The contract tests run a message through Run to a real server and read it
@@ -79,11 +80,11 @@ func contractName(prefix string) string {
 	return prefix + strings.ToLower(rand.Text()[:12])
 }
 
-// runContract runs the contract message through Run with config, the spool
-// off, and fails the test unless it exits 0.
-func runContract(t *testing.T, config string) {
+// runContract runs message through Run with config, the spool off, and
+// fails the test unless it exits 0.
+func runContract(t *testing.T, config, message string) {
 	t.Helper()
-	inv := &invocation{config: config, client: &http.Client{Timeout: 30 * time.Second}, stdin: strings.NewReader(contractMessage())}
+	inv := &invocation{config: config, client: &http.Client{Timeout: 30 * time.Second}, stdin: strings.NewReader(message)}
 	if code := inv.run(t); code != 0 {
 		t.Fatalf("Run() = %d, want 0; log:\n%s", code, inv.output())
 	}
@@ -155,7 +156,7 @@ func TestContractNtfy(t *testing.T) {
 	t.Parallel()
 	base := contractServer(t, contractNtfyEnv)
 	topic := contractName("mailcrier-")
-	runContract(t, "[target.phone]\ntype = \"ntfy\"\nurl = \""+base+"/"+topic+"\"\n")
+	runContract(t, "[target.phone]\ntype = \"ntfy\"\nurl = \""+base+"/"+topic+"\"\n", contractMessage())
 
 	messages := pollNtfy(t, base, topic)
 	if len(messages) != 2 {
@@ -191,11 +192,103 @@ func TestContractNtfy(t *testing.T) {
 	}
 }
 
-// mattermostAPI calls API v4 of a Mattermost server as one user.
+// contractLongBody is a body far over the text limit of ntfy and of the
+// mattermost preset: a Cyrillic line, then one word of 20000 bytes, which
+// the cut splits at a character, so the text fills the limit to the byte.
+var contractLongBody = "Отчёт целиком во вложении\n" + strings.Repeat("x", 20000)
+
+// contractLongMessage returns a plain message with contractLongBody.
+func contractLongMessage() string {
+	return "From: cron@example.org\nTo: root@example.org\nSubject: long report\n\n" + contractLongBody + "\n"
+}
+
+// TestContractNtfyLong delivers a mail over the text limit to an ntfy
+// topic in one call, by the default on_long = "file" and long_file =
+// "text": the first message is the cut text, at most 4095 bytes, ended by
+// the notice and the line of message.txt, the second carries message.txt,
+// the plain template of the whole message.
+func TestContractNtfyLong(t *testing.T) {
+	t.Parallel()
+	base := contractServer(t, contractNtfyEnv)
+	topic := contractName("mailcrier-")
+	runContract(t, "[target.phone]\ntype = \"ntfy\"\nurl = \""+base+"/"+topic+"\"\n", contractLongMessage())
+
+	messages := pollNtfy(t, base, topic)
+	if len(messages) != 2 {
+		t.Fatalf("topic holds %d messages, want 2: %+v", len(messages), messages)
+	}
+	text, file := messages[0], messages[1]
+	full := "long report\nhost1.example.org: cron@example.org\n\n" + contractLongBody
+	notice := fmt.Sprintf("[truncated]\nmessage.txt (text/plain; charset=utf-8, %.1f KiB)", float64(len(full))/1024)
+	if len(text.Message) > 4095 || !strings.HasPrefix(text.Message, "Отчёт целиком во вложении\nxxx") || !strings.HasSuffix(text.Message, notice) {
+		t.Errorf("text of %d bytes, starts %q, ends %q; want at most 4095 bytes ending %q",
+			len(text.Message), text.Message[:min(40, len(text.Message))], text.Message[max(0, len(text.Message)-80):], notice)
+	}
+	if file.Attachment == nil || file.Attachment.Name != "message.txt" {
+		t.Fatalf("second message carries no message.txt: %+v", file)
+	}
+	link, err := url.Parse(file.Attachment.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if content := contractGet(t, http.DefaultClient, base+link.Path, nil); string(content) != full {
+		t.Errorf("message.txt of %d bytes, want the full text of %d", len(content), len(full))
+	}
+}
+
+// mattermostAPI calls API v4 of a Mattermost server as one user, in a
+// team of its own.
 type mattermostAPI struct {
-	t     *testing.T
-	base  string
-	token string
+	t      *testing.T
+	base   string
+	token  string
+	teamID string
+}
+
+// newMattermostAPI creates a user on the server at base, logs it in and
+// creates its team. The first user of a server becomes its system
+// administrator; any later one administers the team it creates, which is
+// enough for an incoming webhook.
+func newMattermostAPI(t *testing.T, base string) *mattermostAPI {
+	t.Helper()
+	api := &mattermostAPI{t: t, base: base}
+	user, password := contractName("u"), "Contract-test-password-1"
+	api.call(http.MethodPost, "/users", map[string]string{"email": user + "@example.org", "username": user, "password": password}, nil, http.StatusCreated)
+	header := api.call(http.MethodPost, "/users/login", map[string]string{"login_id": user, "password": password}, nil, http.StatusOK)
+	if api.token = header.Get("Token"); api.token == "" {
+		t.Fatal("login gave no token")
+	}
+	var team struct {
+		ID string `json:"id"`
+	}
+	teamName := contractName("t")
+	api.call(http.MethodPost, "/teams", map[string]string{"name": teamName, "display_name": teamName, "type": "O"}, &team, http.StatusCreated)
+	api.teamID = team.ID
+	return api
+}
+
+// createChannel creates an open channel in the team and returns its id
+// and name.
+func (api *mattermostAPI) createChannel() (id, name string) {
+	api.t.Helper()
+	var channel struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+	name = contractName("c")
+	api.call(http.MethodPost, "/channels", map[string]string{"team_id": api.teamID, "name": name, "display_name": name, "type": "O"}, &channel, http.StatusCreated)
+	return channel.ID, channel.Name
+}
+
+// createHook creates an incoming webhook into a channel and returns its
+// URL.
+func (api *mattermostAPI) createHook(channelID string) string {
+	api.t.Helper()
+	var hook struct {
+		ID string `json:"id"`
+	}
+	api.call(http.MethodPost, "/hooks/incoming", map[string]string{"channel_id": channelID, "display_name": "mailcrier"}, &hook, http.StatusCreated)
+	return api.base + "/hooks/" + hook.ID
 }
 
 // call sends in as JSON with method to path and decodes the answer into
@@ -271,40 +364,14 @@ func (api *mattermostAPI) webhookPosts(channelID string) []mattermostPost {
 func TestContractMattermost(t *testing.T) {
 	t.Parallel()
 	base := contractServer(t, contractMattermostEnv)
-	api := &mattermostAPI{t: t, base: base}
-	// The first user of a server becomes its system administrator; any
-	// later one creates its own team and administers that, which is enough
-	// for an incoming webhook.
-	user, password := contractName("u"), "Contract-test-password-1"
-	api.call(http.MethodPost, "/users", map[string]string{"email": user + "@example.org", "username": user, "password": password}, nil, http.StatusCreated)
-	header := api.call(http.MethodPost, "/users/login", map[string]string{"login_id": user, "password": password}, nil, http.StatusOK)
-	if api.token = header.Get("Token"); api.token == "" {
-		t.Fatal("login gave no token")
-	}
-	var team struct {
-		ID string `json:"id"`
-	}
-	teamName := contractName("t")
-	api.call(http.MethodPost, "/teams", map[string]string{"name": teamName, "display_name": teamName, "type": "O"}, &team, http.StatusCreated)
-	createChannel := func() (id, name string) {
-		var channel struct {
-			ID   string `json:"id"`
-			Name string `json:"name"`
-		}
-		name = contractName("c")
-		api.call(http.MethodPost, "/channels", map[string]string{"team_id": team.ID, "name": name, "display_name": name, "type": "O"}, &channel, http.StatusCreated)
-		return channel.ID, channel.Name
-	}
-	hookChannel, _ := createChannel()
-	targetChannel, targetName := createChannel()
-	var hook struct {
-		ID string `json:"id"`
-	}
-	api.call(http.MethodPost, "/hooks/incoming", map[string]string{"channel_id": hookChannel, "display_name": "mailcrier"}, &hook, http.StatusCreated)
+	api := newMattermostAPI(t, base)
+	hookChannel, _ := api.createChannel()
+	targetChannel, targetName := api.createChannel()
+	hookURL := api.createHook(hookChannel)
 
 	const username = "mailcrier-contract"
-	runContract(t, "[target.mm]\ntype = \"http\"\npreset = \"mattermost\"\nurl = \""+base+"/hooks/"+hook.ID+"\"\n"+
-		"username = \""+username+"\"\nchannel = \""+targetName+"\"\n")
+	runContract(t, "[target.mm]\ntype = \"http\"\npreset = \"mattermost\"\nurl = \""+hookURL+"\"\n"+
+		"username = \""+username+"\"\nchannel = \""+targetName+"\"\n", contractMessage())
 
 	if posts := api.webhookPosts(hookChannel); len(posts) != 0 {
 		t.Errorf("channel of the webhook got %d posts: %+v", len(posts), posts)
@@ -325,5 +392,35 @@ func TestContractMattermost(t *testing.T) {
 	}
 	if len(post.FileIDs) != 0 {
 		t.Errorf("post has files %v, want none", post.FileIDs)
+	}
+}
+
+// TestContractMattermostLong delivers a mail over the limit of the
+// mattermost preset as one post of at most 16383 characters: the body cut
+// inside a closed code block and ended by the size of the full text, since
+// the http target sends no file.
+func TestContractMattermostLong(t *testing.T) {
+	t.Parallel()
+	base := contractServer(t, contractMattermostEnv)
+	api := newMattermostAPI(t, base)
+	channel, _ := api.createChannel()
+	runContract(t, "[target.mm]\ntype = \"http\"\npreset = \"mattermost\"\nurl = \""+api.createHook(channel)+"\"\n", contractLongMessage())
+
+	posts := api.webhookPosts(channel)
+	if len(posts) != 1 {
+		t.Fatalf("channel got %d webhook posts, want 1", len(posts))
+	}
+	message := posts[0].Message
+	full := "long report\nhost1.example.org: cron@example.org\n\n" + contractLongBody
+	notice := fmt.Sprintf("[truncated, %.1f KiB in full]\n```", float64(len(full))/1024)
+	if n := utf8.RuneCountInString(message); n > 16383 || n < 16000 {
+		t.Errorf("post of %d characters, want close to 16383", n)
+	}
+	if !strings.HasPrefix(message, "#### long report\n_host1.example.org: cron@example.org_\n```\nОтчёт целиком во вложении\nxxx") ||
+		!strings.HasSuffix(message, notice) || strings.Count(message, "```") != 2 {
+		t.Errorf("post starts %q, ends %q; want one code block ending %q", message[:min(120, len(message))], message[max(0, len(message)-80):], notice)
+	}
+	if len(posts[0].FileIDs) != 0 {
+		t.Errorf("post has files %v, want none", posts[0].FileIDs)
 	}
 }

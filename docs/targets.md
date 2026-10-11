@@ -40,8 +40,8 @@ and `max_file_size` replace them per target, see
 | `telegram` | 4096 characters | 10, at most 50 MB each |
 | `discord` | 2000 UTF-16 units | 10, at most 20 MiB each and 25 MiB together |
 | `slack` | 40000 UTF-16 units | 10, no size limit |
-| `ntfy` | 4096 bytes | 10, at most 15 MiB each (ntfy.sh: 2 MB) |
-| `http` | `slack-webhook` 40000 UTF-16 units, `mattermost` and `generic-json` none | none |
+| `ntfy` | 4095 bytes | 10, at most 15 MiB each (ntfy.sh: 2 MB) |
+| `http` | `slack-webhook` 40000 UTF-16 units, `mattermost` 16383 characters, `generic-json` none | none |
 | `exec` | the message itself on stdin | none |
 | `shoutrrr` | none of mailcrier's, the service cuts | none |
 

@@ -18,7 +18,7 @@ func TestContractShoutrrrNtfy(t *testing.T) {
 		t.Fatal(err)
 	}
 	topic := contractName("mailcrier-")
-	runContract(t, "[target.bus]\ntype = \"shoutrrr\"\nurl = \"ntfy://"+server.Host+"/"+topic+"?scheme=http\"\n")
+	runContract(t, "[target.bus]\ntype = \"shoutrrr\"\nurl = \"ntfy://"+server.Host+"/"+topic+"?scheme=http\"\n", contractMessage())
 
 	messages := pollNtfy(t, base, topic)
 	if len(messages) != 1 {
