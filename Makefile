@@ -11,6 +11,11 @@ GO_LICENSES := $(GO) tool -modfile=tools/licenses/go.mod go-licenses
 GREMLINS := $(GO) tool -modfile=tools/gremlins/go.mod gremlins
 TOOL_MODULES := tools tools/actionlint tools/goreleaser tools/gremlins tools/licenses
 
+# A binary built with -race sleeps atexit_sleep_ms, 1 s by default, before
+# it exits: every test binary and every helper process a test starts from
+# it. Without the sleep internal/app took 2.6 s instead of 9.8 s.
+GORACE ?= atexit_sleep_ms=0
+
 # The noshoutrrr tag builds the binary without the shoutrrr library, whose
 # targets are then a configuration error; test, build and lint-go cover
 # both builds.
@@ -230,8 +235,8 @@ tidy: ## go mod tidy -diff of the module and the tool modules
 	for dir in $(TOOL_MODULES); do (cd $$dir && $(GO) mod tidy -diff) || exit 1; done
 
 test: ## go test -race, with and without shoutrrr
-	$(GO) test -race ./...
-	$(GO) test -race -tags noshoutrrr ./...
+	GORACE=$(GORACE) $(GO) test -race ./...
+	GORACE=$(GORACE) $(GO) test -race -tags noshoutrrr ./...
 
 fuzz: ## each fuzz target FUZZTIME long, FUZZPARALLEL processes
 	for target in $(FUZZ_TARGETS); do \
