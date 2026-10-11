@@ -7,6 +7,9 @@ code in this repository.
 
 ```sh
 make check        # the CI job make check; govulncheck only warns here
+make cover        # coverage of both builds, part of check: fails below
+                  # COVER_MIN of the Makefile; report .cover/cover.html,
+                  # in CI the artifact coverage of the job make check
 make lint         # lint-go lint-yaml lint-actions lint-docs lint-symbols
                   # lint-man; `make` alone lists every target (help)
 make fuzz FUZZTIME=10m   # longer fuzzing; check runs each target 10s

@@ -111,6 +111,13 @@ SELINUX_SUM_rocky9 := 92c206cc6f790c61583247eefe87890f8828420662c17cacf247cec78a
 SELINUX_URL_rocky10 := https://dl.rockylinux.org/pub/rocky/10.2/images/x86_64/Rocky-10-GenericCloud-Base-10.2-20260525.0.x86_64.qcow2
 SELINUX_SUM_rocky10 := 9fc9e9ff16888bb68ac39b0392e25c9c92684d50c85f1cce6ab549363bbc4b48
 
+# cover runs the tests of both builds with counters in the binary format of
+# GOCOVERDIR: go tool covdata merges the two, while concatenated text
+# profiles count a block of both builds twice. COVER_MIN is the total of
+# 2026-10-11 (91.8%) rounded down; make cover prints the total to raise it.
+COVER_DIR := $(CURDIR)/.cover
+COVER_MIN := 91
+
 CHANGELOG_START := 12340d0
 
 # Form of a release tag; release.yml runs on any v* tag. grep matches line
@@ -133,7 +140,7 @@ CI_JOBS := $(filter-out make,$(subst $(comma), ,$(RELEASE_JOBS)))
 
 .DEFAULT_GOAL := help
 
-.PHONY: help ci-local check lint lint-go lint-yaml lint-actions lint-docs lint-symbols lint-man tidy test fuzz build licenses vuln check-refs check-commits snapshot release-prepare release-gate release release-guard setgid-e2e units-verify \
+.PHONY: help ci-local check cover lint lint-go lint-yaml lint-actions lint-docs lint-symbols lint-man tidy test fuzz build licenses vuln check-refs check-commits snapshot release-prepare release-gate release release-guard setgid-e2e units-verify \
 	smoke smoke-dist smoke-previous $(addprefix smoke-,$(SMOKE_DISTROS)) \
 	selinux-images $(addprefix selinux-,$(SELINUX_DISTROS)) $(addprefix selinux-image-,$(SELINUX_DISTROS)) FORCE
 
@@ -144,7 +151,7 @@ help: ## list the targets
 		sed -E 's/^\$$\([^)]*\)\)?: *([a-z-]+)%:/\1<distro>:/' | \
 		awk 'BEGIN { FS = ":.*## " } { printf "  %-22s %s\n", $$1, $$2 }'
 
-check: lint tidy test fuzz build licenses check-refs check-commits ## the CI job make check; vuln only warns here
+check: lint tidy test cover fuzz build licenses check-refs check-commits ## the CI job make check; vuln only warns here
 	-$(MAKE) vuln
 
 lint: lint-go lint-yaml lint-actions lint-docs lint-symbols lint-man ## all linters
@@ -159,6 +166,15 @@ lint-symbols: ## no typographic characters in tracked and new files
 
 lint-man: ## mandoc lint of the manual page
 	$(MANDOC) -T lint -W warning docs/mailcrier.8
+
+cover: ## statement coverage of both builds, below COVER_MIN fails; .cover/cover.html
+	rm -rf $(COVER_DIR) && mkdir -p $(COVER_DIR)/default $(COVER_DIR)/noshoutrrr
+	$(GO) test -cover -covermode=atomic -coverpkg=./... ./... -args -test.gocoverdir=$(COVER_DIR)/default
+	$(GO) test -cover -covermode=atomic -coverpkg=./... -tags noshoutrrr ./... -args -test.gocoverdir=$(COVER_DIR)/noshoutrrr
+	$(GO) tool covdata textfmt -i=$(COVER_DIR)/default,$(COVER_DIR)/noshoutrrr -o $(COVER_DIR)/cover.out
+	$(GO) tool cover -html=$(COVER_DIR)/cover.out -o $(COVER_DIR)/cover.html
+	@$(GO) tool cover -func=$(COVER_DIR)/cover.out | awk -v min=$(COVER_MIN) '/^total:/ { sub("%", "", $$NF); \
+		print "statements covered: " $$NF "%, floor " min "%"; if ($$NF + 0 < min) exit 1 }'
 
 ci-local: ## the jobs of ci.yml here, needs docker; make -j4 -O ci-local
 	$(MAKE) $(filter check snapshot,$(CI_JOBS))
