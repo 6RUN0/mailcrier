@@ -29,7 +29,7 @@ of a release; rpm and apk differ in the package of steps 1 and 2, see
    <https://github.com/6RUN0/mailcrier/releases> and download its package:
 
    ```sh
-   VERSION=0.1.0-rc4
+   VERSION=0.1.0-rc5
    curl -fLO "https://github.com/6RUN0/mailcrier/releases/download/v$VERSION/mailcrier_${VERSION}_linux_amd64.deb"
    ```
 

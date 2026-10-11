@@ -32,7 +32,7 @@ apk отличается пакет в шагах 1 и 2, см. [Установ�
    <https://github.com/6RUN0/mailcrier/releases> и скачайте его пакет:
 
    ```sh
-   VERSION=0.1.0-rc4
+   VERSION=0.1.0-rc5
    curl -fLO "https://github.com/6RUN0/mailcrier/releases/download/v$VERSION/mailcrier_${VERSION}_linux_amd64.deb"
    ```
 
