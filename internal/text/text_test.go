@@ -2,6 +2,7 @@ package text
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -117,6 +118,35 @@ func TestEscapeMattermost(t *testing.T) {
 			t.Errorf("got %q, want %q", got, want)
 		}
 	})
+	// Each byte before the @, the edges of the letter and digit ranges
+	// included, is a word character exactly when \w of RE2 matches it.
+	t.Run("word-character-before-at", func(t *testing.T) {
+		word := regexp.MustCompile(`^\w$`)
+		for c := range 256 {
+			in := string([]byte{byte(c)}) + "@channel"
+			isSilenced := EscapeMattermost(in) != in
+			if isWord := word.MatchString(string([]byte{byte(c)})); isSilenced == isWord {
+				t.Errorf("EscapeMattermost(%q) silenced %t, want %t", in, isSilenced, !isWord)
+			}
+		}
+	})
+}
+
+// TestEscapersAllocateOnce pins the size each escaper reserves: a text with
+// few characters to escape is built in one allocation, not grown again.
+// The lengths sit past a size class of the allocator, which rounds up.
+func TestEscapersAllocateOnce(t *testing.T) {
+	plain := strings.Repeat("a", 100)
+	backquotes := "``" + plain[2:]
+	for name, escape := range map[string]func() string{
+		"EscapeTelegramMarkdownV2": func() string { return EscapeTelegramMarkdownV2(plain) },
+		"EscapeDiscord":            func() string { return EscapeDiscord(plain) },
+		"EscapeCodeBlock":          func() string { return EscapeCodeBlock(backquotes) },
+	} {
+		if allocs := testing.AllocsPerRun(10, func() { _ = escape() }); allocs != 1 {
+			t.Errorf("%s allocates %v times, want 1", name, allocs)
+		}
+	}
 }
 
 func TestMeasure(t *testing.T) {
@@ -131,6 +161,12 @@ func TestMeasure(t *testing.T) {
 		{"😀", 1},
 		{"<pre>привет</pre>", 6},
 		{"&#128512;", 1},
+		// The digit 0, a digit of the base, the largest code point and the
+		// value just past it.
+		{"&#10;", 1},
+		{"&#1a;", 5},
+		{"&#x10FFFF;", 1},
+		{"&#1114112;", 10},
 	}
 	t.Run("T-LIM-04/entities-as-telegram-counts", func(t *testing.T) {
 		for _, tc := range cases {
@@ -168,6 +204,22 @@ func TestTruncate(t *testing.T) {
 	t.Run("T-ADJ-48/zero-or-negative-limit", func(t *testing.T) {
 		if TruncateBytes("abc", 0) != "" || TruncateBytes("abc", -5) != "" || TruncateRunes("abc", 0) != "" || TruncateRunes("abc", -1) != "" {
 			t.Error("a zero or negative limit must give an empty string")
+		}
+	})
+	// Invalid UTF-8: the cut looks back at most utf8.UTFMax-1 bytes and
+	// never to the start of s, then keeps n bytes.
+	t.Run("invalid-utf8-cut-at-limit", func(t *testing.T) {
+		for _, tc := range []struct {
+			s    string
+			n    int
+			want string
+		}{
+			{"ab\x80\x80\x80\x80c", 5, "ab\x80\x80\x80"},
+			{"a\x80\x80\x80", 2, "a\x80"},
+		} {
+			if got := TruncateBytes(tc.s, tc.n); got != tc.want {
+				t.Errorf("TruncateBytes(%q, %d) = %q, want %q", tc.s, tc.n, got, tc.want)
+			}
 		}
 	})
 	t.Run("T-LIM-15/runes-never-split-a-character", func(t *testing.T) {
@@ -296,6 +348,8 @@ func TestCutTelegramHTML(t *testing.T) {
 	t.Run("character-outside-bmp-whole", checkCut("<pre>😀😀</pre>", 1, "<pre>😀</pre>"))
 	t.Run("no-empty-element-at-the-end", checkCut("<b>x</b><i>yz</i>", 1, "<b>x</b>"))
 	t.Run("nothing-fits", checkCut("<b>abc</b>", 0, ""))
+	t.Run("fits-exactly", checkCut("abc", 3, "abc"))
+	t.Run("all-but-the-last-character", checkCut("ab", 1, "a"))
 	// The validator knows only the tags of the built-in template, so these
 	// two compare the result alone.
 	for _, tc := range []struct{ name, in, want string }{
@@ -385,4 +439,53 @@ func FuzzCutTelegramHTML(f *testing.F) {
 			t.Errorf("CutTelegramHTML(%q, %d) = %q is no prefix of the input", in, limit, got)
 		}
 	})
+}
+
+func TestTelegramHTMLBoundaries(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   string
+		want []int
+	}{
+		// A tag is one token; the end of s is no boundary.
+		{"tag-whole", "<b>x", []int{0, 3}},
+		// A < without > is one character, also at the start.
+		{"unclosed-bracket-at-start", "<a", []int{0, 1}},
+		// An & that starts no entity is one character.
+		{"ampersand-without-entity", "a&b", []int{0, 1, 2}},
+		{"entity-whole", "&lt;x", []int{0, 4}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := telegramHTMLBoundaries(tc.in); !slices.Equal(got, tc.want) {
+				t.Errorf("telegramHTMLBoundaries(%q) = %v, want %v", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCloseTelegramHTML(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   string
+		want string
+	}{
+		// The name of a tag runs to its first >, a < inside included.
+		{"bracket-inside-tag", "<b<>x", "<b<>x</b<>"},
+		// An end tag of an outer element closes the inner one too.
+		{"outer-end-closes-inner", "<b><i>x</b>y", "<b><i>x</b>y"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := closeTelegramHTML(tc.in); got != tc.want {
+				t.Errorf("closeTelegramHTML(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestIsStartTag(t *testing.T) {
+	for token, want := range map[string]bool{"<b>": true, "<>": false, "</b>": false, "x": false, "&lt;": false} {
+		if got := isStartTag(token); got != want {
+			t.Errorf("isStartTag(%q) = %t, want %t", token, got, want)
+		}
+	}
 }

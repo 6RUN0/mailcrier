@@ -49,6 +49,17 @@ func TestParseRejectsNesting(t *testing.T) {
 			}
 		})
 	}
+	// The error names the define first in the source, whatever order the
+	// set of templates, a map, lists them in.
+	t.Run("first-define-named", func(t *testing.T) {
+		source := "a\n{{ define \"x\" }}b{{ end }}\n{{ define \"y\" }}c{{ end }}\n{{ define \"z\" }}d{{ end }}"
+		for range 20 {
+			_, err := Parse("custom", source, text.FormatPlain)
+			if err == nil || !strings.HasPrefix(err.Error(), "template: custom:2:") {
+				t.Fatalf("err = %v, want template: custom:2:...", err)
+			}
+		}
+	})
 	t.Run("syntax-error-has-position", func(t *testing.T) {
 		_, err := Parse("custom", "a\n{{ .Subject ", text.FormatPlain)
 		if err == nil || !strings.HasPrefix(err.Error(), "template: custom:2:") {
@@ -240,6 +251,7 @@ func TestUserTemplateFunctions(t *testing.T) {
 	t.Run("head", functionCase{`{{ head 2 .Body }}|{{ head 9 .Body }}|{{ head 0 .Body }}`, "one\ntwo|one\ntwo\nthree|"}.check)
 	t.Run("tail", functionCase{`{{ tail 2 .Body }}|{{ tail -1 .Body }}`, "two\nthree|"}.check)
 	t.Run("T-TPL-08/truncate", functionCase{`{{ truncate 10 .Subject }}|{{ truncate 4 "ab" }}|{{ truncate 5 "абвгдеж" }}`, "disk fa...|ab|аб..."}.check)
+	t.Run("truncate-exact-length", functionCase{`{{ truncate 5 "abcde" }}`, "abcde"}.check)
 	t.Run("T-TPL-08/truncate-short", functionCase{`{{ truncate 3 .Subject }}|{{ truncate 1 "абв!" }}|[{{ truncate 0 "x" }}]`, "dis|а|[]"}.check)
 	t.Run("indent", functionCase{`{{ indent 2 (head 2 .Body) }}`, "  one\n  two"}.check)
 }
@@ -276,6 +288,29 @@ func TestUserTemplateBudget(t *testing.T) {
 		}
 		if out, err := tmpl.Execute(Data{}); err != nil || out != "x" || tmpl.user.isBroken.Load() {
 			t.Errorf("template after a spent budget: %q, %v, broken %v", out, err, tmpl.user.isBroken.Load())
+		}
+	})
+	// A budget that ends at the very moment of the execution is spent: the
+	// template does not start, so no timer can mark it broken.
+	t.Run("budget-ends-now", func(t *testing.T) {
+		release := make(chan struct{})
+		tmpl, err := parseUser("custom", "{{ wait }}", text.FormatPlain, template.FuncMap{"wait": func() string { <-release; return "x" }})
+		if err != nil {
+			t.Fatal(err)
+		}
+		now := time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC)
+		tmpl.user.now = func() time.Time { return now }
+		_, err = tmpl.WithBudget(now).Execute(Data{})
+		close(release)
+		tmpl.user.running.Wait()
+		if !errors.Is(templateCause(t, err), errBudgetSpent) || tmpl.user.isBroken.Load() {
+			t.Errorf("err = %v, broken %v", err, tmpl.user.isBroken.Load())
+		}
+	})
+	t.Run("default-budget", func(t *testing.T) {
+		tmpl := mustParse(t, "{{ .Subject }}", text.FormatPlain)
+		if out, err := tmpl.WithBudget(time.Time{}).Execute(Data{Subject: "s"}); err != nil || out != "s" {
+			t.Errorf("got %q, %v", out, err)
 		}
 	})
 	t.Run("budget-left", func(t *testing.T) {

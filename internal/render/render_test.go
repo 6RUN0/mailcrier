@@ -352,19 +352,71 @@ func TestHeadersInTemplates(t *testing.T) {
 }
 
 func TestFunctions(t *testing.T) {
-	for n, want := range map[int64]string{0: "0 B", 1023: "1023 B", 1536: "1.5 KiB", 20 << 20: "20.0 MiB", 3 << 30: "3.0 GiB"} {
+	for n, want := range map[int64]string{
+		0: "0 B", 1023: "1023 B", 1024: "1.0 KiB", 1536: "1.5 KiB", 1 << 20: "1.0 MiB", 20 << 20: "20.0 MiB",
+		3 << 30: "3.0 GiB", 1 << 40: "1.0 TiB", 1 << 50: "1.0 PiB", 3 << 51: "6.0 PiB",
+	} {
 		if got := humanizeBytes(n); got != want {
 			t.Errorf("humanizeBytes(%d) = %q, want %q", n, got, want)
 		}
 	}
 	for _, tc := range []struct {
 		value, want any
-	}{{"", "d"}, {" \n", "d"}, {"x", "x"}, {0, "d"}, {7, 7}, {nil, "d"}, {[]string{}, "d"}, {[]string{"a"}, []string{"a"}}} {
+	}{
+		{"", "d"}, {" \n", "d"}, {"x", "x"}, {0, "d"}, {7, 7}, {nil, "d"}, {[]string{}, "d"}, {[]string{"a"}, []string{"a"}},
+		{map[string]int{}, "d"}, {map[string]int{"a": 1}, map[string]int{"a": 1}}, {[1]int{}, "d"}, {[1]int{1}, [1]int{1}},
+	} {
 		if got := defaultValue("d", tc.value); fmt.Sprint(got) != fmt.Sprint(tc.want) {
 			t.Errorf("defaultValue(%q) = %v, want %v", tc.value, got, tc.want)
 		}
 	}
+	if got, err := join("+", [2]string{"a", "b"}); err != nil || got != "a+b" {
+		t.Errorf("join of an array = %q, %v, want %q", got, err, "a+b")
+	}
 	if _, err := Builtin("no-such-format"); err == nil {
 		t.Error("Builtin accepts an unknown format")
+	}
+}
+
+// TestExecuteBytesBuiltin pins ExecuteBytes of a built-in template: the
+// text of Execute on success, an error and no text on failure.
+func TestExecuteBytesBuiltin(t *testing.T) {
+	d := readData(t, "Subject: s\n\nbody\n")
+	t.Run("same-as-execute", func(t *testing.T) {
+		tmpl, err := Builtin(text.FormatPlain)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := tmpl.Execute(d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, err := tmpl.ExecuteBytes(d); err != nil || string(got) != want || want == "" {
+			t.Errorf("ExecuteBytes = %q, %v, want %q", got, err, want)
+		}
+	})
+	t.Run("failure", func(t *testing.T) {
+		tmpl, err := parse("custom", "x{{ index .To 3 }}", text.FormatPlain)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, err := tmpl.ExecuteBytes(d); err == nil || got != nil {
+			t.Errorf("ExecuteBytes = %q, %v, want an error", got, err)
+		}
+	})
+}
+
+// TestPatternCacheBounded pins the bound of the pattern cache: it fills up
+// to maxCachedPatterns and no further.
+func TestPatternCacheBounded(t *testing.T) {
+	for i := range maxCachedPatterns + 8 {
+		if _, err := compilePattern(fmt.Sprintf("^cache-bound-%d$", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	patterns.Lock()
+	defer patterns.Unlock()
+	if n := len(patterns.compiled); n != maxCachedPatterns {
+		t.Errorf("cache holds %d patterns, want %d", n, maxCachedPatterns)
 	}
 }

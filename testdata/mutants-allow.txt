@@ -399,26 +399,15 @@ internal/render/fit.go	CONDITIONALS_BOUNDARY	9	if limit > 0 && errors.Is(err, er
 internal/render/fit.go	CONDITIONALS_NEGATION	41	if best, found, err := searchBody(); err != nil || found {	baseline 2026-10-11, not triaged
 internal/render/fit.go	CONDITIONALS_NEGATION	76	if best, found, err := longestFit(len(attachments), renderAttachments); err != nil || found {	baseline 2026-10-11, not triaged
 internal/render/fit.go	INVERT_NEGATIVES	47	if best, found, err := longestFit(subjectLength-1, renderSubject); err != nil || found {	baseline 2026-10-11, not triaged
-internal/render/funcs.go	CONDITIONALS_BOUNDARY	26	if len(patterns.compiled) < maxCachedPatterns {	baseline 2026-10-11, not triaged
-internal/render/funcs.go	CONDITIONALS_BOUNDARY	29	if utf8.RuneCountInString(s) <= n {	baseline 2026-10-11, not triaged
-internal/render/funcs.go	CONDITIONALS_NEGATION	26	if len(patterns.compiled) < maxCachedPatterns {	baseline 2026-10-11, not triaged
-internal/render/funcs.go	CONDITIONALS_NEGATION	49	if value.Kind() != reflect.Slice && value.Kind() != reflect.Array {	baseline 2026-10-11, not triaged
-internal/render/render.go	ARITHMETIC_BASE	36	return fmt.Sprintf("%.1f PiB", value/1024)	baseline 2026-10-11, not triaged
-internal/render/render.go	CONDITIONALS_BOUNDARY	5	if n < 1024 {	baseline 2026-10-11, not triaged
-internal/render/render.go	CONDITIONALS_BOUNDARY	9	if value < 1024 {	baseline 2026-10-11, not triaged
-internal/render/render.go	CONDITIONALS_NEGATION	15	case (v.Kind() == reflect.Slice || v.Kind() == reflect.Map) && v.Len() == 0:	baseline 2026-10-11, not triaged
-internal/render/render.go	CONDITIONALS_NEGATION	37	if err := t.tmpl.Execute(&b, d); err != nil {	baseline 2026-10-11, not triaged
-internal/render/render.go	CONDITIONALS_NEGATION	44	case (v.Kind() == reflect.Slice || v.Kind() == reflect.Map) && v.Len() == 0:	baseline 2026-10-11, not triaged
-internal/render/render.go	CONDITIONALS_NEGATION	71	case (v.Kind() == reflect.Slice || v.Kind() == reflect.Map) && v.Len() == 0:	baseline 2026-10-11, not triaged
-internal/render/user.go	ARITHMETIC_BASE	16	case w.buf.Len()+len(p) > w.max:	baseline 2026-10-11, not triaged
-internal/render/user.go	ARITHMETIC_BASE	18	userBudget    = 2 * time.Second	baseline 2026-10-11, not triaged
-internal/render/user.go	ARITHMETIC_BASE	91	first := slices.MinFunc(defined, func(a, b *template.Template) int { return int(a.Root.Pos - b.Root.Pos) })	baseline 2026-10-11, not triaged
-internal/render/user.go	CONDITIONALS_BOUNDARY	24	case w.buf.Len()+len(p) > w.max:	baseline 2026-10-11, not triaged
-internal/render/user.go	CONDITIONALS_BOUNDARY	8	if wait <= 0 {	baseline 2026-10-11, not triaged
-internal/render/user.go	CONDITIONALS_NEGATION	16	case result.err != nil:	baseline 2026-10-11, not triaged
-internal/render/user.go	CONDITIONALS_NEGATION	24	case w.buf.Len()+len(p) > w.max:	baseline 2026-10-11, not triaged
-internal/render/user.go	CONDITIONALS_NEGATION	55	case !t.mayBeEmpty && len(bytes.TrimSpace(result.out)) == 0:	baseline 2026-10-11, not triaged
-internal/render/user.go	INVERT_NEGATIVES	91	first := slices.MinFunc(defined, func(a, b *template.Template) int { return int(a.Root.Pos - b.Root.Pos) })	baseline 2026-10-11, not triaged
+internal/render/render.go	CONDITIONALS_NEGATION	15	case (v.Kind() == reflect.Slice || v.Kind() == reflect.Map) && v.Len() == 0:	not run: gremlins finds no coverage block on a case expression of a tagless switch; TestFunctions kills it
+internal/render/render.go	CONDITIONALS_NEGATION	44	case (v.Kind() == reflect.Slice || v.Kind() == reflect.Map) && v.Len() == 0:	not run: gremlins finds no coverage block on a case expression of a tagless switch; TestFunctions kills it
+internal/render/render.go	CONDITIONALS_NEGATION	71	case (v.Kind() == reflect.Slice || v.Kind() == reflect.Map) && v.Len() == 0:	not run: gremlins finds no coverage block on a case expression of a tagless switch; TestFunctions kills it
+internal/render/user.go	ARITHMETIC_BASE	16	case w.buf.Len()+len(p) > w.max:	not run: gremlins finds no coverage block on a case expression of a tagless switch; TestUserTemplateOutputLimit kills it
+internal/render/user.go	ARITHMETIC_BASE	18	userBudget    = 2 * time.Second	not run: gremlins finds no coverage block on a constant declaration; TestUserTemplateBudget and TestUserTemplateOutputLimit kill it
+internal/render/user.go	CONDITIONALS_BOUNDARY	24	case w.buf.Len()+len(p) > w.max:	not run: gremlins finds no coverage block on a case expression of a tagless switch; TestUserTemplateOutputLimit kills it
+internal/render/user.go	CONDITIONALS_NEGATION	16	case result.err != nil:	not run: gremlins finds no coverage block on a case expression of a tagless switch; TestUserTemplateFailures kills it
+internal/render/user.go	CONDITIONALS_NEGATION	24	case w.buf.Len()+len(p) > w.max:	not run: gremlins finds no coverage block on a case expression of a tagless switch; TestUserTemplateOutputLimit kills it
+internal/render/user.go	CONDITIONALS_NEGATION	55	case !t.mayBeEmpty && len(bytes.TrimSpace(result.out)) == 0:	not run: gremlins finds no coverage block on a case expression of a tagless switch; TestUserTemplateFailures kills it
 internal/route/route.go	CONDITIONALS_BOUNDARY	23	case len(direct.Chats) >= limit:	baseline 2026-10-11, not triaged
 internal/route/route.go	CONDITIONALS_NEGATION	23	case len(direct.Chats) >= limit:	baseline 2026-10-11, not triaged
 internal/sendmail/envelope.go	CONDITIONALS_NEGATION	19	case msg.From.Addr != "":	baseline 2026-10-11, not triaged
@@ -447,39 +436,13 @@ internal/spool/spool.go	CONDITIONALS_NEGATION	7	if err == nil {	baseline 2026-10
 internal/spool/spool.go	CONDITIONALS_NEGATION	9	case err == nil && !info.IsDir():	baseline 2026-10-11, not triaged
 internal/spool/spool.go	CONDITIONALS_NEGATION	9	if entry != nil {	baseline 2026-10-11, not triaged
 internal/spool/spool.go	INVERT_NEGATIVES	9	owner := -1	baseline 2026-10-11, not triaged
-internal/text/text.go	ARITHMETIC_BASE	10	next := i + 1	baseline 2026-10-11, not triaged
-internal/text/text.go	ARITHMETIC_BASE	13	value = value*base + d	baseline 2026-10-11, not triaged
-internal/text/text.go	ARITHMETIC_BASE	14	b.Grow(len(s) + len(s)/4)	baseline 2026-10-11, not triaged
-internal/text/text.go	ARITHMETIC_BASE	14	b.Grow(len(s) + len(s)/8)	baseline 2026-10-11, not triaged
-internal/text/text.go	ARITHMETIC_BASE	15	next = i + end + 1	baseline 2026-10-11, not triaged
-internal/text/text.go	ARITHMETIC_BASE	19	value = value*base + d	baseline 2026-10-11, not triaged
-internal/text/text.go	ARITHMETIC_BASE	22	b.Grow(len(s) + len(s)/4)	baseline 2026-10-11, not triaged
-internal/text/text.go	ARITHMETIC_BASE	22	b.Grow(len(s) + len(s)/8)	baseline 2026-10-11, not triaged
-internal/text/text.go	ARITHMETIC_BASE	31	low, high := 0, len(boundaries)-1	baseline 2026-10-11, not triaged
-internal/text/text.go	ARITHMETIC_BASE	9	i += end + 1	baseline 2026-10-11, not triaged
-internal/text/text.go	CONDITIONALS_BOUNDARY	14	if d < 0 || d >= base {	baseline 2026-10-11, not triaged
-internal/text/text.go	CONDITIONALS_BOUNDARY	14	if measure(s) <= limit {	baseline 2026-10-11, not triaged
-internal/text/text.go	CONDITIONALS_BOUNDARY	18	for cut := n; cut > n-utf8.UTFMax && cut > 0; cut-- {	baseline 2026-10-11, not triaged
-internal/text/text.go	CONDITIONALS_BOUNDARY	18	return len(token) > 2 && token[0] == '<' && token[1] != '/' && token[len(token)-1] == '>'	baseline 2026-10-11, not triaged
-internal/text/text.go	CONDITIONALS_BOUNDARY	21	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_'	baseline 2026-10-11, not triaged
-internal/text/text.go	CONDITIONALS_BOUNDARY	33	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_'	baseline 2026-10-11, not triaged
-internal/text/text.go	CONDITIONALS_BOUNDARY	37	if length := entityAt(s[i:]); length > 0 {	baseline 2026-10-11, not triaged
-internal/text/text.go	CONDITIONALS_BOUNDARY	41	for cut := n; cut > n-utf8.UTFMax && cut > 0; cut-- {	baseline 2026-10-11, not triaged
-internal/text/text.go	CONDITIONALS_BOUNDARY	42	case strings.IndexByte(discordSpecial, c) >= 0:	baseline 2026-10-11, not triaged
-internal/text/text.go	CONDITIONALS_BOUNDARY	45	if end := strings.IndexByte(s[i:], '>'); end >= 0 {	baseline 2026-10-11, not triaged
-internal/text/text.go	CONDITIONALS_BOUNDARY	45	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_'	baseline 2026-10-11, not triaged
-internal/text/text.go	CONDITIONALS_BOUNDARY	55	if end := strings.IndexFunc(tag, unicode.IsSpace); end >= 0 {	baseline 2026-10-11, not triaged
-internal/text/text.go	CONDITIONALS_BOUNDARY	57	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_'	baseline 2026-10-11, not triaged
-internal/text/text.go	CONDITIONALS_BOUNDARY	59	case isLineStart && strings.IndexByte(discordLineStart, c) >= 0:	baseline 2026-10-11, not triaged
-internal/text/text.go	CONDITIONALS_BOUNDARY	5	if d < 0 || d >= base {	baseline 2026-10-11, not triaged
-internal/text/text.go	CONDITIONALS_BOUNDARY	5	if i < len(s) {	baseline 2026-10-11, not triaged
-internal/text/text.go	CONDITIONALS_BOUNDARY	5	if n <= 0 {	baseline 2026-10-11, not triaged
-internal/text/text.go	CONDITIONALS_BOUNDARY	69	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_'	baseline 2026-10-11, not triaged
-internal/text/text.go	CONDITIONALS_BOUNDARY	7	if end < 0 {	baseline 2026-10-11, not triaged
-internal/text/text.go	CONDITIONALS_BOUNDARY	9	if value > utf8.MaxRune {	baseline 2026-10-11, not triaged
-internal/text/text.go	CONDITIONALS_BOUNDARY	9	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_'	baseline 2026-10-11, not triaged
-internal/text/text.go	CONDITIONALS_NEGATION	42	case strings.IndexByte(discordSpecial, c) >= 0:	baseline 2026-10-11, not triaged
-internal/text/text.go	CONDITIONALS_NEGATION	45	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_'	baseline 2026-10-11, not triaged
-internal/text/text.go	CONDITIONALS_NEGATION	59	case isLineStart && strings.IndexByte(discordLineStart, c) >= 0:	baseline 2026-10-11, not triaged
-internal/text/text.go	INCREMENT_DECREMENT	36	for at := len(open) - 1; at >= 0; at-- {	baseline 2026-10-11, not triaged
-internal/text/text.go	INVERT_NEGATIVES	31	low, high := 0, len(boundaries)-1	baseline 2026-10-11, not triaged
+internal/text/text.go	ARITHMETIC_BASE	22	b.Grow(len(s) + len(s)/4)	equivalent: len(s)*4 only reserves more of the builder, the output and the one allocation stay
+internal/text/text.go	ARITHMETIC_BASE	22	b.Grow(len(s) + len(s)/8)	equivalent: len(s)*8 only reserves more of the builder, the output and the one allocation stay
+internal/text/text.go	CONDITIONALS_BOUNDARY	42	case strings.IndexByte(discordSpecial, c) >= 0:	not run: gremlins finds no coverage block on a case expression of a tagless switch; TestEscapeDiscord kills it
+internal/text/text.go	CONDITIONALS_BOUNDARY	45	if end := strings.IndexByte(s[i:], '>'); end >= 0 {	equivalent: s[i] is the <, so the > is never at index 0
+internal/text/text.go	CONDITIONALS_BOUNDARY	55	if end := strings.IndexFunc(tag, unicode.IsSpace); end >= 0 {	equivalent: TrimLeftFunc removed the leading white space, so IndexFunc never returns 0
+internal/text/text.go	CONDITIONALS_BOUNDARY	59	case isLineStart && strings.IndexByte(discordLineStart, c) >= 0:	not run: gremlins finds no coverage block on a case expression of a tagless switch; TestEscapeDiscord kills it
+internal/text/text.go	CONDITIONALS_BOUNDARY	5	if n <= 0 {	equivalent: for n == 0 both truncations give s[:0] after their loop
+internal/text/text.go	CONDITIONALS_BOUNDARY	7	if end < 0 {	equivalent: s starts with & or <, so ; or > is never at index 0
+internal/text/text.go	CONDITIONALS_NEGATION	42	case strings.IndexByte(discordSpecial, c) >= 0:	not run: gremlins finds no coverage block on a case expression of a tagless switch; TestEscapeDiscord kills it
+internal/text/text.go	CONDITIONALS_NEGATION	59	case isLineStart && strings.IndexByte(discordLineStart, c) >= 0:	not run: gremlins finds no coverage block on a case expression of a tagless switch; TestEscapeDiscord kills it
