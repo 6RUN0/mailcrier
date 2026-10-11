@@ -14,6 +14,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/6RUN0/mailcrier/internal/backend"
 	"github.com/6RUN0/mailcrier/internal/delivery"
@@ -166,7 +167,7 @@ func TestDeliverDiscordFiles(t *testing.T) {
 		for name := range sent {
 			got = append(got, name)
 		}
-		if content, _ := msg["content"].(string); strings.Count(content, `\[not sent\]`) != 2 || text.UTF16Len(content) > maxText {
+		if content, _ := msg["content"].(string); strings.Count(content, `\[not sent\]`) != 2 || utf8.RuneCountInString(content) > maxText {
 			t.Errorf("content does not note the two skipped files: %q", content)
 		}
 	}))
@@ -213,8 +214,8 @@ func TestDeliverDiscordLongText(t *testing.T) {
 		if result.Status != delivery.OK || !result.IsTruncated {
 			t.Fatalf("result = %+v", result)
 		}
-		if n := text.UTF16Len(content); n > maxText || n < maxText-200 || !strings.Contains(content, "[truncated]\n```") || !strings.Contains(content, "message.txt (text/plain") {
-			t.Errorf("content of %d units: %q", n, content[max(0, len(content)-120):])
+		if n := utf8.RuneCountInString(content); n > maxText || n < maxText-200 || !strings.Contains(content, "[truncated]\n```") || !strings.Contains(content, "message.txt (text/plain") {
+			t.Errorf("content of %d characters: %q", n, content[max(0, len(content)-120):])
 		}
 		full := files["files[0] message.txt text/plain; charset=utf-8"]
 		if len(files) != 1 || !strings.Contains(full, strings.TrimSpace(body)) {

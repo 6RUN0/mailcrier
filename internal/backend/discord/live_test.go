@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/6RUN0/mailcrier/internal/backend"
 	"github.com/6RUN0/mailcrier/internal/delivery"
@@ -68,7 +69,7 @@ func TestLiveDiscord(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want, truncated, err := render.Fit(tmpl, d, maxText, text.UTF16Len)
+		want, truncated, err := render.Fit(tmpl, d, maxText, utf8.RuneCountInString)
 		if err != nil || truncated {
 			t.Fatalf("render: truncated %v, err %v", truncated, err)
 		}
@@ -95,23 +96,22 @@ func TestLiveDiscord(t *testing.T) {
 }
 
 // TestLiveDiscordLimitUnit pins the unit of the 2000 limit of content
-// against the real webhook: 1000 characters outside the BMP, 2000 UTF-16
-// units, are accepted, and one more ASCII character, 2001 units in 1001
-// characters, is rejected with 400. The limit thus counts UTF-16 units,
-// as Caps.Measure does.
+// against the real webhook: 2000 characters outside the BMP, 4000 UTF-16
+// units, are accepted, and 2001 are rejected with 400. The limit thus
+// counts characters, as Caps.Measure does.
 func TestLiveDiscordLimitUnit(t *testing.T) {
 	live := newLiveWebhook(t)
-	atLimit := strings.Repeat("😀", maxText/2)
-	if n := live.sender.Caps().Measure(atLimit); n != maxText {
-		t.Fatalf("Measure = %d, want %d", n, maxText)
+	atLimit := strings.Repeat("😀", maxText)
+	if caps := live.sender.Caps(); caps.Measure != nil || caps.MaxText != maxText {
+		t.Fatalf("Caps count the limit %d with Measure %p, want %d characters", caps.MaxText, caps.Measure, maxText)
 	}
 	if err := live.sender.Send(context.Background(), backend.Payload{Text: atLimit}); err != nil {
-		t.Fatalf("%d UTF-16 units: %v", maxText, err)
+		t.Fatalf("%d characters outside the BMP: %v", maxText, err)
 	}
-	err := live.sender.Send(context.Background(), backend.Payload{Text: atLimit + "a"})
+	err := live.sender.Send(context.Background(), backend.Payload{Text: atLimit + "😀"})
 	var deliveryErr *backend.Error
 	if !errors.As(err, &deliveryErr) || deliveryErr.Status != http.StatusBadRequest {
-		t.Fatalf("%d UTF-16 units in %d characters: err = %v, want 400", maxText+1, maxText/2+1, err)
+		t.Fatalf("%d characters outside the BMP: err = %v, want 400", maxText+1, err)
 	}
 }
 

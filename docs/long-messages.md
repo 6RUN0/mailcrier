@@ -45,9 +45,9 @@ max_lines = 40          # optional, lines of the body in the text
   blockquote in Telegram, which shows a few lines until opened; the other
   targets have no such block and treat it as `file`.
 - `max_text` replaces the text limit of the service, in its unit: the
-  characters of Telegram and of the `mattermost` and `generic-json`
-  documents, the UTF-16 units of Discord, Slack and the `slack-webhook`
-  document, the bytes of ntfy. A value above the limit of the service is
+  characters of Telegram, Discord and the `mattermost` and `generic-json`
+  documents, the UTF-16 units of Slack and the `slack-webhook` document,
+  the bytes of ntfy. A value above the limit of the service is
   taken as it is, and the service rejects a longer text. For `http` the
   limit covers the whole JSON document: one too small for the document
   without body and subject fails the target permanently.

@@ -38,7 +38,7 @@ and `max_file_size` replace them per target, see
 | Type | Text | Files |
 |---|---|---|
 | `telegram` | 4096 characters | 10, at most 50 MB each |
-| `discord` | 2000 UTF-16 units | 10, at most 20 MiB each and 25 MiB together |
+| `discord` | 2000 characters | 10, at most 20 MiB each and 25 MiB together |
 | `slack` | 40000 UTF-16 units | 10, no size limit |
 | `ntfy` | 4095 bytes | 10, at most 15 MiB each (ntfy.sh: 2 MB) |
 | `http` | `slack-webhook` 40000 UTF-16 units, `mattermost` 16383 characters, `generic-json` none | none |

@@ -13,16 +13,15 @@ import (
 	"net/url"
 
 	"github.com/6RUN0/mailcrier/internal/backend"
-	"github.com/6RUN0/mailcrier/internal/text"
 )
 
 // Limits of Discord (developers/resources/webhook.mdx, message.mdx and
 // reference.mdx of discord-api-docs): content up to 2000 characters, up to
 // 10 files, 20 MiB per file by default, 25 MiB per request. The content is
-// counted in UTF-16 units, at least the number of characters, so a
-// character outside the BMP cannot push it over. maxFilesSize keeps
-// payloadReserve of the request for the JSON part and the multipart
-// headers.
+// counted in characters: a webhook took 2000 characters outside the BMP,
+// 4000 UTF-16 units, and refused 2001 with 400 (TestLiveDiscordLimitUnit,
+// 2026-10-11). maxFilesSize keeps payloadReserve of the request for the
+// JSON part and the multipart headers.
 const (
 	maxText        = 2000
 	maxFiles       = 10
@@ -53,7 +52,7 @@ func New(opts Options) *Sender {
 
 // Caps reports the limits of a Discord webhook.
 func (s *Sender) Caps() backend.Caps {
-	return backend.Caps{MaxText: maxText, Measure: text.UTF16Len, MaxFiles: maxFiles, MaxFileSize: maxFileSize, MaxFilesSize: maxFilesSize}
+	return backend.Caps{MaxText: maxText, MaxFiles: maxFiles, MaxFileSize: maxFileSize, MaxFilesSize: maxFilesSize}
 }
 
 // Send executes the webhook with the text and the files in one request.
