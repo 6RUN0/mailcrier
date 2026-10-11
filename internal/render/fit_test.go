@@ -572,10 +572,34 @@ func TestExecuteWhole(t *testing.T) {
 						if err != nil || wholeTruncated != truncated || (!truncated && whole != out) {
 							t.Errorf("%s/%s/%d/%d body of %d bytes: ExecuteWhole truncated = %v, err = %v; FitLines truncated = %v", format, m.name, limit, maxLines, len(body), wholeTruncated, err, truncated)
 						}
+						if !wholeTruncated || whole != "" {
+							continue
+						}
+						fitOut, fitTruncated, fitErr := FitLines(tmpl, fitData(body), limit, maxLines, m.measure)
+						overOut, overTruncated, overErr := FitLinesOver(tmpl, fitData(body), limit, maxLines, m.measure)
+						if overOut != fitOut || overTruncated != fitTruncated || !errors.Is(overErr, fitErr) {
+							t.Errorf("%s/%s/%d/%d body of %d bytes: FitLinesOver gives %q, %v, %v; FitLines %q, %v, %v", format, m.name, limit, maxLines, len(body), overOut, overTruncated, overErr, fitOut, fitTruncated, fitErr)
+						}
 					}
 				}
 			}
 		}
+	}
+}
+
+// TestFitLinesOverRendersUserTemplateWhole pins that FitLinesOver renders
+// the whole data with a template from the configuration: one that writes
+// less for a collapsed body fits whole where the uncollapsed data did not.
+func TestFitLinesOverRendersUserTemplateWhole(t *testing.T) {
+	tmpl, err := Parse("collapsing", "{{ if .IsCollapsed }}{{ .Subject }}{{ else }}{{ .Body }}{{ end }}", text.FormatPlain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := fitData(strings.Repeat("a line of the body\n", 100))
+	d.IsCollapsed = true
+	out, truncated, err := FitLinesOver(tmpl, d, 300, 0, text.RuneCount)
+	if err != nil || truncated || out != fitSubject {
+		t.Errorf("FitLinesOver = %q, %v, %v", out, truncated, err)
 	}
 }
 

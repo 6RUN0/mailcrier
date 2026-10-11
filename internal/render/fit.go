@@ -75,12 +75,29 @@ func Fit(t *Template, d Data, limit int, measure func(string) int) (out string, 
 // anything else, and the result counts as truncated even when it then
 // fits the length limit.
 func FitLines(t *Template, d Data, limit, maxLines int, measure func(string) int) (out string, truncated bool, err error) {
+	return fitLines(t, d, limit, maxLines, measure, false)
+}
+
+// FitLinesOver is FitLines for data whose whole rendering, the body cut
+// after line maxLines only, is known to be over limit, as ExecuteWhole
+// reports it: a built-in template then skips that rendering, which costs
+// as much as the whole body. A template from the configuration renders it
+// all the same, as it need not grow with its data.
+func FitLinesOver(t *Template, d Data, limit, maxLines int, measure func(string) int) (out string, truncated bool, err error) {
+	return fitLines(t, d, limit, maxLines, measure, t.user == nil)
+}
+
+// fitLines is FitLines; isWholeOver skips the whole rendering, known to be
+// over limit.
+func fitLines(t *Template, d Data, limit, maxLines int, measure func(string) int, isWholeOver bool) (out string, truncated bool, err error) {
 	body, isCut := firstLines(d.Body, maxLines)
 	if isCut {
 		d.Body = withNotice(body, d.Strings.Truncated)
 	}
-	if full, fits, err := measureWhole(t, d, limit, measure); err != nil || fits {
-		return full, isCut, err
+	if !isWholeOver {
+		if full, fits, err := measureWhole(t, d, limit, measure); err != nil || fits {
+			return full, isCut, err
+		}
 	}
 	render := func() (string, bool, error) {
 		out, err := t.Execute(d)

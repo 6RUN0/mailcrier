@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -857,5 +858,114 @@ func (tc cutTextCase) check(t *testing.T) {
 	}
 	if result.IsTruncated != tc.wantTruncated || sender.sent[0].Text != tc.wantText || !slices.Equal(names, tc.wantFiles) {
 		t.Errorf("truncated = %v, files %#v, text:\n%#v", result.IsTruncated, names, sender.sent[0].Text)
+	}
+}
+
+// TestDeliverCutTextUnderFilesSize pins the whole rendering of the data
+// with the file of the full text under MaxFilesSize: sent first, the file
+// pushes out f0 and lets in f7, so that rendering fits although the one
+// without the file did not, and every small file stays listed.
+func TestDeliverCutTextUnderFilesSize(t *testing.T) {
+	d := testData()
+	d.Body = strings.Repeat("w", 20)
+	files := sizedFiles(&d, 1950, 100, 100, 100, 100, 100, 100, 100)
+	sender := &fakeSender{caps: backend.Caps{MaxText: 300, MaxFiles: 10, MaxFilesSize: 2000}}
+	result := Deliver(context.Background(), []Target{{ID: "t", Sender: sender, Template: plainTemplate(t)}}, d, files)[0]
+	if result.Status != OK || len(sender.sent) != 1 {
+		t.Fatalf("result = %+v", result)
+	}
+	if text := sender.sent[0].Text; !strings.Contains(text, "f7 (") || strings.Contains(text, "more") {
+		t.Errorf("text without f7 listed:\n%s", text)
+	}
+}
+
+// sizedFiles adds attachments f0, f1, ... of the sizes to d and returns
+// their files.
+func sizedFiles(d *render.Data, sizes ...int) []message.Attachment {
+	var files []message.Attachment
+	for i, size := range sizes {
+		name := fmt.Sprintf("f%d", i)
+		files = append(files, message.Attachment{Name: name, ContentType: "text/plain", Data: []byte(strings.Repeat("x", size))})
+		d.Attachments = append(d.Attachments, render.Attachment{Name: name, ContentType: "text/plain", Size: int64(size)})
+	}
+	return files
+}
+
+// TestFitLinesOverEqualsFitLines pins that fit skips the whole rendering
+// only where it changes nothing: over a grid of built-in formats, caps,
+// targets, bodies about the limit and attachments, the text and files
+// sent are the same with fitLinesOver set to render.FitLines.
+// Serial: it sets the package variable fitLinesOver.
+func TestFitLinesOverEqualsFitLines(t *testing.T) {
+	measures := map[text.Format]func(string) int{
+		text.FormatTelegramHTML: text.MeasureTelegramHTML, text.FormatSlackMrkdwn: text.UTF16Len,
+	}
+	capsList := []backend.Caps{
+		{MaxFiles: 10},
+		{MaxFiles: 10, MaxFilesSize: 2000},
+		{MaxFiles: 2, MaxFileSize: 500},
+		{},
+	}
+	targets := []Target{
+		{}, {OnLong: OnLongTruncate}, {OnLong: OnLongBlockquote}, {MaxLines: 3}, {MaxLines: 3, OnLong: OnLongTruncate},
+	}
+	fileSets := [][]int{nil, {1950, 100, 100, 100, 100, 100, 100, 100}, {300, 40}}
+	type sent struct {
+		text  string
+		files []string
+		err   error
+	}
+	deliver := func(tmpl *render.Template, caps backend.Caps, target Target, body string, sizes []int) sent {
+		d := testData()
+		d.Body = body
+		files := sizedFiles(&d, sizes...)
+		sender := &fakeSender{caps: caps}
+		target.ID, target.Sender, target.Template = "t", sender, tmpl
+		result := Deliver(context.Background(), []Target{target}, d, files)[0]
+		var out sent
+		out.err = result.Err
+		if len(sender.sent) > 0 {
+			p := sender.sent[len(sender.sent)-1]
+			out.text = p.Text
+			for _, file := range p.Attachments {
+				out.files = append(out.files, file.Name)
+			}
+		}
+		return out
+	}
+	const limit = 300
+	var skipped atomic.Int64
+	defer func() { fitLinesOver = render.FitLinesOver }()
+	for _, format := range []text.Format{
+		text.FormatPlain, text.FormatTelegramHTML, text.FormatSlackMrkdwn, text.FormatDiscord, text.FormatGenericJSON,
+	} {
+		tmpl, err := render.Builtin(format)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, n := range []int{20, limit - 20, limit + 20, 2 * limit} {
+			body := strings.Repeat("w <&>\n", n/6+1)[:n]
+			for _, caps := range capsList {
+				caps.MaxText, caps.Measure = limit, measures[format]
+				for _, target := range targets {
+					for _, sizes := range fileSets {
+						fitLinesOver = func(t *render.Template, d render.Data, limit, maxLines int, measure func(string) int) (string, bool, error) {
+							skipped.Add(1)
+							return render.FitLinesOver(t, d, limit, maxLines, measure)
+						}
+						over := deliver(tmpl, caps, target, body, sizes)
+						fitLinesOver = render.FitLines
+						whole := deliver(tmpl, caps, target, body, sizes)
+						if over.text != whole.text || !slices.Equal(over.files, whole.files) || !errors.Is(over.err, whole.err) {
+							t.Errorf("%s caps %+v target %+v body of %d, files %v: sent\n%q %v %v\nwith the whole rendering\n%q %v %v",
+								format, caps, target, n, sizes, over.text, over.files, over.err, whole.text, whole.files, whole.err)
+						}
+					}
+				}
+			}
+		}
+	}
+	if skipped.Load() == 0 {
+		t.Error("no case skipped the whole rendering")
 	}
 }

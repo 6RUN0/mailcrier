@@ -384,6 +384,10 @@ type textJob struct {
 	deadline time.Time
 }
 
+// fitLinesOver is render.FitLinesOver; TestFitLinesOverEqualsFitLines
+// sets it to render.FitLines to compare the outputs of both.
+var fitLinesOver = render.FitLinesOver
+
 // fitted is the text of a target and the files that go with it.
 type fitted struct {
 	text        string
@@ -401,9 +405,15 @@ type fitted struct {
 // picks the files: for a cut text the full text goes first among them
 // per OnLong, else the notice of the cut gives its size. render.ExecuteWhole
 // tells a cut text before the files are picked, so the binary searches of
-// render.FitLines run once, on the data with the files. A template from
-// the configuration gets one budget for both, ending no later than the
-// delivery.
+// render.FitLines run once, on the data with the files. When ExecuteWhole
+// found the whole rendering over the limit, fitLinesOver skips it if that
+// data renders no shorter: the file of the full text sent and no
+// MaxFilesSize (a file listed more, the files after it only marked more,
+// the blockquote longer than the pre), or no file sent and no MaxLines
+// (the notice with the full size longer than none). Under MaxFilesSize
+// the file first can push out a large file and let in several small ones
+// skipped before, whose marks then go. A template from the configuration
+// gets one budget for both, ending no later than the delivery.
 func (j *textJob) fit(tmpl *render.Template) (*fitted, error) {
 	if tmpl == nil {
 		return &fitted{}, nil
@@ -418,6 +428,7 @@ func (j *textJob) fit(tmpl *render.Template) (*fitted, error) {
 	if err != nil || !out.isTruncated {
 		return out, j.withLimit(err)
 	}
+	isWholeOver := out.text == ""
 	if j.target.OnLong != OnLongTruncate && caps.MaxFiles > 0 {
 		if out.longFile, err = j.long.file(j.target.LongFile); err != nil {
 			return nil, err
@@ -435,7 +446,11 @@ func (j *textJob) fit(tmpl *render.Template) (*fitted, error) {
 		d.Strings = d.Strings.WithFullSize(size)
 	}
 	d.IsCollapsed = j.target.OnLong == OnLongBlockquote
-	out.text, _, err = render.FitLines(tmpl, d, j.limit, j.target.MaxLines, j.measure)
+	fitLines := render.FitLines
+	if isWholeOver && (out.isLongFileSent && caps.MaxFilesSize == 0 || !out.isLongFileSent && j.target.MaxLines <= 0) {
+		fitLines = fitLinesOver
+	}
+	out.text, _, err = fitLines(tmpl, d, j.limit, j.target.MaxLines, j.measure)
 	out.isOverOutput = tmpl.IsOverOutput()
 	return out, j.withLimit(err)
 }
