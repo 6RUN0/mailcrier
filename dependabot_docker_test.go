@@ -11,7 +11,7 @@ import (
 
 // dockerfilePatterns match the Dockerfiles of the test images, each pinned
 // by digest.
-var dockerfilePatterns = []string{"testdata/*/Dockerfile", "packaging/smoke/*/Dockerfile"}
+var dockerfilePatterns = []string{"testdata/*/Dockerfile", "testdata/contract/*/Dockerfile", "packaging/smoke/*/Dockerfile"}
 
 // TestDependabotCoversDockerfiles fails when the directory of a test image
 // is missing from the docker entries of .github/dependabot.yml, whose

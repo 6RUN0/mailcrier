@@ -117,6 +117,21 @@ SELINUX_SUM_rocky9 := 92c206cc6f790c61583247eefe87890f8828420662c17cacf247cec78a
 SELINUX_URL_rocky10 := https://dl.rockylinux.org/pub/rocky/10.2/images/x86_64/Rocky-10-GenericCloud-Base-10.2-20260525.0.x86_64.qcow2
 SELINUX_SUM_rocky10 := 9fc9e9ff16888bb68ac39b0392e25c9c92684d50c85f1cce6ab549363bbc4b48
 
+# contract runs the TestContract* tests of internal/app against real ntfy
+# and Mattermost servers, the images in testdata/contract/<server>, each on
+# a random port of 127.0.0.1 so that parallel runs and a busy host do not
+# collide. Mattermost posts under the username and into the channel a
+# webhook asks for only with the override settings, and the tests create
+# their own user and team, which needs open signup.
+CONTRACT_SERVERS := ntfy mattermost
+CONTRACT_PORT_ntfy := 80
+CONTRACT_PORT_mattermost := 8065
+CONTRACT_HEALTH_ntfy := /v1/health
+CONTRACT_HEALTH_mattermost := /api/v4/system/ping
+CONTRACT_FLAGS_mattermost := -e MM_SERVICESETTINGS_ENABLEINCOMINGWEBHOOKS=true \
+	-e MM_SERVICESETTINGS_ENABLEPOSTUSERNAMEOVERRIDE=true \
+	-e MM_TEAMSETTINGS_ENABLEUSERCREATION=true -e MM_TEAMSETTINGS_ENABLEOPENSERVER=true
+
 # cover runs the tests of both builds with counters in the binary format of
 # GOCOVERDIR: go tool covdata merges the two, while concatenated text
 # profiles count a block of both builds twice. COVER_MIN is the total of
@@ -167,7 +182,7 @@ CI_JOBS := $(filter-out make,$(subst $(comma), ,$(RELEASE_JOBS)))
 .DEFAULT_GOAL := help
 
 .PHONY: help ci-local check cover mutants bench lint lint-go lint-yaml lint-actions lint-docs lint-symbols lint-man tidy test fuzz build licenses vuln check-refs check-commits snapshot release-prepare release-gate release release-guard setgid-e2e units-verify \
-	smoke smoke-dist smoke-previous $(addprefix smoke-,$(SMOKE_DISTROS)) \
+	smoke smoke-dist smoke-previous $(addprefix smoke-,$(SMOKE_DISTROS)) contract \
 	selinux-images $(addprefix selinux-,$(SELINUX_DISTROS)) $(addprefix selinux-image-,$(SELINUX_DISTROS)) FORCE
 
 # A static pattern rule is listed as its pattern with % read as <distro>;
@@ -352,6 +367,46 @@ cid=$(E2E_DIR)/smoke-$(1).cid; \
 		docker rm -f $$(cat $$cid) >/dev/null; \
 	fi; \
 	rm -f $$cid; [ $$s = 0 ]
+endef
+
+contract: ## contract tests of ntfy, shoutrrr and Mattermost against real servers (docker)
+	$(foreach server,$(CONTRACT_SERVERS),docker build -t mailcrier-contract-$(server) testdata/contract/$(server) &&) true
+	mkdir -p $(E2E_DIR)
+	status=0; \
+	$(contract-remove) \
+	{ $(foreach server,$(CONTRACT_SERVERS),$(call contract-start,$(server)) &&) \
+		$(foreach server,$(CONTRACT_SERVERS),$(call contract-wait,$(server)) &&) \
+		MAILCRIER_CONTRACT_NTFY_URL=http://$$addr_ntfy MAILCRIER_CONTRACT_MATTERMOST_URL=http://$$addr_mattermost \
+		$(GO) test -count=1 -v -run '^TestContract' ./internal/app; } || status=1; \
+	if [ $$status != 0 ]; then \
+		for cid in $(E2E_DIR)/contract-*.cid; do \
+			[ -f $$cid ] && docker logs $$(cat $$cid) 2>&1 | tail -50; \
+		done; \
+	fi; \
+	$(contract-remove) \
+	exit $$status
+
+# Containers are removed by the ids in their cidfiles, before a run as well:
+# an interrupted run leaves them behind.
+define contract-remove
+for cid in $(E2E_DIR)/contract-*.cid; do \
+	[ -f $$cid ] || continue; docker rm -f $$(cat $$cid) >/dev/null 2>&1; rm -f $$cid; \
+done;
+endef
+
+# All servers start before the first wait, so that their start-up overlaps.
+define contract-start
+docker run -d --cidfile $(E2E_DIR)/contract-$(1).cid -p 127.0.0.1::$(CONTRACT_PORT_$(1)) $(CONTRACT_FLAGS_$(1)) \
+		mailcrier-contract-$(1) >/dev/null && \
+	addr_$(1)=$$(docker port $$(cat $(E2E_DIR)/contract-$(1).cid) $(CONTRACT_PORT_$(1))/tcp | head -n 1)
+endef
+
+# Docker accepts on the published port before the server listens and then
+# resets the connection, so curl retries every error, not only a refusal.
+# Mattermost takes about a minute to answer the first time.
+define contract-wait
+{ curl -fs -o /dev/null --retry 300 --retry-all-errors --retry-delay 1 --retry-max-time 300 \
+		http://$$addr_$(1)$(CONTRACT_HEALTH_$(1)) || { echo "$(1) did not answer $(CONTRACT_HEALTH_$(1))" >&2; false; }; }
 endef
 
 smoke-dist:

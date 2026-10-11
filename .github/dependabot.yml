@@ -85,6 +85,8 @@ updates:
       - "/testdata/setgid-e2e"
       - "/testdata/units-verify"
       - "/testdata/selinux"
+      - "/testdata/contract/ntfy"
+      - "/testdata/contract/mattermost"
       - "/packaging/smoke/debian"
       - "/packaging/smoke/rocky9"
       - "/packaging/smoke/rocky10"

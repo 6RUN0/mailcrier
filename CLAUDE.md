@@ -33,6 +33,12 @@ make -j2 selinux-rocky9 selinux-rocky10  # needs docker, /dev/kvm, network
 go build -o mailcrier ./cmd/mailcrier   # the binary; the name is gitignored
 MAILCRIER_TELEGRAM_ENV=/path/to/telegram.env \
   go test -run TestLiveTelegram ./internal/backend/telegram   # real Bot API
+MAILCRIER_DISCORD_ENV=/path/to/discord.env \
+  go test -run TestLiveDiscord ./internal/backend/discord   # real webhook
+MAILCRIER_SLACK_ENV=/path/to/slack.env \
+  go test -run TestLiveSlack ./internal/backend/slack   # real Web API
+make contract     # needs docker: ntfy, shoutrrr and Mattermost against
+                  # servers in testdata/contract, read back; weekly in CI
 go test ./internal/backend/webhook -update   # rewrite golden files
 go test ./internal/app -run TestCallers -update   # caller golden files
 go test ./internal/app -run TestJournalGolden -update   # whole log, stderr

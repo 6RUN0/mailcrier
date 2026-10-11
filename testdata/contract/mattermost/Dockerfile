@@ -1,0 +1,1 @@
+FROM mattermost/mattermost-preview:11.11.1@sha256:90319a856c49f0aef1000ab473ad76be3a8a97bef196424764638ee132eb61bc
