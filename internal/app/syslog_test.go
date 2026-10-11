@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -31,35 +32,93 @@ func stuckDatagramSocket(t *testing.T) string {
 	return path
 }
 
+// dgramQueueEnv names a value for net.unix.max_dgram_qlen that
+// stuckDatagramSocketAt sets first, in the network namespace of
+// TestStuckSyslogLongQueue; the kernel reads it when a socket is made.
+const dgramQueueEnv = "MAILCRIER_TEST_DGRAM_QLEN"
+
 // stuckDatagramSocketAt makes the stuck socket of stuckDatagramSocket at
 // path.
 func stuckDatagramSocketAt(t *testing.T, path string) {
 	t.Helper()
+	if qlen := os.Getenv(dgramQueueEnv); qlen != "" {
+		if err := os.WriteFile("/proc/sys/net/unix/max_dgram_qlen", []byte(qlen), 0); err != nil {
+			t.Fatal(err)
+		}
+	}
 	receiver, err := net.ListenPacket("unixgram", path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = receiver.Close() })
-	filler, err := net.Dial("unixgram", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = filler.Close() })
-	// A short deadline makes the write that finds no room fail instead of
-	// blocking; one already passed would fail before trying.
-	for i := 0; ; i++ {
-		if err := filler.SetWriteDeadline(time.Now().Add(testSyslogTimeout)); err != nil {
+	// A sender also stops when its own send buffer is full, which comes
+	// first when max_dgram_qlen is large (512 under systemd): the queue of
+	// the receiver is full only once a fresh sender cannot write at all.
+	for senders := 0; senders < 64; senders++ {
+		filler, err := net.Dial("unixgram", path)
+		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := filler.Write([]byte("filler")); err != nil {
-			if !isTimeout(err) {
-				t.Fatalf("filling the queue: %v", err)
+		t.Cleanup(func() { _ = filler.Close() })
+		written := 0
+		for ; ; written++ {
+			// A short deadline makes the write that finds no room fail
+			// instead of blocking; one already passed would fail before
+			// trying.
+			if err := filler.SetWriteDeadline(time.Now().Add(testSyslogTimeout)); err != nil {
+				t.Fatal(err)
 			}
+			if _, err := filler.Write([]byte("filler")); err != nil {
+				if !isTimeout(err) {
+					t.Fatalf("filling the queue: %v", err)
+				}
+				break
+			}
+			if written > 1<<20 {
+				t.Fatal("the send buffer of a filler never filled")
+			}
+		}
+		if written == 0 {
 			return
 		}
-		if i > 1<<20 {
-			t.Fatal("the queue of the socket never filled")
-		}
+	}
+	t.Fatal("the queue of the socket never filled")
+}
+
+// stuckSyslogTests are the tests that write to a socket of
+// stuckDatagramSocket.
+const stuckSyslogTests = "^(TestSyslogWriterBounded|TestRunWithStuckSyslog|TestSyslogStuckInParallel|TestSyslogRetryWithinTimeout)$"
+
+// TestStuckSyslogLongQueue runs stuckSyslogTests again with
+// net.unix.max_dgram_qlen 512, the value systemd sets and GitHub runners
+// have, in a user and network namespace of their own. With a filler that
+// stopped at its own full send buffer the queue was not full there, and a
+// write expected to time out went through. Skipped where unprivileged user
+// namespaces are refused.
+func TestStuckSyslogLongQueue(t *testing.T) {
+	if os.Getenv(dgramQueueEnv) != "" {
+		t.Skip("already in the namespace")
+	}
+	cmd := exec.Command(os.Args[0], "-test.run="+stuckSyslogTests, "-test.count=1", "-test.v")
+	cmd.Env = append(os.Environ(), dgramQueueEnv+"=512")
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		Cloneflags:  syscall.CLONE_NEWUSER | syscall.CLONE_NEWNET,
+		UidMappings: []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Getuid(), Size: 1}},
+		GidMappings: []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Getgid(), Size: 1}},
+	}
+	out, err := cmd.CombinedOutput()
+	var exitErr *exec.ExitError
+	if err != nil && !errors.As(err, &exitErr) {
+		t.Skipf("no user and network namespace: %v", err)
+	}
+	if bytes.Contains(out, []byte("max_dgram_qlen: permission denied")) {
+		t.Skipf("max_dgram_qlen is not writable in the namespace:\n%s", out)
+	}
+	if err != nil {
+		t.Fatalf("%v with max_dgram_qlen 512:\n%s", err, out)
+	}
+	if passed := bytes.Count(out, []byte("\n--- PASS: Test")); passed != 4 {
+		t.Fatalf("%d of 4 tests passed with max_dgram_qlen 512:\n%s", passed, out)
 	}
 }
 
