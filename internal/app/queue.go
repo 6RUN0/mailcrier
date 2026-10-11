@@ -504,9 +504,9 @@ func (q *queue) lockFailed(sp *spool.Spool, area, id string, err error) {
 // failCorrupt moves the entry id of area in sp, whose sidecar is corrupt,
 // to failed/ once its message file is older than queue_ttl, or hold_ttl in
 // hold/; the reason is the redacted text of decodeErr, which starts with
-// "corrupt sidecar" and keeps what the defect was. It reports false when the entry stays
-// where it is, unexpired or unreadable for another reason; fail logs a
-// failed move. The sidecar that holds the dates is unreadable, and the
+// "corrupt sidecar" and keeps what the defect was. It reports false when
+// the entry stays where it is, unexpired or unreadable for another reason;
+// fail logs a failed move. The sidecar that holds the dates is unreadable, and the
 // message file is written once, when the entry is.
 func (q *queue) failCorrupt(sp *spool.Spool, area, id string, decodeErr error) (isHandled bool) {
 	rec, err := sp.LockCorrupt(area, id)
@@ -754,7 +754,8 @@ func (q *queue) deliverEntry(ctx context.Context, rec *spool.Record) bool {
 	}
 	if len(due) == 0 {
 		// finish removes or fails an entry no target waits for, so only
-		// one that still waits needs its new state written.
+		// one that still waits needs its new state written; when finish
+		// fails, the next run repeats only these records.
 		if isChanged && e.IsPending() {
 			q.save(rec)
 		}
