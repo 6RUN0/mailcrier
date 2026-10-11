@@ -469,7 +469,10 @@ with "build constraints exclude all Go files".
   goreleaser directly.
 - `packaging/mailcrier.conf` is the conffile of the packages: any change to
   it in a release makes dpkg ask every administrator who edited the file,
-  and rpm and apk write `.rpmnew` and `.apk-new` beside an edited one.
+  and rpm and apk write `.rpmnew` and `.apk-new` beside an edited one. The
+  commit of such a change sets `conffileChangedAfter` of
+  `packaging/smoke/upgrade_test.go`, or the upgrade smoke tests fail
+  (`docs/releasing.md`, "A change of the conffile").
 - `New` of every HTTP-based target copies the client with
   `backend.WithoutRedirects`:
   net/http would turn a redirected POST into a bodiless GET and report

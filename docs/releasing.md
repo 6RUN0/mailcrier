@@ -103,10 +103,31 @@ older stops the release before step 1, since a new record is a commit on
    commit drops the entries of `unorderablePrevious` in
    `packaging/smoke/upgrade_test.go` that name the versions of the old pin;
    an entry for another version, or for one dpkg or apk can order, fails
-   `TestSmokeUpgrade`.
+   `TestSmokeUpgrade`. It also empties `conffileChangedAfter` there, see
+   [A change of the conffile](#a-change-of-the-conffile).
 
    The release `SMOKE_PREVIOUS` names is never deleted, and its files are
    never replaced by a rerun: every smoke job fetches them and checks them
    against `SMOKE_PREVIOUS_SUMS`, so a missing or changed file fails all of
    them. A pinned release that has to be built again gets its new sum in the
    same push.
+
+## A change of the conffile
+
+`packaging/mailcrier.conf` is the conffile of the packages: a release
+that changes it makes dpkg ask every administrator who edited the file,
+and rpm and apk write `.rpmnew` and `.apk-new` beside an edited one.
+`TestSmokeUpgrade` and `TestSmokeSystemd` upgrade from `SMOKE_PREVIOUS`
+over an edited configuration, so a changed conffile fails them: dpkg
+reads the answer to its prompt from an empty stdin and fails, rpm writes
+`.rpmnew` with a warning. The smoke jobs are in `RELEASE_JOBS`, so the release
+gate stays red as well.
+
+A commit that changes the conffile on purpose sets `conffileChangedAfter`
+in `packaging/smoke/upgrade_test.go` to the version of `SMOKE_PREVIOUS`
+without the `v`, as in the names of its packages (`0.1.0-rc4`). Both
+tests then upgrade with `dpkg -i --force-confold`, which keeps the edited
+file, want the new one beside it as `.dpkg-dist` or `.rpmnew`, and remove
+it. Step 5 of the release that ships the change empties the constant. A
+value naming another release fails both tests, and so does one whose
+release has the same conffile, by the missing `.dpkg-dist` or `.rpmnew`.

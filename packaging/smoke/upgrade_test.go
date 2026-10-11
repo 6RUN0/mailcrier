@@ -24,6 +24,15 @@ import (
 // a version drops its entry, docs/releasing.md says so.
 var unorderablePrevious = map[string]string{}
 
+// conffileChangedAfter is the version of the release SMOKE_PREVIOUS, as
+// in the names of its packages, while packaging/mailcrier.conf differs
+// from the one that release installs; empty otherwise. The upgrade over
+// the edited configuration then keeps it and leaves the new file beside
+// it, .dpkg-dist (dpkg -i --force-confold, since a prompt would read the
+// empty stdin) or .rpmnew, which the test checks and removes. The commit
+// that bumps SMOKE_PREVIOUS past it empties it, docs/releasing.md says so.
+const conffileChangedAfter = ""
+
 // TestSmokeUpgrade installs the release SMOKE_PREVIOUS of the Makefile,
 // leaves messages in queue/, hold/ and failed/ with its binary and upgrades
 // to the package of HEAD, whose binary must deliver them. It pins that a new
@@ -32,6 +41,7 @@ var unorderablePrevious = map[string]string{}
 func TestSmokeUpgrade(t *testing.T) {
 	d := currentDistro(t)
 	previous := previousPackage(t, d)
+	isConffileChanged := conffileChangedAfter != ""
 	recv := newReceiver(t)
 	dir := fixtures(t)
 	alice, queuer := credential(t, "alice"), credential(t, "queuer")
@@ -101,8 +111,11 @@ func TestSmokeUpgrade(t *testing.T) {
 			t.Fatalf("installed version %s before the upgrade, want %s", got, oldVersion)
 		}
 
-		out := upgrade(t, d, d.packageFile(t, pkgsDir), oldVersion, newVersion)
+		out := upgrade(t, d, d.packageFile(t, pkgsDir), oldVersion, newVersion, isConffileChanged)
 		t.Logf("upgrade:\n%s", out)
+		if isConffileChanged {
+			out = takeNewConffile(t, d, out)
+		}
 		checkInstallerOutput(t, out)
 		if got := installedVersion(t, d); got != newVersion {
 			t.Errorf("installed version %s after the upgrade, want %s", got, newVersion)
@@ -161,11 +174,15 @@ func TestSmokeUpgrade(t *testing.T) {
 // previousPackage returns the package of the previous release in
 // previousDir. It skips the test when the package manager cannot order its
 // version before the one of HEAD and unorderablePrevious lists it, and
-// fails when the list is wrong either way or names another version. rpm
-// orders both by itself and refuses a downgrade without --oldpackage.
+// fails when the list is wrong either way or names another version, and
+// when conffileChangedAfter names another release. rpm orders both by
+// itself and refuses a downgrade without --oldpackage.
 func previousPackage(t *testing.T, d distro) string {
 	t.Helper()
 	previous := d.packageFile(t, previousDir)
+	if release := releaseVersion(previous); conffileChangedAfter != "" && conffileChangedAfter != release {
+		t.Fatalf("conffileChangedAfter names %s, not the previous release %s: empty it", conffileChangedAfter, release)
+	}
 	if d.format == "rpm" {
 		return previous
 	}
@@ -265,10 +282,13 @@ func apkPackageVersion(t *testing.T, pkg string) string {
 // upgrade installs pkg of newVersion over oldVersion as the package manager
 // does it on an upgrade and returns its output; apk takes the package from a
 // local repository, see localAPKRepository.
-func upgrade(t *testing.T, d distro, pkg, oldVersion, newVersion string) string {
+func upgrade(t *testing.T, d distro, pkg, oldVersion, newVersion string, isConffileChanged bool) string {
 	t.Helper()
 	switch d.format {
 	case "deb":
+		if isConffileChanged {
+			return mustRun(t, "", "dpkg", "-i", "--force-confold", pkg)
+		}
 		return mustRun(t, "", "dpkg", "-i", pkg)
 	case "rpm":
 		return mustRun(t, "", "rpm", "-Uvh", pkg)
@@ -282,4 +302,36 @@ func upgrade(t *testing.T, d distro, pkg, oldVersion, newVersion string) string 
 		t.Errorf("apk add -u ran no post-upgrade:\n%s", out)
 	}
 	return out
+}
+
+// releaseVersion returns the version of the release in the name of its
+// package file pkg, mailcrier_<version>_linux_amd64.<format>.
+func releaseVersion(pkg string) string {
+	version, _, _ := strings.Cut(strings.TrimPrefix(filepath.Base(pkg), "mailcrier_"), "_linux_")
+	return version
+}
+
+// takeNewConffile checks that the upgrade of a changed conffile over an
+// edited one left the new file beside it, removes that file, and returns
+// out without the notice of rpm about it. apk writes .apk-new beside any
+// edited configuration, whether the package changed it or not, so a
+// missing .dpkg-dist or .rpmnew means that the conffile is the released
+// one and conffileChangedAfter is stale.
+func takeNewConffile(t *testing.T, d distro, out string) string {
+	t.Helper()
+	suffix := map[string]string{"deb": ".dpkg-dist", "rpm": ".rpmnew"}[d.format]
+	if suffix == "" {
+		return out
+	}
+	if err := os.Remove(config + suffix); err != nil {
+		t.Errorf("no %s%s after the upgrade (%v): conffileChangedAfter names a release with the same conffile, empty it", config, suffix, err)
+	}
+	notice := "warning: " + config + " created as " + config + suffix
+	var kept strings.Builder
+	for line := range strings.Lines(out) {
+		if strings.TrimSpace(line) != notice {
+			kept.WriteString(line)
+		}
+	}
+	return kept.String()
 }

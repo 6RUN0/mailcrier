@@ -163,8 +163,11 @@ func TestSmokeSystemd(t *testing.T) {
 		if got := installedVersion(t, d); got != oldVersion {
 			t.Fatalf("installed version %s before the upgrade, want %s", got, oldVersion)
 		}
-		out = upgrade(t, d, pkg, oldVersion, newVersion)
+		out = upgrade(t, d, pkg, oldVersion, newVersion, conffileChangedAfter != "")
 		t.Logf("upgrade:\n%s", out)
+		if conffileChangedAfter != "" {
+			out = takeNewConffile(t, d, out)
+		}
 		checkInstallerOutput(t, out)
 		if got := installedVersion(t, d); got != newVersion {
 			t.Errorf("installed version %s after the upgrade, want %s", got, newVersion)
