@@ -31,7 +31,7 @@ var unorderablePrevious = map[string]string{}
 // it, .dpkg-dist (dpkg -i --force-confold, since a prompt would read the
 // empty stdin) or .rpmnew, which the test checks and removes. The commit
 // that bumps SMOKE_PREVIOUS past it empties it, docs/releasing.md says so.
-const conffileChangedAfter = ""
+const conffileChangedAfter = "0.1.0-rc4"
 
 // TestSmokeUpgrade installs the release SMOKE_PREVIOUS of the Makefile,
 // leaves messages in queue/, hold/ and failed/ with its binary and upgrades
