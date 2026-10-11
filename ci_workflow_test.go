@@ -40,3 +40,39 @@ func TestCIBranches(t *testing.T) {
 		}
 	}
 }
+
+// TestMutantsConcurrency fails when the jobs of mutants.yml share a
+// concurrency group: a manual run of the 30-minute contract job would wait
+// for the mutation run of up to 5 hours.
+func TestMutantsConcurrency(t *testing.T) {
+	data, err := os.ReadFile(".github/workflows/mutants.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	type concurrency struct {
+		Group string `yaml:"group"`
+	}
+	var workflow struct {
+		Concurrency *concurrency `yaml:"concurrency"`
+		Jobs        map[string]struct {
+			Concurrency *concurrency `yaml:"concurrency"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(data, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	if workflow.Concurrency != nil {
+		t.Errorf("workflow-level concurrency group %q holds every job", workflow.Concurrency.Group)
+	}
+	groups := map[string]string{}
+	for name, job := range workflow.Jobs {
+		if job.Concurrency == nil || job.Concurrency.Group == "" {
+			t.Errorf("job %s has no concurrency group", name)
+			continue
+		}
+		if other, ok := groups[job.Concurrency.Group]; ok {
+			t.Errorf("jobs %s and %s share the concurrency group %q", other, name, job.Concurrency.Group)
+		}
+		groups[job.Concurrency.Group] = name
+	}
+}

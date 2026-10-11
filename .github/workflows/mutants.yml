@@ -8,15 +8,14 @@ name: Mutants
 
 permissions: {}
 
-concurrency:
-  group: mutants
-  cancel-in-progress: false
-
 jobs:
   mutants:
     name: make mutants
     runs-on: ubuntu-latest
     timeout-minutes: 300
+    concurrency:
+      group: mutants
+      cancel-in-progress: false
     permissions:
       contents: read
     steps:
@@ -44,6 +43,9 @@ jobs:
     name: make contract
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    concurrency:
+      group: contract
+      cancel-in-progress: false
     permissions:
       contents: read
     steps:
