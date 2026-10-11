@@ -54,6 +54,10 @@ var (
 	ErrQuota = fmt.Errorf("%w: quota exceeded", ErrCreate)
 )
 
+// ErrRemoved is the error of Save and Move after a successful Remove:
+// either would write a sidecar without its message.
+var ErrRemoved = errors.New("spool entry removed")
+
 // ErrOpen means the spool directory or one of its areas could not be
 // opened or made; an error of Open wraps it, and ErrCreate as well.
 var ErrOpen = errors.New("spool directory not opened")
@@ -574,6 +578,9 @@ func (r *Record) writeNext() (string, error) {
 // directory is not synced: a rename lost in a crash of the system brings
 // back the previous state, and at worst a delivery is repeated.
 func (r *Record) Save() error {
+	if r.isRemoved {
+		return ErrRemoved
+	}
 	next, err := r.writeNext()
 	if err != nil {
 		return err
@@ -610,6 +617,9 @@ func (r *Record) Remove() error {
 // leaves at most a sidecar without a message, which a queue run ignores
 // and RemoveStale deletes. The lock stays with the record.
 func (r *Record) Move(area string) error {
+	if r.isRemoved {
+		return ErrRemoved
+	}
 	next, err := r.writeNext()
 	if err != nil {
 		return err

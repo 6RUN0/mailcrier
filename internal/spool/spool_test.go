@@ -256,6 +256,18 @@ func TestLock(t *testing.T) {
 	if err := second.Remove(); err != nil {
 		t.Errorf("second Remove() error = %v, want nil", err)
 	}
+	// A sidecar written now would have no message beside it.
+	if err := second.Save(); !errors.Is(err, ErrRemoved) || sp.Has(QueueDir, e.ID) {
+		t.Errorf("Save() after Remove error = %v, entry in queue/ %v; want ErrRemoved and none", err, sp.Has(QueueDir, e.ID))
+	}
+	if err := second.Move(FailedDir); !errors.Is(err, ErrRemoved) || sp.Has(FailedDir, e.ID) {
+		t.Errorf("Move() after Remove error = %v, entry in failed/ %v; want ErrRemoved and none", err, sp.Has(FailedDir, e.ID))
+	}
+	for _, area := range []string{QueueDir, FailedDir, TmpDir} {
+		if names, err := os.ReadDir(sp.path(area, "")); err != nil || len(names) != 0 {
+			t.Errorf("%s holds %v, err = %v; want nothing", area, names, err)
+		}
+	}
 	_ = second.Close()
 	if _, err := sp.Lock(QueueDir, e.ID); !errors.Is(err, ErrGone) {
 		t.Errorf("Lock() after Remove error = %v, want ErrGone", err)
