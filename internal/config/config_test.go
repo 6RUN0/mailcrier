@@ -517,7 +517,7 @@ func TestLoadRejects(t *testing.T) {
 		{
 			name: "no-targets",
 			doc:  "[general]\nsyslog_tag = \"x\"\n",
-			want: `: no targets configured`,
+			want: `: no targets configured: add a [target.<name>] table, see mailcrier(8)`,
 		},
 	}
 	for _, tc := range cases {

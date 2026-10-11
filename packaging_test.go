@@ -875,8 +875,8 @@ func TestPackageConfigExample(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err = config.Load(fstest.MapFS{"etc/mailcrier.conf": {Data: data}}, "etc/mailcrier.conf")
-		if err == nil || err.Error() != "/etc/mailcrier.conf: no targets configured" {
-			t.Errorf("Load = %v, want /etc/mailcrier.conf: no targets configured", err)
+		if err == nil || err.Error() != "/etc/mailcrier.conf: no targets configured: add a [target.<name>] table, see mailcrier(8)" {
+			t.Errorf("Load = %v, want /etc/mailcrier.conf: no targets configured: add a [target.<name>] table, see mailcrier(8)", err)
 		}
 		if code, stderr := checkExample(t, unfoldExample(data)); code != 0 || stderr != checkClean {
 			t.Errorf("--check-config of the unfolded file = %d, stderr\n%s", code, stderr)

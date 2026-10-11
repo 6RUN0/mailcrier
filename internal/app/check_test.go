@@ -256,7 +256,7 @@ func TestCheckConfigRoadmapItems(t *testing.T) {
 			line: "error: /etc/missing.conf: file does not exist"}},
 		{"unknown-key", checkConfigCase{doc: tg + "bogus = 1\n", want: 78, line: `/etc/mailcrier.conf:5:1: unknown key "target.tg.bogus"`}},
 		{"key-of-other-type", checkConfigCase{doc: tg + "channel = \"#x\"\n", want: 78, line: `/etc/mailcrier.conf:5:1: target "tg": key "channel" is not valid for type "telegram"`}},
-		{"no-targets", checkConfigCase{doc: "[general]\nsyslog_tag = \"x\"\n", want: 78, line: "/etc/mailcrier.conf: no targets configured"}},
+		{"no-targets", checkConfigCase{doc: "[general]\nsyslog_tag = \"x\"\n", want: 78, line: "/etc/mailcrier.conf: no targets configured: add a [target.<name>] table, see mailcrier(8)"}},
 		{"route-to-unknown-target", checkConfigCase{doc: tg + "[[route]]\ntargets = [\"nope\"]\n", want: 78,
 			line: `/etc/mailcrier.conf:6:1: route 1: element 1 of key "targets" is not a configured target`}},
 		{"glob-ends-in-backslash", checkConfigCase{doc: tg + "[[route]]\nsubject = \"x\\\\\"\ntargets = [\"tg\"]\n", want: 78, line: `/etc/mailcrier.conf:6:1: route 1: value of key "subject"`}},

@@ -597,7 +597,7 @@ func validate(cfg *Config, keys keyIndex) *Error {
 		}
 	}
 	if len(cfg.Targets) == 0 {
-		return &Error{Msg: "no targets configured"}
+		return &Error{Msg: "no targets configured: add a [target.<name>] table, see mailcrier(8)"}
 	}
 	for _, name := range cfg.TargetNames() {
 		if err := validateTarget(name, cfg.Targets[name], keys); err != nil {
