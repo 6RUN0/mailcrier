@@ -62,11 +62,12 @@ does not, the cron file runs the queue. The package scripts never run
 mailcrier and never touch the configuration.
 
 - Debian and Ubuntu: the package provides, conflicts with and replaces
-  `mail-transport-agent`, so installing it removes the MTA in place
+  `mail-transport-agent`, so `apt install` removes the MTA in place
   (postfix, exim4, msmtp-mta, ...), and removing mailcrier does not bring
-  that one back. The setgid bit is a `dpkg-statoverride` entry, which dpkg
-  applies to every later version; one the administrator set before is
-  kept.
+  that one back. `dpkg -i` removes nothing and refuses the package while
+  another MTA is installed: install it with `apt install ./<file>.deb`.
+  The setgid bit is a `dpkg-statoverride` entry, which dpkg applies to
+  every later version; one the administrator set before is kept.
 - RHEL, Rocky, Alma, Fedora: the links are the alternative `mta` with
   priority 100, above postfix (60) and sendmail (90), so mailcrier is
   the active one after install; `alternatives --config mta` chooses
