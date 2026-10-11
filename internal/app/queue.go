@@ -165,10 +165,8 @@ func (q *queue) deliverOwn(ctx context.Context, targets []delivery.Target, msg *
 		log.Debug("message queued ahead of delivery")
 	}
 	q.isOwnTaken = true
-	results, donePanic := q.send(hook.WithLog(ctx, log), targets, env, data, msg.Attachments, msg.Raw, rec)
-	for _, r := range results {
-		logResult(log, q.redactor, r, state == delivery.Queued)
-	}
+	results, saveErrs, donePanic := q.send(hook.WithLog(ctx, log), targets, env, data, msg.Attachments, msg.Raw, rec)
+	q.logResults(log, results, saveErrs, state == delivery.Queued)
 	if rec != nil {
 		q.finish(rec)
 	}
@@ -188,10 +186,13 @@ func (q *queue) deliverOwn(ctx context.Context, targets []delivery.Target, msg *
 // unrecorded are recorded again here, each applied to the entry once. When
 // that panics too, the state cannot be written, and the entry moves to
 // failed/ at once rather than send its targets again on the next run.
-func (q *queue) send(ctx context.Context, targets []delivery.Target, env message.Envelope, data render.Data, files []message.Attachment, raw []byte, rec *spool.Record) (results []delivery.Result, donePanic *backend.PanicError) {
+// saveErrs holds, per target, the failure to write the entry after its
+// result, for logResults to log after the result itself.
+func (q *queue) send(ctx context.Context, targets []delivery.Target, env message.Envelope, data render.Data, files []message.Attachment, raw []byte, rec *spool.Record) (results []delivery.Result, saveErrs map[string]error, donePanic *backend.PanicError) {
 	// applied holds the targets whose result is in the entry; recorded
 	// those whose entry was written, or its write failure logged, after.
 	applied, recorded := map[string]bool{}, map[string]bool{}
+	saveErrs = map[string]error{}
 	record := func(r delivery.Result) {
 		q.mu.Lock()
 		defer q.mu.Unlock()
@@ -216,7 +217,7 @@ func (q *queue) send(ctx context.Context, targets []delivery.Target, env message
 		if err := rec.Save(); err != nil {
 			q.hasIOError = true
 			q.unsaved[rec.ID()] = true
-			q.log.Error("spool entry not updated", "id", rec.ID(), "target", r.TargetID, "err", err)
+			saveErrs[r.TargetID] = err
 			recorded[r.TargetID] = true
 			return
 		}
@@ -230,11 +231,11 @@ func (q *queue) send(ctx context.Context, targets []delivery.Target, env message
 		for _, r := range results {
 			record(r)
 		}
-		return results, nil
+		return results, saveErrs, nil
 	}
 	results, donePanic = delivery.DeliverEach(ctx, targets, data, files, raw, record)
 	if donePanic == nil || rec == nil {
-		return results, donePanic
+		return results, saveErrs, donePanic
 	}
 	for _, r := range results {
 		if recorded[r.TargetID] {
@@ -248,7 +249,18 @@ func (q *queue) send(ctx context.Context, targets []delivery.Target, env message
 			break
 		}
 	}
-	return results, donePanic
+	return results, saveErrs, donePanic
+}
+
+// logResults logs each result, followed by the failure in saveErrs to
+// write the entry after it, so that the record of a target comes first.
+func (q *queue) logResults(log *slog.Logger, results []delivery.Result, saveErrs map[string]error, isQueued bool) {
+	for _, r := range results {
+		logResult(log, q.redactor, r, isQueued)
+		if err := saveErrs[r.TargetID]; err != nil {
+			log.Error("spool entry not updated", "target", r.TargetID, "err", err)
+		}
+	}
 }
 
 // recordRecovering calls record with r and returns its panic, nil for
@@ -777,10 +789,8 @@ func (q *queue) deliverEntry(ctx context.Context, rec *spool.Record) bool {
 	data.Hostname, data.ReceivedAt, data.Strings = q.d.Hostname, e.ReceivedAt, q.notices
 	ctx, cancel := withDeadline(hook.WithLog(ctx, log), q.deadline)
 	defer cancel()
-	results, donePanic := q.send(ctx, due, e.Envelope, data, msg.Attachments, msg.Raw, rec)
-	for _, r := range results {
-		logResult(log, q.redactor, r, true)
-	}
+	results, saveErrs, donePanic := q.send(ctx, due, e.Envelope, data, msg.Attachments, msg.Raw, rec)
+	q.logResults(log, results, saveErrs, true)
 	if !e.IsPending() {
 		log.Info("queued message finished")
 	}

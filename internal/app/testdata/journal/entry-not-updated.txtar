@@ -1,0 +1,12 @@
+-- exit --
+0
+-- log --
+level=INFO msg="message received" msgid=<m1@example.org> size=43 recipients=0
+level=DEBUG msg="message queued ahead of delivery" msgid=<m1@example.org> id=<id>
+level=WARN msg="target failed, retry queued" msgid=<m1@example.org> id=<id> target=a class=temp status=503 err=unavailable
+level=ERROR msg="spool entry not updated" msgid=<m1@example.org> id=<id> target=a err="open <spool>/tmp/<id>.next.json: is a directory"
+level=DEBUG msg="target delivered" msgid=<m1@example.org> id=<id> target=b
+level=ERROR msg="spool entry not updated" msgid=<m1@example.org> id=<id> target=b err="open <spool>/tmp/<id>.next.json: is a directory"
+level=WARN msg="message queued for target" msgid=<m1@example.org> id=<id> target=a
+level=DEBUG msg="spool entry skipped, state not recorded" id=<id>
+-- stderr --

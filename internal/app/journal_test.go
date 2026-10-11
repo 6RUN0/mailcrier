@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -13,6 +14,8 @@ import (
 
 	"github.com/6RUN0/mailcrier/internal/delivery"
 	"github.com/6RUN0/mailcrier/internal/golden"
+	"github.com/6RUN0/mailcrier/internal/message"
+	"github.com/6RUN0/mailcrier/internal/render"
 	"github.com/6RUN0/mailcrier/internal/spool"
 )
 
@@ -68,6 +71,20 @@ func TestJournalGolden(t *testing.T) {
 			c.clock.advance(time.Hour)
 			c.service.reply("a", delivery.Temp)
 			return c.queueRun(rootCaller)
+		}},
+		{"entry-not-updated", func(c *spoolCase) (int, *invocation) {
+			c.service.reply("a", delivery.Temp)
+			inv := c.invocation(elevatedUser, nil)
+			inv.stdin = strings.NewReader("Message-ID: <m1@example.org>\nSubject: s\n\nb\n")
+			inv.deliver = func(ctx context.Context, targets []delivery.Target, env message.Envelope, d render.Data, files []message.Attachment) []delivery.Result {
+				// A directory where Save writes the new sidecar fails it.
+				next := filepath.Join(c.dir, spool.TmpDir, c.ids(spool.QueueDir)[0]+".next.json")
+				if err := os.MkdirAll(filepath.Join(next, "keep"), 0o700); err != nil {
+					c.t.Fatal(err)
+				}
+				return c.service.deliver(ctx, targets, env, d, files)
+			}
+			return inv.run(c.t), inv
 		}},
 		{"check-config-without-syslog", func(c *spoolCase) (int, *invocation) {
 			inv := &invocation{config: twoTargets + "[[route]]\nsubject = \"*\"\ntargets = [\"a\"]\n", args: []string{"--check-config"}, creds: plainUser,
