@@ -84,9 +84,9 @@ SMOKE_TESTS := TestSmokeSetgid TestSmokeRuntime TestSmokeLifecycle TestSmokeUpgr
 # The upgrade tests install the packages of this release first, on /previous;
 # smoke-previous fetches them on the host, the containers have no network.
 # TestSmokePrevious keeps it the newest release, docs/releasing.md bumps it.
-SMOKE_PREVIOUS := v0.1.0-rc4
+SMOKE_PREVIOUS := v0.1.0-rc5
 # sha256 of checksums.txt of that release
-SMOKE_PREVIOUS_SUMS := 11002cca93750122d5ec710c8362b0bb56ba8ad56cf44c945bc511bed53df353
+SMOKE_PREVIOUS_SUMS := 3d34b0d436ddc5e79d9592a1a91b6007767b2920d771a1f40912777038e464f5
 SMOKE_PREVIOUS_DIR := $(E2E_DIR)/previous/$(SMOKE_PREVIOUS)-$(SMOKE_PREVIOUS_SUMS)
 SMOKE_PREVIOUS_URL := https://github.com/6RUN0/mailcrier/releases/download/$(SMOKE_PREVIOUS)
 SMOKE_PREVIOUS_FILES := $(foreach format,deb rpm apk,mailcrier_$(SMOKE_PREVIOUS:v%=%)_linux_amd64.$(format))
