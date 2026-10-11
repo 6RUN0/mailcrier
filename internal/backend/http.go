@@ -55,7 +55,9 @@ func RequestError(client *http.Client, req *http.Request, err error) *Error {
 // tells its timeout only by the text "Client.Timeout", while reading the
 // body as "Client.Timeout or context cancellation": every context of a
 // delivery ends with a cause, so the latter is the timeout too. A dial
-// timeout of the transport has another text.
+// timeout of the transport has another text. No error type tells
+// Client.Timeout from the TLS and dial timeouts, so the text it is, and
+// TestSendTransportErrors of telegram fails when a Go release changes it.
 func limitOf(ctx context.Context, timeout time.Duration, err error) error {
 	if ctx.Err() != nil {
 		if cause := context.Cause(ctx); cause != ctx.Err() {

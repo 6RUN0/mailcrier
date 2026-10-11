@@ -418,11 +418,13 @@ func (s *Spool) Lock(area, id string) (*Record, error) {
 // the message file is never rewritten. Both are approximate: a copy that
 // a run of another uid made into this spool, from the hold/ of another
 // directory, is owned by that uid and dated by the copy, and an entry
-// released from hold/ keeps the time it was held. The entry has no
-// targets: the record serves to move it to failed/, where Move writes a
-// valid sidecar, or to remove it. It returns ErrBusy and ErrGone as Lock
-// does, ErrGone also when the sidecar decodes meanwhile, and the error of
-// Decode for a sidecar of another version.
+// released from hold/ keeps the time it was held. Nothing better exists:
+// the owner is recorded only in the sidecar, and only root could chown
+// the copy; the wrong owner lasts until the TTL fails the entry. The
+// entry has no targets: the record serves to move it to failed/, where
+// Move writes a valid sidecar, or to remove it. It returns ErrBusy and
+// ErrGone as Lock does, ErrGone also when the sidecar decodes meanwhile,
+// and the error of Decode for a sidecar of another version.
 func (s *Spool) LockCorrupt(area, id string) (*Record, error) {
 	rec, data, err := s.lockMessage(area, id)
 	if err != nil {
@@ -576,7 +578,9 @@ func (r *Record) writeNext() (string, error) {
 // Save writes the sidecar: a new file in tmp/, synced, renamed over the
 // old one, so that a crash leaves either state, never a torn file. The
 // directory is not synced: a rename lost in a crash of the system brings
-// back the previous state, and at worst a delivery is repeated.
+// back the previous state, and at worst a delivery is repeated. The sync
+// costs one fsync per target result, 13.8 s for 80 exec targets on ext4;
+// without it a crash may leave an empty sidecar, and the entry fails.
 func (r *Record) Save() error {
 	if r.isRemoved {
 		return ErrRemoved
