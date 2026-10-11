@@ -15,7 +15,7 @@ _host1\.example\.org: alice@host1\.example\.org_
 ```
 -- slack-mrkdwn --
 *Output from your job 8*
-_host1.example.org: alice@host1.example.org_
+host1.example.org: _alice@host1.example.org_
 ```(empty body)```
 -- discord --
 **Output from your job 8**
@@ -28,6 +28,6 @@ _host1.example.org: alice@host1.example.org_
 -- mattermost --
 {"text": "#### Output from your job 8\n_host1.example.org: alice@host1.example.org_\n```\n(empty body)\n```"}
 -- slack-webhook --
-{"text": "*Output from your job 8*\n_host1.example.org: alice@host1.example.org_\n```(empty body)```"}
+{"text": "*Output from your job 8*\nhost1.example.org: _alice@host1.example.org_\n```(empty body)```"}
 -- generic-json --
 {"subject": "Output from your job 8", "body": "", "hostname": "host1.example.org"}

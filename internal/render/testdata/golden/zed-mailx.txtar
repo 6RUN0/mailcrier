@@ -18,7 +18,7 @@ acceptable levels. ZFS has marked the device as faulted.
 ```
 -- slack-mrkdwn --
 *ZFS device fault for pool tank on host1*
-_host1.example.org: alice@host1.example.org_
+host1.example.org: _alice@host1.example.org_
 ```The number of I/O errors associated with a ZFS device exceeded
 acceptable levels. ZFS has marked the device as faulted.```
 -- discord --
@@ -34,6 +34,6 @@ acceptable levels. ZFS has marked the device as faulted.
 -- mattermost --
 {"text": "#### ZFS device fault for pool tank on host1\n_host1.example.org: alice@host1.example.org_\n```\nThe number of I/O errors associated with a ZFS device exceeded\nacceptable levels. ZFS has marked the device as faulted.\n```"}
 -- slack-webhook --
-{"text": "*ZFS device fault for pool tank on host1*\n_host1.example.org: alice@host1.example.org_\n```The number of I/O errors associated with a ZFS device exceeded\nacceptable levels. ZFS has marked the device as faulted.```"}
+{"text": "*ZFS device fault for pool tank on host1*\nhost1.example.org: _alice@host1.example.org_\n```The number of I/O errors associated with a ZFS device exceeded\nacceptable levels. ZFS has marked the device as faulted.```"}
 -- generic-json --
 {"subject": "ZFS device fault for pool tank on host1", "body": "The number of I/O errors associated with a ZFS device exceeded\nacceptable levels. ZFS has marked the device as faulted.\n", "hostname": "host1.example.org"}

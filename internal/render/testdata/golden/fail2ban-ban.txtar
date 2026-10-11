@@ -36,7 +36,7 @@ Fail2Ban
 ```
 -- slack-mrkdwn --
 *[Fail2Ban] sshd: banned 192.0.2.10 from host1.example.org*
-_host1.example.org: Fail2Ban &lt;root@host1.example.org&gt;_
+host1.example.org: _Fail2Ban &lt;root@host1.example.org&gt;_
 ```Hi,
 
 The IP 192.0.2.10 has just been banned by Fail2Ban after
@@ -70,6 +70,6 @@ Fail2Ban
 -- mattermost --
 {"text": "#### \\[Fail2Ban\\] sshd: banned 192.0.2.10 from host1.example.org\n_host1.example.org: Fail2Ban \\<root@host1.example.org\\>_\n```\nHi,\n\nThe IP 192.0.2.10 has just been banned by Fail2Ban after\n5 attempts against sshd.\n\nRegards,\n\nFail2Ban\n```"}
 -- slack-webhook --
-{"text": "*[Fail2Ban] sshd: banned 192.0.2.10 from host1.example.org*\n_host1.example.org: Fail2Ban &lt;root@host1.example.org&gt;_\n```Hi,\n\nThe IP 192.0.2.10 has just been banned by Fail2Ban after\n5 attempts against sshd.\n\nRegards,\n\nFail2Ban```"}
+{"text": "*[Fail2Ban] sshd: banned 192.0.2.10 from host1.example.org*\nhost1.example.org: _Fail2Ban &lt;root@host1.example.org&gt;_\n```Hi,\n\nThe IP 192.0.2.10 has just been banned by Fail2Ban after\n5 attempts against sshd.\n\nRegards,\n\nFail2Ban```"}
 -- generic-json --
 {"subject": "[Fail2Ban] sshd: banned 192.0.2.10 from host1.example.org", "body": "Hi,\n\nThe IP 192.0.2.10 has just been banned by Fail2Ban after\n5 attempts against sshd.\n\nRegards,\n\nFail2Ban\n", "hostname": "host1.example.org"}

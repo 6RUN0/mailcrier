@@ -15,7 +15,7 @@ build finished
 ```
 -- slack-mrkdwn --
 *Output from your job 7*
-_host1.example.org: alice@host1.example.org_
+host1.example.org: _alice@host1.example.org_
 ```build finished```
 -- discord --
 **Output from your job 7**
@@ -28,6 +28,6 @@ build finished
 -- mattermost --
 {"text": "#### Output from your job 7\n_host1.example.org: alice@host1.example.org_\n```\nbuild finished\n```"}
 -- slack-webhook --
-{"text": "*Output from your job 7*\n_host1.example.org: alice@host1.example.org_\n```build finished```"}
+{"text": "*Output from your job 7*\nhost1.example.org: _alice@host1.example.org_\n```build finished```"}
 -- generic-json --
 {"subject": "Output from your job 7", "body": "build finished\n", "hostname": "host1.example.org"}

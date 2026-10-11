@@ -15,7 +15,7 @@ Sat Sep 27 10:00:00 UTC 2026
 ```
 -- slack-mrkdwn --
 *Cron &lt;root@host1&gt; date*
-_host1.example.org: Cron Daemon &lt;root&gt;_
+host1.example.org: _Cron Daemon &lt;root&gt;_
 ```Sat Sep 27 10:00:00 UTC 2026```
 -- discord --
 **Cron <root@host1> date**
@@ -28,6 +28,6 @@ Sat Sep 27 10:00:00 UTC 2026
 -- mattermost --
 {"text": "#### Cron \\<root@host1\\> date\n_host1.example.org: Cron Daemon \\<root\\>_\n```\nSat Sep 27 10:00:00 UTC 2026\n```"}
 -- slack-webhook --
-{"text": "*Cron &lt;root@host1&gt; date*\n_host1.example.org: Cron Daemon &lt;root&gt;_\n```Sat Sep 27 10:00:00 UTC 2026```"}
+{"text": "*Cron &lt;root@host1&gt; date*\nhost1.example.org: _Cron Daemon &lt;root&gt;_\n```Sat Sep 27 10:00:00 UTC 2026```"}
 -- generic-json --
 {"subject": "Cron <root@host1> date", "body": "Sat Sep 27 10:00:00 UTC 2026\n", "hostname": "host1.example.org"}

@@ -15,7 +15,7 @@ _host1\.example\.org: alice@host1\.example\.org_
 ```
 -- slack-mrkdwn --
 */var/log/empty.log.1*
-_host1.example.org: alice@host1.example.org_
+host1.example.org: _alice@host1.example.org_
 ```(empty body)```
 -- discord --
 **/var/log/empty.log.1**
@@ -28,6 +28,6 @@ _host1.example.org: alice@host1.example.org_
 -- mattermost --
 {"text": "#### /var/log/empty.log.1\n_host1.example.org: alice@host1.example.org_\n```\n(empty body)\n```"}
 -- slack-webhook --
-{"text": "*/var/log/empty.log.1*\n_host1.example.org: alice@host1.example.org_\n```(empty body)```"}
+{"text": "*/var/log/empty.log.1*\nhost1.example.org: _alice@host1.example.org_\n```(empty body)```"}
 -- generic-json --
 {"subject": "/var/log/empty.log.1", "body": "", "hostname": "host1.example.org"}

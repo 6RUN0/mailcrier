@@ -18,7 +18,7 @@ backup: done in 12 s
 ```
 -- slack-mrkdwn --
 *Cron &lt;root@host1&gt; /usr/local/bin/backup.sh*
-_host1.example.org: (Cron Daemon) &lt;root&gt;_
+host1.example.org: _(Cron Daemon) &lt;root&gt;_
 ```backup: 3 files copied to /srv/backup
 backup: done in 12 s```
 -- discord --
@@ -34,6 +34,6 @@ backup: done in 12 s
 -- mattermost --
 {"text": "#### Cron \\<root@host1\\> /usr/local/bin/backup.sh\n_host1.example.org: (Cron Daemon) \\<root\\>_\n```\nbackup: 3 files copied to /srv/backup\nbackup: done in 12 s\n```"}
 -- slack-webhook --
-{"text": "*Cron &lt;root@host1&gt; /usr/local/bin/backup.sh*\n_host1.example.org: (Cron Daemon) &lt;root&gt;_\n```backup: 3 files copied to /srv/backup\nbackup: done in 12 s```"}
+{"text": "*Cron &lt;root@host1&gt; /usr/local/bin/backup.sh*\nhost1.example.org: _(Cron Daemon) &lt;root&gt;_\n```backup: 3 files copied to /srv/backup\nbackup: done in 12 s```"}
 -- generic-json --
 {"subject": "Cron <root@host1> /usr/local/bin/backup.sh", "body": "backup: 3 files copied to /srv/backup\nbackup: done in 12 s\n", "hostname": "host1.example.org"}

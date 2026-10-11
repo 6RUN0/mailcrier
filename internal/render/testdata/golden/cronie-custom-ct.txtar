@@ -15,7 +15,7 @@ Report: details (https://example.org/r/1)
 ```
 -- slack-mrkdwn --
 *Cron &lt;root@host1&gt; /usr/local/bin/report*
-_host1.example.org: (Cron Daemon) &lt;root&gt;_
+host1.example.org: _(Cron Daemon) &lt;root&gt;_
 ```Report: details (https://example.org/r/1)```
 -- discord --
 **Cron <root@host1> /usr/local/bin/report**
@@ -28,6 +28,6 @@ Report: details (https://example.org/r/1)
 -- mattermost --
 {"text": "#### Cron \\<root@host1\\> /usr/local/bin/report\n_host1.example.org: (Cron Daemon) \\<root\\>_\n```\nReport: details (https://example.org/r/1)\n```"}
 -- slack-webhook --
-{"text": "*Cron &lt;root@host1&gt; /usr/local/bin/report*\n_host1.example.org: (Cron Daemon) &lt;root&gt;_\n```Report: details (https://example.org/r/1)```"}
+{"text": "*Cron &lt;root@host1&gt; /usr/local/bin/report*\nhost1.example.org: _(Cron Daemon) &lt;root&gt;_\n```Report: details (https://example.org/r/1)```"}
 -- generic-json --
 {"subject": "Cron <root@host1> /usr/local/bin/report", "body": "Report: details (https://example.org/r/1)\n", "hostname": "host1.example.org"}

@@ -36,7 +36,7 @@ ZFS has finished a scrub:
 ```
 -- slack-mrkdwn --
 *ZFS scrub_finish event for tank on host1*
-_host1.example.org: alice@host1.example.org_
+host1.example.org: _alice@host1.example.org_
 ```ZFS has finished a scrub:
 
    eid: 42
@@ -70,6 +70,6 @@ ZFS has finished a scrub:
 -- mattermost --
 {"text": "#### ZFS scrub\\_finish event for tank on host1\n_host1.example.org: alice@host1.example.org_\n```\nZFS has finished a scrub:\n\n   eid: 42\n class: scrub_finish\n  host: host1\n  time: 2026-09-27 10:00:00+0000\n  pool: tank\n state: ONLINE\n```"}
 -- slack-webhook --
-{"text": "*ZFS scrub_finish event for tank on host1*\n_host1.example.org: alice@host1.example.org_\n```ZFS has finished a scrub:\n\n   eid: 42\n class: scrub_finish\n  host: host1\n  time: 2026-09-27 10:00:00+0000\n  pool: tank\n state: ONLINE```"}
+{"text": "*ZFS scrub_finish event for tank on host1*\nhost1.example.org: _alice@host1.example.org_\n```ZFS has finished a scrub:\n\n   eid: 42\n class: scrub_finish\n  host: host1\n  time: 2026-09-27 10:00:00+0000\n  pool: tank\n state: ONLINE```"}
 -- generic-json --
 {"subject": "ZFS scrub_finish event for tank on host1", "body": "ZFS has finished a scrub:\n\n   eid: 42\n class: scrub_finish\n  host: host1\n  time: 2026-09-27 10:00:00+0000\n  pool: tank\n state: ONLINE\n", "hostname": "host1.example.org"}

@@ -15,7 +15,7 @@ sync: connection refused
 ```
 -- slack-mrkdwn --
 *Cron &lt;root@host1&gt; /usr/local/bin/sync (failed)*
-_host1.example.org: Cron Daemon &lt;root&gt;_
+host1.example.org: _Cron Daemon &lt;root&gt;_
 ```sync: connection refused```
 -- discord --
 **Cron <root@host1> /usr/local/bin/sync (failed)**
@@ -28,6 +28,6 @@ sync: connection refused
 -- mattermost --
 {"text": "#### Cron \\<root@host1\\> /usr/local/bin/sync (failed)\n_host1.example.org: Cron Daemon \\<root\\>_\n```\nsync: connection refused\n```"}
 -- slack-webhook --
-{"text": "*Cron &lt;root@host1&gt; /usr/local/bin/sync (failed)*\n_host1.example.org: Cron Daemon &lt;root&gt;_\n```sync: connection refused```"}
+{"text": "*Cron &lt;root@host1&gt; /usr/local/bin/sync (failed)*\nhost1.example.org: _Cron Daemon &lt;root&gt;_\n```sync: connection refused```"}
 -- generic-json --
 {"subject": "Cron <root@host1> /usr/local/bin/sync (failed)", "body": "sync: connection refused\n", "hostname": "host1.example.org"}

@@ -18,7 +18,7 @@ success -- /etc/backup.d/20.rdiff
 ```
 -- slack-mrkdwn --
 *backupninja: host1*
-_host1.example.org: alice@host1.example.org_
+host1.example.org: _alice@host1.example.org_
 ```success -- /etc/backup.d/10.sys
 success -- /etc/backup.d/20.rdiff```
 -- discord --
@@ -34,6 +34,6 @@ success -- /etc/backup.d/20.rdiff
 -- mattermost --
 {"text": "#### backupninja: host1\n_host1.example.org: alice@host1.example.org_\n```\nsuccess -- /etc/backup.d/10.sys\nsuccess -- /etc/backup.d/20.rdiff\n```"}
 -- slack-webhook --
-{"text": "*backupninja: host1*\n_host1.example.org: alice@host1.example.org_\n```success -- /etc/backup.d/10.sys\nsuccess -- /etc/backup.d/20.rdiff```"}
+{"text": "*backupninja: host1*\nhost1.example.org: _alice@host1.example.org_\n```success -- /etc/backup.d/10.sys\nsuccess -- /etc/backup.d/20.rdiff```"}
 -- generic-json --
 {"subject": "backupninja: host1", "body": "success -- /etc/backup.d/10.sys\nsuccess -- /etc/backup.d/20.rdiff\n", "hostname": "host1.example.org"}

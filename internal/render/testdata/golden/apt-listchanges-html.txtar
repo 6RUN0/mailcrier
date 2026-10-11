@@ -18,7 +18,7 @@ example-tool (2.0-1)
 ```
 -- slack-mrkdwn --
 *apt-listchanges: Changelogs*
-_host1.example.org: alice@host1.example.org_
+host1.example.org: _alice@host1.example.org_
 ```example-tool (2.0-1)
   * Fix bug 1 (https://example.org/bugs/1).```
 -- discord --
@@ -34,6 +34,6 @@ example-tool (2.0-1)
 -- mattermost --
 {"text": "#### apt-listchanges: Changelogs\n_host1.example.org: alice@host1.example.org_\n```\nexample-tool (2.0-1)\n  * Fix bug 1 (https://example.org/bugs/1).\n```"}
 -- slack-webhook --
-{"text": "*apt-listchanges: Changelogs*\n_host1.example.org: alice@host1.example.org_\n```example-tool (2.0-1)\n  * Fix bug 1 (https://example.org/bugs/1).```"}
+{"text": "*apt-listchanges: Changelogs*\nhost1.example.org: _alice@host1.example.org_\n```example-tool (2.0-1)\n  * Fix bug 1 (https://example.org/bugs/1).```"}
 -- generic-json --
 {"subject": "apt-listchanges: Changelogs", "body": "example-tool (2.0-1)\n  * Fix bug 1 (https://example.org/bugs/1).\n", "hostname": "host1.example.org"}

@@ -15,7 +15,7 @@ check: load 4.2
 ```
 -- slack-mrkdwn --
 *cron: /etc/periodic/15min/check*
-_host1.example.org: alice@host1.example.org_
+host1.example.org: _alice@host1.example.org_
 ```check: load 4.2```
 -- discord --
 **cron: /etc/periodic/15min/check**
@@ -28,6 +28,6 @@ check: load 4.2
 -- mattermost --
 {"text": "#### cron: /etc/periodic/15min/check\n_host1.example.org: alice@host1.example.org_\n```\ncheck: load 4.2\n```"}
 -- slack-webhook --
-{"text": "*cron: /etc/periodic/15min/check*\n_host1.example.org: alice@host1.example.org_\n```check: load 4.2```"}
+{"text": "*cron: /etc/periodic/15min/check*\nhost1.example.org: _alice@host1.example.org_\n```check: load 4.2```"}
 -- generic-json --
 {"subject": "cron: /etc/periodic/15min/check", "body": "check: load 4.2\n", "hostname": "host1.example.org"}

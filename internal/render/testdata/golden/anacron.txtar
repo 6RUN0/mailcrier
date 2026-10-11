@@ -18,7 +18,7 @@ mandb: can't update index cache
 ```
 -- slack-mrkdwn --
 *Anacron job 'cron.daily' on host1*
-_host1.example.org: Anacron &lt;root&gt;_
+host1.example.org: _Anacron &lt;root&gt;_
 ```/etc/cron.daily/man-db:
 mandb: can't update index cache```
 -- discord --
@@ -34,6 +34,6 @@ mandb: can't update index cache
 -- mattermost --
 {"text": "#### Anacron job 'cron.daily' on host1\n_host1.example.org: Anacron \\<root\\>_\n```\n/etc/cron.daily/man-db:\nmandb: can't update index cache\n```"}
 -- slack-webhook --
-{"text": "*Anacron job 'cron.daily' on host1*\n_host1.example.org: Anacron &lt;root&gt;_\n```/etc/cron.daily/man-db:\nmandb: can't update index cache```"}
+{"text": "*Anacron job 'cron.daily' on host1*\nhost1.example.org: _Anacron &lt;root&gt;_\n```/etc/cron.daily/man-db:\nmandb: can't update index cache```"}
 -- generic-json --
 {"subject": "Anacron job 'cron.daily' on host1", "body": "/etc/cron.daily/man-db:\nmandb: can't update index cache\n", "hostname": "host1.example.org"}

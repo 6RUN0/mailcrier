@@ -21,7 +21,7 @@ example-tool (2.0-1) unstable; urgency=medium
 ```
 -- slack-mrkdwn --
 *apt-listchanges: news for host1*
-_host1.example.org: alice@host1.example.org_
+host1.example.org: _alice@host1.example.org_
 ```example-tool (2.0-1) unstable; urgency=medium
 
   * The configuration moved to /etc/example-tool.d.```
@@ -40,6 +40,6 @@ example-tool (2.0-1) unstable; urgency=medium
 -- mattermost --
 {"text": "#### apt-listchanges: news for host1\n_host1.example.org: alice@host1.example.org_\n```\nexample-tool (2.0-1) unstable; urgency=medium\n\n  * The configuration moved to /etc/example-tool.d.\n```"}
 -- slack-webhook --
-{"text": "*apt-listchanges: news for host1*\n_host1.example.org: alice@host1.example.org_\n```example-tool (2.0-1) unstable; urgency=medium\n\n  * The configuration moved to /etc/example-tool.d.```"}
+{"text": "*apt-listchanges: news for host1*\nhost1.example.org: _alice@host1.example.org_\n```example-tool (2.0-1) unstable; urgency=medium\n\n  * The configuration moved to /etc/example-tool.d.```"}
 -- generic-json --
 {"subject": "apt-listchanges: news for host1", "body": "example-tool (2.0-1) unstable; urgency=medium\n\n  * The configuration moved to /etc/example-tool.d.\n", "hostname": "host1.example.org"}

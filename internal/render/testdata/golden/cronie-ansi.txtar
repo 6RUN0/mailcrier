@@ -18,7 +18,7 @@ _host1\.example\.org: \(Cron Daemon\) <alice\>_
 ```
 -- slack-mrkdwn --
 *Cron &lt;alice@host1&gt; df -h /home*
-_host1.example.org: (Cron Daemon) &lt;alice&gt;_
+host1.example.org: _(Cron Daemon) &lt;alice&gt;_
 ```Файловая система  Размер  Использовано
 /dev/sda2         50G     47G```
 -- discord --
@@ -34,6 +34,6 @@ _host1.example.org: (Cron Daemon) &lt;alice&gt;_
 -- mattermost --
 {"text": "#### Cron \\<alice@host1\\> df -h /home\n_host1.example.org: (Cron Daemon) \\<alice\\>_\n```\nФайловая система  Размер  Использовано\n/dev/sda2         50G     47G\n```"}
 -- slack-webhook --
-{"text": "*Cron &lt;alice@host1&gt; df -h /home*\n_host1.example.org: (Cron Daemon) &lt;alice&gt;_\n```Файловая система  Размер  Использовано\n/dev/sda2         50G     47G```"}
+{"text": "*Cron &lt;alice@host1&gt; df -h /home*\nhost1.example.org: _(Cron Daemon) &lt;alice&gt;_\n```Файловая система  Размер  Использовано\n/dev/sda2         50G     47G```"}
 -- generic-json --
 {"subject": "Cron <alice@host1> df -h /home", "body": "Файловая система  Размер  Использовано\n/dev/sda2         50G     47G\n", "hostname": "host1.example.org"}

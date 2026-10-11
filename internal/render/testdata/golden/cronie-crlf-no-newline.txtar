@@ -15,7 +15,7 @@ done
 ```
 -- slack-mrkdwn --
 *Cron &lt;root@host1&gt; printf done*
-_host1.example.org: (Cron Daemon) &lt;root&gt;_
+host1.example.org: _(Cron Daemon) &lt;root&gt;_
 ```done```
 -- discord --
 **Cron <root@host1> printf done**
@@ -28,6 +28,6 @@ done
 -- mattermost --
 {"text": "#### Cron \\<root@host1\\> printf done\n_host1.example.org: (Cron Daemon) \\<root\\>_\n```\ndone\n```"}
 -- slack-webhook --
-{"text": "*Cron &lt;root@host1&gt; printf done*\n_host1.example.org: (Cron Daemon) &lt;root&gt;_\n```done```"}
+{"text": "*Cron &lt;root@host1&gt; printf done*\nhost1.example.org: _(Cron Daemon) &lt;root&gt;_\n```done```"}
 -- generic-json --
 {"subject": "Cron <root@host1> printf done", "body": "done", "hostname": "host1.example.org"}

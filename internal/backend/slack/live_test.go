@@ -74,6 +74,9 @@ func TestLiveSlack(t *testing.T) {
 		if posted.TS != live.capture.ts {
 			t.Errorf("message with the marker has ts %q, chat.postMessage answered %q", posted.TS, live.capture.ts)
 		}
+		// Slack turns a host name with a dot into a link of itself, and
+		// would take an underscore next to it into the link as well.
+		want = strings.Replace(want, d.Hostname+": _", "<http://"+d.Hostname+"|"+d.Hostname+">: _", 1)
 		if strings.TrimSpace(posted.Text) != strings.TrimSpace(want) {
 			t.Errorf("stored text differs from the rendered text:\n got %q\nwant %q", posted.Text, want)
 		}

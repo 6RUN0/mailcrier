@@ -15,7 +15,7 @@ all green
 ```
 -- slack-mrkdwn --
 *nightly report*
-_host1.example.org: alice@example.org_
+host1.example.org: _alice@example.org_
 ```all green```
 -- discord --
 **nightly report**
@@ -28,6 +28,6 @@ all green
 -- mattermost --
 {"text": "#### nightly report\n_host1.example.org: alice@example.org_\n```\nall green\n```"}
 -- slack-webhook --
-{"text": "*nightly report*\n_host1.example.org: alice@example.org_\n```all green```"}
+{"text": "*nightly report*\nhost1.example.org: _alice@example.org_\n```all green```"}
 -- generic-json --
 {"subject": "nightly report", "body": "all green\n", "hostname": "host1.example.org"}

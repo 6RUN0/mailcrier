@@ -15,7 +15,7 @@ _host1\.example\.org: Cron Daemon <root\>_
 ```
 -- slack-mrkdwn --
 *Cron &lt;root@host1&gt; test -x /usr/sbin/anacron || run-parts /etc/cron.daily*
-_host1.example.org: Cron Daemon &lt;root&gt;_
+host1.example.org: _Cron Daemon &lt;root&gt;_
 ```/etc/cron.daily/logrotate: überprüft, 12 Dateien rotiert, eine sehr lange Zeile die weicht umgebrochen wird```
 -- discord --
 **Cron <root@host1> test -x /usr/sbin/anacron \|\| run-parts /etc/cron.daily**
@@ -28,6 +28,6 @@ _host1.example.org: Cron Daemon &lt;root&gt;_
 -- mattermost --
 {"text": "#### Cron \\<root@host1\\> test -x /usr/sbin/anacron \\|\\| run-parts /etc/cron.daily\n_host1.example.org: Cron Daemon \\<root\\>_\n```\n/etc/cron.daily/logrotate: überprüft, 12 Dateien rotiert, eine sehr lange Zeile die weicht umgebrochen wird\n```"}
 -- slack-webhook --
-{"text": "*Cron &lt;root@host1&gt; test -x /usr/sbin/anacron || run-parts /etc/cron.daily*\n_host1.example.org: Cron Daemon &lt;root&gt;_\n```/etc/cron.daily/logrotate: überprüft, 12 Dateien rotiert, eine sehr lange Zeile die weicht umgebrochen wird```"}
+{"text": "*Cron &lt;root@host1&gt; test -x /usr/sbin/anacron || run-parts /etc/cron.daily*\nhost1.example.org: _Cron Daemon &lt;root&gt;_\n```/etc/cron.daily/logrotate: überprüft, 12 Dateien rotiert, eine sehr lange Zeile die weicht umgebrochen wird```"}
 -- generic-json --
 {"subject": "Cron <root@host1> test -x /usr/sbin/anacron || run-parts /etc/cron.daily", "body": "/etc/cron.daily/logrotate: überprüft, 12 Dateien rotiert, eine sehr lange Zeile die weicht umgebrochen wird\n", "hostname": "host1.example.org"}

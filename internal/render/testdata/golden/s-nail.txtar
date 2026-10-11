@@ -15,7 +15,7 @@ hello
 ```
 -- slack-mrkdwn --
 *s-nail test*
-_host1.example.org: alice@host1.example.org_
+host1.example.org: _alice@host1.example.org_
 ```hello```
 -- discord --
 **s-nail test**
@@ -28,6 +28,6 @@ hello
 -- mattermost --
 {"text": "#### s-nail test\n_host1.example.org: alice@host1.example.org_\n```\nhello\n```"}
 -- slack-webhook --
-{"text": "*s-nail test*\n_host1.example.org: alice@host1.example.org_\n```hello```"}
+{"text": "*s-nail test*\nhost1.example.org: _alice@host1.example.org_\n```hello```"}
 -- generic-json --
 {"subject": "s-nail test", "body": "hello\n", "hostname": "host1.example.org"}
