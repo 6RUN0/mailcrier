@@ -399,7 +399,14 @@ func readDuration(t *testing.T, input string) time.Duration {
 // in a hundred over the limit on a loaded machine, so an exceeded limit
 // is measured again, up to three times: a quadratic step exceeds it every
 // time.
+//
+// Under the race detector the reads measure mostly the detector: the test
+// took 21 s of the 23 s of the package, most of it in the inputs of the
+// allocations. make cover runs the test without it, in make check.
 func TestReadIsLinear(t *testing.T) {
+	if isRaceBuild {
+		t.Skip("timing and allocations of the race detector; make cover runs this test")
+	}
 	cases := []struct {
 		name  string
 		input func(n int) string
