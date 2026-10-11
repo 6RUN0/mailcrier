@@ -222,6 +222,9 @@ func expectedContents() map[[2]string]packageEntry {
 	for _, name := range configExamples {
 		contents[[2]string{"/usr/share/doc/mailcrier/examples/" + name, ""}] = packageEntry{"", "root", "root", 0o644}
 	}
+	for _, name := range userGuides {
+		contents[[2]string{"/usr/share/doc/mailcrier/" + name, ""}] = packageEntry{"", "root", "root", 0o644}
+	}
 	return contents
 }
 
@@ -736,6 +739,41 @@ func TestPackageScripts(t *testing.T) {
 // configExamples are the files of packaging/examples, installed in
 // /usr/share/doc/mailcrier/examples.
 var configExamples = []string{"mailcrier.conf", "telegram.conf", "team-chat.conf", "ntfy.conf", "webhook.conf", "hook.conf", "routes.conf", "templates.conf", "container.conf"}
+
+// userGuides are the pages of the user documentation, installed in
+// /usr/share/doc/mailcrier with the layout of the repository, so that
+// their relative links between each other resolve there.
+var userGuides = []string{
+	"README.md",
+	"docs/checking.md", "docs/cli.md", "docs/configuration.md", "docs/containers.md",
+	"docs/install.md", "docs/logging.md", "docs/long-messages.md", "docs/privileges.md",
+	"docs/routing.md", "docs/selinux.md", "docs/spool.md", "docs/targets.md",
+	"docs/targets/discord.md", "docs/targets/exec.md", "docs/targets/http.md",
+	"docs/targets/ntfy.md", "docs/targets/shoutrrr.md", "docs/targets/slack.md",
+	"docs/targets/telegram.md", "docs/templates.md",
+}
+
+// TestUserGuidesInstalled fails when a page of docs is missing from
+// userGuides, and so from the packages, which TestPackageContents checks
+// against that list. releasing.md is for the maintainer and stays out.
+func TestUserGuidesInstalled(t *testing.T) {
+	pages := []string{"README.md"}
+	err := filepath.WalkDir("docs", func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !entry.IsDir() && strings.HasSuffix(path, ".md") && path != "docs/releasing.md" {
+			pages = append(pages, filepath.ToSlash(path))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(slices.Sorted(slices.Values(pages)), slices.Sorted(slices.Values(userGuides))) {
+		t.Errorf("docs holds %v, userGuides lists %v", pages, userGuides)
+	}
+}
 
 // exampleFiles are the secret files, the template file and the hook the
 // examples name, as --check-config reads them.

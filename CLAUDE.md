@@ -371,7 +371,9 @@ with "build constraints exclude all Go files".
   carry case IDs calls `t.Run("<ID>/<slug>", row.check)` per row, because
   `TestIDsCovered` reads only literals in the `Run` call.
 - The user documentation is `README.md` (the index) and the
-  pages under `docs/` (`releasing.md` is for the maintainer).
+  pages under `docs/` (`releasing.md` is for the maintainer); the packages
+  install them, so a new page goes into `userGuides` (`packaging_test.go`)
+  and into `contents` of `.goreleaser.yaml` (`TestUserGuidesInstalled`).
   `TestDocExamplesLoad` loads every TOML block of them with `config.Load`;
   `TestDocTemplatesParse` builds every block that sets a template;
   `TestDocCheckConfigOutput` runs `--check-config` on the first TOML block

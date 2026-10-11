@@ -32,6 +32,7 @@ apk add --allow-untrusted ./mailcrier_<version>_linux_amd64.apk
 | `mailcrier-queue.timer` and `.service`, `/etc/cron.d/mailcrier` | queue run, deb and rpm |
 | `/etc/crontabs/mailcrier` | queue run, apk |
 | `/usr/share/doc/mailcrier/examples/` | example configurations, see [Configuration](configuration.md#examples) |
+| `/usr/share/doc/mailcrier/README.md` and `docs/` | these pages; their links to `packaging/examples` do not resolve there, the examples are in `examples/` beside them |
 | `/usr/share/selinux/packages/mailcrier/mailcrier.cil` | SELinux module, rpm, see [SELinux](selinux.md) |
 
 The install creates the system group and user `mailcrier` (home

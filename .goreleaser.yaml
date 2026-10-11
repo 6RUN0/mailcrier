@@ -306,6 +306,90 @@ nfpms:
         src: packaging/examples/container.conf
         file_info:
           mode: 0o644
+      - dst: /usr/share/doc/mailcrier/README.md
+        src: README.md
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/mailcrier/docs/checking.md
+        src: docs/checking.md
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/mailcrier/docs/cli.md
+        src: docs/cli.md
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/mailcrier/docs/configuration.md
+        src: docs/configuration.md
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/mailcrier/docs/containers.md
+        src: docs/containers.md
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/mailcrier/docs/install.md
+        src: docs/install.md
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/mailcrier/docs/logging.md
+        src: docs/logging.md
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/mailcrier/docs/long-messages.md
+        src: docs/long-messages.md
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/mailcrier/docs/privileges.md
+        src: docs/privileges.md
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/mailcrier/docs/routing.md
+        src: docs/routing.md
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/mailcrier/docs/selinux.md
+        src: docs/selinux.md
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/mailcrier/docs/spool.md
+        src: docs/spool.md
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/mailcrier/docs/targets/discord.md
+        src: docs/targets/discord.md
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/mailcrier/docs/targets/exec.md
+        src: docs/targets/exec.md
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/mailcrier/docs/targets/http.md
+        src: docs/targets/http.md
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/mailcrier/docs/targets.md
+        src: docs/targets.md
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/mailcrier/docs/targets/ntfy.md
+        src: docs/targets/ntfy.md
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/mailcrier/docs/targets/shoutrrr.md
+        src: docs/targets/shoutrrr.md
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/mailcrier/docs/targets/slack.md
+        src: docs/targets/slack.md
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/mailcrier/docs/targets/telegram.md
+        src: docs/targets/telegram.md
+        file_info:
+          mode: 0o644
+      - dst: /usr/share/doc/mailcrier/docs/templates.md
+        src: docs/templates.md
+        file_info:
+          mode: 0o644
       - dst: /usr/share/doc/mailcrier/copyright
         src: LICENSE
         packager: deb
