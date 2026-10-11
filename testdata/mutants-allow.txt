@@ -48,7 +48,7 @@ internal/app/probe.go	ARITHMETIC_BASE	31	text = "/" + configPath + ": " + text	b
 internal/app/queue.go	ARITHMETIC_BASE	28	if counts.queued+counts.held+counts.failed == 0 {	baseline 2026-10-11, not triaged
 internal/app/queue.go	CONDITIONALS_BOUNDARY	16	if limits.owner < 0 {	baseline 2026-10-11, not triaged
 internal/app/queue.go	CONDITIONALS_BOUNDARY	31	if now.Sub(rec.Entry.FailedAt) > q.settings.FailedTTL.Duration {	baseline 2026-10-11, not triaged
-internal/app/queue.go	CONDITIONALS_BOUNDARY	34	if area != spool.FailedDir && age > counts.oldest {	baseline 2026-10-11, not triaged
+internal/app/queue.go	CONDITIONALS_BOUNDARY	34	if area != spool.FailedDir && age > c.oldest {	baseline 2026-10-11, not triaged
 internal/app/queue.go	CONDITIONALS_BOUNDARY	48	return ctx.Err() != nil || q.d.Now().Sub(start) >= limits.budget ||	baseline 2026-10-11, not triaged
 internal/app/queue.go	CONDITIONALS_BOUNDARY	54	if pending := pendingTargets(rec.Entry); len(pending) > 0 {	baseline 2026-10-11, not triaged
 internal/app/queue.go	CONDITIONALS_BOUNDARY	66	if delay := retryAfter(r.Err); r.Status == delivery.Temp && delay > 0 {	baseline 2026-10-11, not triaged
