@@ -47,7 +47,7 @@ func TestEscapeTelegramMarkdownV2(t *testing.T) {
 
 func TestEscapeTelegramHTML(t *testing.T) {
 	t.Run("T-ESC-05/entities", func(t *testing.T) {
-		if got := EscapeTelegramHTML(`<b>a & "b"</b>`); got != `&lt;b&gt;a &amp; "b"&lt;/b&gt;` {
+		if got := EscapeTelegramHTML(`<b>a & "b"</b>`); got != `&lt;b&gt;a &amp; &quot;b&quot;&lt;/b&gt;` {
 			t.Errorf("got %q", got)
 		}
 	})
@@ -221,13 +221,13 @@ func FuzzEscapeTelegram(f *testing.F) {
 	for _, seed := range []string{"a_b*c", "<b>&amp;</b>", `\`, "😀.-!", "&#39;"} {
 		f.Add(seed)
 	}
-	htmlUnescaper := strings.NewReplacer("&lt;", "<", "&gt;", ">", "&amp;", "&")
+	htmlUnescaper := strings.NewReplacer("&lt;", "<", "&gt;", ">", "&quot;", `"`, "&amp;", "&")
 	f.Fuzz(func(t *testing.T, s string) {
 		if !utf8.ValidString(s) {
 			return
 		}
 		escapedHTML := EscapeTelegramHTML(s)
-		if strings.ContainsAny(escapedHTML, "<>") || htmlUnescaper.Replace(escapedHTML) != s {
+		if strings.ContainsAny(escapedHTML, `<>"`) || htmlUnescaper.Replace(escapedHTML) != s {
 			t.Errorf("EscapeTelegramHTML(%q) = %q", s, escapedHTML)
 		}
 		if got, want := MeasureTelegramHTML(escapedHTML), RuneCount(s); got != want {

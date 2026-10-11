@@ -7,7 +7,7 @@ x cron-daily-backup.service - [Cron] "/etc/cron.daily/backup"
 -- telegram-html --
 <b>[host1] Failure: /etc/cron.daily/backup</b>
 <i>host1.example.org: systemd-cron &lt;root&gt;</i>
-<pre>x cron-daily-backup.service - [Cron] "/etc/cron.daily/backup"
+<pre>x cron-daily-backup.service - [Cron] &quot;/etc/cron.daily/backup&quot;
      Active: failed (Result: exit-code)</pre>
 -- telegram-markdownv2 --
 *\[host1\] Failure: /etc/cron\.daily/backup*

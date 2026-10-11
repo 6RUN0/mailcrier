@@ -34,12 +34,13 @@ const (
 const zeroWidthSpace = "\u200b"
 
 var (
-	telegramHTMLReplacer = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;")
+	telegramHTMLReplacer = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;")
 	slackReplacer        = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;")
 )
 
-// EscapeTelegramHTML escapes s for parse_mode HTML: &, < and > become the
-// entities Telegram knows.
+// EscapeTelegramHTML escapes s for parse_mode HTML: &, <, > and " become
+// the entities Telegram knows, so the value is also safe inside a quoted
+// attribute of a template, such as href.
 func EscapeTelegramHTML(s string) string {
 	return telegramHTMLReplacer.Replace(s)
 }
