@@ -519,6 +519,17 @@ func (s *Spool) Peek(area, id string) (*Entry, error) {
 	return decodeSidecar(data, id)
 }
 
+// MessageTime returns the modification time of the message file of id in
+// area: when the entry was written, as LockCorrupt dates it, for an entry
+// whose sidecar cannot be read.
+func (s *Spool) MessageTime(area, id string) (time.Time, error) {
+	info, err := os.Lstat(s.path(area, id+messageSuffix))
+	if err != nil {
+		return time.Time{}, err
+	}
+	return info.ModTime(), nil
+}
+
 // Has reports whether area holds a message file of id.
 func (s *Spool) Has(area, id string) bool {
 	return s.exists(area, id+messageSuffix)

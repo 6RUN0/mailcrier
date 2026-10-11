@@ -2090,6 +2090,31 @@ func TestListQueueUnreadable(t *testing.T) {
 	}
 }
 
+// TestListQueueUnreadableAge pins that an entry whose sidecar cannot be
+// read counts for the oldest age by the time of its message file.
+func TestListQueueUnreadableAge(t *testing.T) {
+	t.Parallel()
+	c := newSpoolCase(t)
+	c.service.reply("a", delivery.Temp)
+	c.send("s", elevatedUser)
+	id := c.ids(spool.QueueDir)[0]
+	if err := os.WriteFile(filepath.Join(c.dir, spool.QueueDir, id+".json"), []byte("[]"), 0o660); err != nil {
+		t.Fatal(err)
+	}
+	written := c.clock.now().Add(-2 * time.Hour)
+	if err := os.Chtimes(filepath.Join(c.dir, spool.QueueDir, id+".eml"), written, written); err != nil {
+		t.Fatal(err)
+	}
+	code, inv := c.queueRun(serviceCaller, "--status")
+	if code != 0 || !strings.HasSuffix(inv.stdout.String(), " oldest_age_seconds=7200\n") {
+		t.Errorf("--status = %d, stdout %q", code, inv.stdout.String())
+	}
+	code, inv = c.queueRun(serviceCaller, "-bp")
+	if code != 0 || !strings.HasPrefix(inv.stdout.String(), "1 queued, 0 held, 0 failed; oldest 2h0m0s\n") {
+		t.Errorf("-bp = %d, stdout %q", code, inv.stdout.String())
+	}
+}
+
 // TestQueueRunPanicSteps covers a panic on one entry in the steps of a
 // queue run other than delivery and release: the deletion from failed/
 // and the release from hold/ of the default directory. Each fails that

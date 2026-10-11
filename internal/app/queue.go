@@ -1018,6 +1018,14 @@ type queueCounts struct {
 	oldest                    time.Duration
 }
 
+// noteAge keeps age as the oldest when the entry of area waits for
+// delivery, which an entry of failed/ does not.
+func (c *queueCounts) noteAge(area string, age time.Duration) {
+	if area != spool.FailedDir && age > c.oldest {
+		c.oldest = age
+	}
+}
+
 // listQueue prints the spool: every entry with the state of its targets
 // for a privileged caller, the counts alone for anyone else, who must not
 // see the entries and errors of other users.
@@ -1086,6 +1094,11 @@ func (q *queue) scan(isDetailed bool) (queueCounts, []string, error) {
 		for _, id := range ids {
 			e, err := sp.Peek(area, id)
 			if err != nil {
+				// An unreadable entry waits as well: its message file
+				// dates it, as LockCorrupt does.
+				if created, err := sp.MessageTime(area, id); err == nil {
+					counts.noteAge(area, now.Sub(created).Truncate(time.Second))
+				}
 				// The cause, as a queue run logs it, tells what to do.
 				if isDetailed {
 					lines = append(lines, fmt.Sprintf("%s %s unreadable", id, area)+dirField(dir)+fmt.Sprintf(" err=%q", strings.ToValidUTF8(err.Error(), "")))
@@ -1093,9 +1106,7 @@ func (q *queue) scan(isDetailed bool) (queueCounts, []string, error) {
 				continue
 			}
 			age := now.Sub(e.CreatedAt).Truncate(time.Second)
-			if area != spool.FailedDir && age > counts.oldest {
-				counts.oldest = age
-			}
+			counts.noteAge(area, age)
 			if isDetailed {
 				entry := describeEntry(area, e, age)
 				entry[0] += dirField(dir)
