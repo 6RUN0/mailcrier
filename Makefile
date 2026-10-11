@@ -125,9 +125,15 @@ is-release-tag = case "$$TAG" in *[!0-9A-Za-z.-]*|'') false;; esac && echo "$$TA
 # to the jobs ci.yml runs on push.
 RELEASE_JOBS := make check,make snapshot,make smoke-debian,make smoke-rocky9,make smoke-rocky10,make smoke-alpine,make setgid-e2e,make units-verify
 
+# ci-local runs the jobs of RELEASE_JOBS on this machine: check and snapshot
+# first, then the jobs that test the packages of the snapshot, as needs:
+# orders them in ci.yml. vuln stays out, as it only warns in check.
+comma := ,
+CI_JOBS := $(filter-out make,$(subst $(comma), ,$(RELEASE_JOBS)))
+
 .DEFAULT_GOAL := help
 
-.PHONY: help check lint lint-go lint-yaml lint-actions lint-docs lint-symbols lint-man tidy test fuzz build licenses vuln check-refs check-commits snapshot release-prepare release-gate release release-guard setgid-e2e units-verify \
+.PHONY: help ci-local check lint lint-go lint-yaml lint-actions lint-docs lint-symbols lint-man tidy test fuzz build licenses vuln check-refs check-commits snapshot release-prepare release-gate release release-guard setgid-e2e units-verify \
 	smoke smoke-dist smoke-previous $(addprefix smoke-,$(SMOKE_DISTROS)) \
 	selinux-images $(addprefix selinux-,$(SELINUX_DISTROS)) $(addprefix selinux-image-,$(SELINUX_DISTROS)) FORCE
 
@@ -153,6 +159,10 @@ lint-symbols: ## no typographic characters in tracked and new files
 
 lint-man: ## mandoc lint of the manual page
 	$(MANDOC) -T lint -W warning docs/mailcrier.8
+
+ci-local: ## the jobs of ci.yml here, needs docker; make -j4 -O ci-local
+	$(MAKE) $(filter check snapshot,$(CI_JOBS))
+	$(MAKE) $(filter-out check snapshot,$(CI_JOBS))
 
 lint-go: ## golangci-lint, also under the build tags of the e2e tests
 	$(TOOL) golangci-lint run ./...

@@ -17,6 +17,8 @@ make smoke        # needs docker and dist/ of HEAD (make snapshot): packages
                   # the first run fetches SMOKE_PREVIOUS over the network
 make smoke-alpine # one of debian rocky9 rocky10 alpine
 make -j4 -O smoke # all distributions in parallel, 5-7 min with built images
+make -j4 -O ci-local  # the jobs of RELEASE_JOBS (ci.yml) here, needs docker:
+                      # check and snapshot, then setgid, units and smoke
 make -j2 selinux-rocky9 selinux-rocky10  # needs docker, /dev/kvm, network
                   # and dist/ of HEAD: docs/selinux.md, 15-20 min, 2 VMs x 2 GB
 go build -o mailcrier ./cmd/mailcrier   # the binary; the name is gitignored
