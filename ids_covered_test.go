@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -18,6 +19,7 @@ const testCasesPath = "testdata/test-cases.tsv"
 
 var (
 	testCaseID       = regexp.MustCompile(`^T-(ADJ|MTA|CALL|ESC|LIM|TPL|PKG)-\d{2}$`)
+	testCaseMention  = regexp.MustCompile(`\bT-(ADJ|MTA|CALL|ESC|LIM|TPL|PKG)-\d+\b`)
 	testCaseColumns  = []string{"id", "priority", "status", "behaviour", "source"}
 	testCasePriority = map[string]bool{"critical": true, "high": true, "low": true}
 	testCaseStatus   = map[string]bool{"todo": true, "done": true}
@@ -29,19 +31,21 @@ type testCase struct {
 
 // TestIDsCovered fails when a critical test case marked done in
 // testdata/test-cases.tsv has no subtest named "<ID>/<slug>", or when a
-// subtest names an ID the registry does not know. Subtest names are the
-// string literals starting the first argument of each Run call.
+// string literal of a test file names an ID the registry does not know.
+// Subtest names are the string literals starting the first argument of
+// each Run call; any other literal, such as a row of a table that feeds
+// Run, is checked against the registry only.
 func TestIDsCovered(t *testing.T) {
 	cases := readTestCases(t)
-	covered := collectRunIDs(t)
+	covered, mentioned := collectRunIDs(t)
 	for id, tc := range cases {
 		if tc.priority == "critical" && tc.status == "done" && !covered[id] {
 			t.Errorf("%s is critical and done but no t.Run(%q) exists", id, id+"/<slug>")
 		}
 	}
-	for id := range covered {
+	for id, file := range mentioned {
 		if _, ok := cases[id]; !ok {
-			t.Errorf("subtest names %s, which %s does not list", id, testCasesPath)
+			t.Errorf("%s names %s, which %s does not list", file, id, testCasesPath)
 		}
 	}
 }
@@ -90,10 +94,11 @@ func readTestCases(t *testing.T) map[string]testCase {
 }
 
 // collectRunIDs parses every test file of the module, including its own,
-// and returns the test case IDs that name subtests.
-func collectRunIDs(t *testing.T) map[string]bool {
+// and returns the test case IDs that name subtests, and every ID a string
+// literal names with the first file that names it.
+func collectRunIDs(t *testing.T) (covered map[string]bool, mentioned map[string]string) {
 	t.Helper()
-	ids := map[string]bool{}
+	covered, mentioned = map[string]bool{}, map[string]string{}
 	err := filepath.WalkDir(".", func(file string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -110,7 +115,12 @@ func collectRunIDs(t *testing.T) map[string]bool {
 		}
 		ast.Inspect(parsed, func(node ast.Node) bool {
 			if id, ok := runCaseID(node); ok {
-				ids[id] = true
+				covered[id] = true
+			}
+			for _, id := range literalCaseIDs(node) {
+				if _, ok := mentioned[id]; !ok {
+					mentioned[id] = file
+				}
 			}
 			return true
 		})
@@ -119,7 +129,40 @@ func collectRunIDs(t *testing.T) map[string]bool {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return ids
+	return covered, mentioned
+}
+
+// literalCaseIDs returns the test case IDs that node names when it is a
+// string literal.
+func literalCaseIDs(node ast.Node) []string {
+	literal, ok := node.(*ast.BasicLit)
+	if !ok || literal.Kind != token.STRING {
+		return nil
+	}
+	text, err := strconv.Unquote(literal.Value)
+	if err != nil {
+		return nil
+	}
+	return testCaseMention.FindAllString(text, -1)
+}
+
+// TestLiteralCaseIDs pins that an ID in a table row, outside any Run
+// call, reaches the registry check, a typo included.
+func TestLiteralCaseIDs(t *testing.T) {
+	// The IDs are spelled with @ for T-, so that this file names none.
+	src := strings.ReplaceAll("package p\nvar rows = []struct{ name string }{{\"@ADJ-06/strip\"}, {`@MTA-123 and @ESC-1`}, {\"X@ADJ-01\"}}\n", "@", "T-")
+	parsed, err := parser.ParseFile(token.NewFileSet(), "rows.go", src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	ast.Inspect(parsed, func(node ast.Node) bool {
+		got = append(got, literalCaseIDs(node)...)
+		return true
+	})
+	if want := strings.Fields(strings.ReplaceAll("@ADJ-06 @MTA-123 @ESC-1", "@", "T-")); !slices.Equal(got, want) {
+		t.Errorf("literalCaseIDs = %v, want %v", got, want)
+	}
 }
 
 // runCaseID returns the test case ID of a call X.Run("T-.../slug"...), where

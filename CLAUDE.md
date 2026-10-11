@@ -378,8 +378,8 @@ with "build constraints exclude all Go files".
   (`critical|high|low`), `status` (`todo|done`), `behaviour`, `source`. A
   subtest for a case is `t.Run("<ID>/<slug>", ...)` with the ID in a string
   literal; `TestIDsCovered` fails when a `critical` and `done` case has none,
-  and on a subtest naming an ID the registry lacks; IDs look like
-  `T-<ADJ|MTA|CALL|ESC|LIM|TPL|PKG>-<nn>`.
+  and on any string literal of a test file naming an ID the registry lacks;
+  IDs look like `T-<ADJ|MTA|CALL|ESC|LIM|TPL|PKG>-<nn>`.
 - Comments, docs and commit messages carry no references to plan stages or
   review and decision IDs; `scripts/check-refs` enforces it.
 - Golden files: `internal/golden`, one txtar per fixture, `-update` rewrites.
@@ -388,7 +388,8 @@ with "build constraints exclude all Go files".
   `example.com` only; `TestCallers` compares each with
   `internal/app/testdata/callers/<name>.txtar`. A table test whose rows
   carry case IDs calls `t.Run("<ID>/<slug>", row.check)` per row, because
-  `TestIDsCovered` reads only literals in the `Run` call.
+  `TestIDsCovered` counts a case covered only by a literal in the `Run`
+  call.
 - The user documentation is `README.md` (the index) and the
   pages under `docs/` (`releasing.md` is for the maintainer); the packages
   install them, so a new page goes into `userGuides` (`packaging_test.go`)
