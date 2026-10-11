@@ -97,6 +97,7 @@ func (b *fakeBot) run(t *testing.T, config, input string, args ...string) (int, 
 
 // TestDirectChats pins the recipients <chat>@telegram with telegram_direct.
 func TestDirectChats(t *testing.T) {
+	t.Parallel()
 	t.Run("T-ADJ-57/chat-without-topic", func(t *testing.T) {
 		bot := newFakeBot(t)
 		code, inv := bot.run(t, bot.directConfig(directGeneral, ""), "Subject: s\n\nb\n", "01234@telegram")
@@ -206,6 +207,7 @@ func (c *directSpoolCase) entry(area string) *spool.Entry {
 // TestDirectChatsQueued pins a direct chat in the spool: its name in the
 // sidecar, a retry with the configuration of the moment, and its removal.
 func TestDirectChatsQueued(t *testing.T) {
+	t.Parallel()
 	setup := func(t *testing.T) *directSpoolCase {
 		bot := newFakeBot(t)
 		c := &directSpoolCase{t: t, bot: bot, dir: t.TempDir(), clock: newClock(), config: bot.directConfig(directGeneral, "")}

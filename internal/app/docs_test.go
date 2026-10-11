@@ -35,6 +35,7 @@ func userDocs(t *testing.T) []string {
 // TestDocTemplatesParse builds the targets of the documentation examples
 // that carry a template, so that every example template parses.
 func TestDocTemplatesParse(t *testing.T) {
+	t.Parallel()
 	files := fstest.MapFS{"etc/mailcrier.d/telegram.token": {Data: []byte("123:abc\n")}, "etc/mailcrier.d/mm.url": {Data: []byte("https://mm.example.org/hooks/x\n")}}
 	found := 0
 	for _, path := range userDocs(t) {
@@ -69,6 +70,7 @@ var checkExample = regexp.MustCompile("(?s)```toml\n(.*?)```.*?```text\n(.*?)```
 // TestDocCheckConfigOutput runs --check-config on the example of
 // docs/checking.md and compares its stderr with the output shown there.
 func TestDocCheckConfigOutput(t *testing.T) {
+	t.Parallel()
 	doc, err := os.ReadFile("../../docs/checking.md")
 	if err != nil {
 		t.Fatal(err)

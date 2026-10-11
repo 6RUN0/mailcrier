@@ -69,6 +69,7 @@ func hookHelperArgs(t *testing.T, dir, script string) helperArgs {
 // any queued message. The FIFO held by the child reaches EOF only once it
 // is dead, so nothing waits for a time.
 func TestSpoolHookSignal(t *testing.T) {
+	// Serial: a forked child holds the fds of parallel tests until exec, keeping their flocks and sockets open.
 	fifo, events := openStartedFIFO(t)
 	dir := t.TempDir()
 	h := startHelper(t, helperSignals, hookHelperArgs(t, dir, "(printf started; exec sleep 1000) > "+fifo+" &\nwait\n"))
@@ -93,6 +94,7 @@ func TestSpoolHookSignal(t *testing.T) {
 // TestSpoolHookParentKilled pins that SIGKILL of mailcrier, which no
 // handler sees, still kills the hook itself through Pdeathsig.
 func TestSpoolHookParentKilled(t *testing.T) {
+	// Serial: a forked child holds the fds of parallel tests until exec, keeping their flocks and sockets open.
 	fifo, events := openStartedFIFO(t)
 	h := startHelper(t, helperSignals, hookHelperArgs(t, t.TempDir(), "exec 3> "+fifo+"\nprintf started >&3\nexec sleep 1000\n"))
 	if err := <-events; err != nil {
@@ -112,6 +114,7 @@ func TestSpoolHookParentKilled(t *testing.T) {
 // action and leaves nothing in the spool: signals are caught only once the
 // message is read.
 func TestSpoolSignalWhileTyping(t *testing.T) {
+	// Serial: a forked child holds the fds of parallel tests until exec, keeping their flocks and sockets open.
 	dir := t.TempDir()
 	args := hookHelperArgs(t, dir, "exit 0\n")
 	args.ReadStdin = true
@@ -164,6 +167,7 @@ func TestSpoolSignalWhileTyping(t *testing.T) {
 // a caught SIGHUP would cancel the call first and name itself as the
 // cause. The cause recorded is that of SIGTERM.
 func TestSpoolHookIgnoredHangup(t *testing.T) {
+	// Serial: a forked child holds the fds of parallel tests until exec, keeping their flocks and sockets open.
 	fifo, events := openStartedFIFO(t)
 	dir := t.TempDir()
 	args := hookHelperArgs(t, dir, "(printf started; exec sleep 1000) > "+fifo+" &\nwait\n")

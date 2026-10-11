@@ -14,6 +14,7 @@ const shoutrrrRejection = `target \"bus\": built without shoutrrr`
 // TestRunRejectsShoutrrrWithoutLibrary pins that a build without shoutrrr
 // rejects a valid shoutrrr target as a configuration error.
 func TestRunRejectsShoutrrrWithoutLibrary(t *testing.T) {
+	t.Parallel()
 	inv := &invocation{config: "[target.bus]\ntype = \"shoutrrr\"\nurl = \"generic://hooks.example.org/in\"\n", stdin: strings.NewReader("Subject: t\n\nb\n")}
 	if code := inv.run(t); code != 78 {
 		t.Fatalf("Run() = %d, want 78", code)

@@ -24,6 +24,7 @@ var logTime = regexp.MustCompile(`^time=\S+ `)
 // targets and compares exit status, envelope, subject, body and warnings with
 // testdata/callers/<name>.txtar.
 func TestCallers(t *testing.T) {
+	t.Parallel()
 	argvFiles, err := filepath.Glob(filepath.Join(callersDir, "*.argv"))
 	if err != nil {
 		t.Fatal(err)

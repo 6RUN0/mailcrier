@@ -46,6 +46,7 @@ func (c *spoolCase) isSpoolEmpty() bool {
 // nowhere, is not spooled, is logged with the number of the rule and
 // exits 0.
 func TestSuppress(t *testing.T) {
+	t.Parallel()
 	t.Run("T-ADJ-33/subject-glob-ignores-case", suppressCase{
 		rules: "[[suppress]]\nsubject = \"*ANACRON*\"\n", input: "Subject: Anacron job 'cron.daily' on host1\n\nb\n", rule: 1,
 	}.check)
@@ -108,6 +109,7 @@ func (tc suppressCase) check(t *testing.T) {
 // TestNoRoute pins a message whose rules select no target: held with the
 // reason, exit 64, and released once a rule selects a target.
 func TestNoRoute(t *testing.T) {
+	t.Parallel()
 	t.Run("no-route-held", func(t *testing.T) {
 		c := newSpoolCase(t)
 		c.config = routeRootToA
@@ -182,6 +184,7 @@ func TestNoRoute(t *testing.T) {
 // TestRunWithoutRecipientsRouted pins the no-recipient policy with
 // routes: a catch-all delivers, otherwise the message is held with 64.
 func TestRunWithoutRecipientsRouted(t *testing.T) {
+	t.Parallel()
 	t.Run("T-MTA-18/catch-all-delivers", noRecipientCase{nil, "Subject: t\n\nb\n", true}.check)
 	t.Run("T-MTA-18/no-catch-all-holds", noRecipientCase{nil, "Subject: t\n\nb\n", false}.check)
 	t.Run("T-MTA-19/catch-all-delivers", noRecipientCase{[]string{"-t"}, "Subject: t\n\nb\n", true}.check)
@@ -220,6 +223,7 @@ func (tc noRecipientCase) check(t *testing.T) {
 // rejected is routed when it is released, in this spool and from the
 // default one.
 func TestHeldRouted(t *testing.T) {
+	t.Parallel()
 	const rejected = "[target.a]\ntype = \"http\"\n"
 	t.Run("released-to-routed-targets", func(t *testing.T) {
 		c := newSpoolCase(t)
@@ -269,6 +273,7 @@ func TestHeldRouted(t *testing.T) {
 // TestReleaseOtherHoldRouted pins the three outcomes of the rules for an
 // entry held in the default directory.
 func TestReleaseOtherHoldRouted(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name, rules, input string
 		area, reason       string
@@ -317,6 +322,7 @@ func TestReleaseOtherHoldRouted(t *testing.T) {
 // released to every target without being read, so that one that cannot
 // be read leaves hold/ as it did before there were rules.
 func TestRouteHeldWithoutRules(t *testing.T) {
+	t.Parallel()
 	q := &queue{router: route.New(nil, nil), targets: map[string]delivery.Target{"b": {ID: "b"}, "a": {ID: "a"}}}
 	names, v, err := q.routeHeld(nil, &spool.Entry{}, func() ([]byte, error) { return nil, errors.New("unreadable") })
 	if err != nil || v != deliverTo || !slices.Equal(names, []string{"a", "b"}) {
@@ -327,6 +333,7 @@ func TestRouteHeldWithoutRules(t *testing.T) {
 // TestHeldUnreadable pins a held message that the spool cannot read while
 // rules need its subject: it stays in hold/ with an error, and -q exits 74.
 func TestHeldUnreadable(t *testing.T) {
+	t.Parallel()
 	c := newSpoolCase(t)
 	c.config = "[target.a]\ntype = \"http\"\n"
 	c.sendInput("To: root\nSubject: x\n\nb\n")
@@ -351,6 +358,7 @@ func TestHeldUnreadable(t *testing.T) {
 // whose copy a run killed before the removal already put into hold/ here
 // is only removed there, and the copy stays.
 func TestReleaseKeepsHeldCopy(t *testing.T) {
+	t.Parallel()
 	c := newSpoolCase(t)
 	own := t.TempDir()
 	c.config = "[spool]\ndir = \"" + own + "\"\n\n[target.a]\ntype = \"http\"\n"
@@ -391,6 +399,7 @@ func TestReleaseKeepsHeldCopy(t *testing.T) {
 // addresses come when the message is received, and a queue run that
 // routes the held message again logs them at debug.
 func TestDirectWarningsOnceForHeld(t *testing.T) {
+	t.Parallel()
 	c := newSpoolCase(t)
 	c.config = "[general]\ntelegram_direct = \"tg\"\ntelegram_direct_chats = [1234]\n\n" +
 		"[target.tg]\ntype = \"telegram\"\ntoken = \"1:a\"\nchat_id = 1\n\n" + twoTargets +

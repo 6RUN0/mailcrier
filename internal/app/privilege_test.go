@@ -35,6 +35,7 @@ var (
 )
 
 func TestSanitizeEnv(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		env  []string
@@ -136,6 +137,7 @@ func (s *countingServer) received() []string {
 // MAILCRIER_CONFIG lets a caller of the setgid binary pick the
 // configuration: the default one is used and a warning names the source.
 func TestRunElevatedIgnoresConfigOverride(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		args    []string
@@ -175,6 +177,7 @@ func TestRunElevatedIgnoresConfigOverride(t *testing.T) {
 // container without the setgid bit: --config wins over MAILCRIER_CONFIG,
 // which wins over the default.
 func TestRunHonoursConfigOverride(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		creds   Credentials
@@ -224,6 +227,7 @@ func TestRunHonoursConfigOverride(t *testing.T) {
 // mailcrier user gets 77, and an elevated caller that names another
 // configuration gets 64 instead of a report on the default one.
 func TestRunRefusesServiceModes(t *testing.T) {
+	t.Parallel()
 	const overrideRefused = " is ignored for a setgid-elevated caller\n"
 	const probed = "target=hook class=ok\n"
 	cases := []struct {
@@ -272,6 +276,7 @@ func TestRunRefusesServiceModes(t *testing.T) {
 }
 
 func TestRunIgnoresAltConfigOption(t *testing.T) {
+	t.Parallel()
 	server := newCountingServer(t, false)
 	for _, args := range [][]string{{"-C", "/tmp/evil.cf", "-ti"}, {"-C/tmp/evil.cf"}} {
 		inv := &invocation{config: httpTargetConfig(server.URL), args: args, stdin: strings.NewReader("Subject: t\n\nb\n")}
@@ -285,6 +290,7 @@ func TestRunIgnoresAltConfigOption(t *testing.T) {
 }
 
 func TestRunRejectsConfigOptionWithoutValue(t *testing.T) {
+	t.Parallel()
 	for _, args := range [][]string{{"--config"}, {"--config="}, {"--config", ""}} {
 		inv := &invocation{config: httpTargetConfig("http://127.0.0.1:1"), args: args, stdin: strings.NewReader("")}
 		if code := inv.run(t); code != 64 {
@@ -297,6 +303,7 @@ func TestRunRejectsConfigOptionWithoutValue(t *testing.T) {
 // elevated and only when the environment holds something sanitizeEnv
 // removes.
 func TestRunReexecs(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name       string
 		creds      Credentials
@@ -347,6 +354,7 @@ func TestRunReexecs(t *testing.T) {
 // by the sanitized one, the standard log output dropped, HTTP/2 off, and
 // an error record.
 func TestRunHardenedModeAfterFailedReexec(t *testing.T) {
+	t.Parallel()
 	server := newCountingServer(t, true)
 	inv := &invocation{
 		config:  httpTargetConfig(server.URL + "/hook/" + secretToken),
@@ -384,12 +392,11 @@ const helperMode = "MAILCRIER_TEST_HELPER_MODE"
 // output is redacted. The unelevated case also proves the debug output is
 // on, so the elevated case is not passing by accident.
 func TestHTTP2DebugOutputHidesToken(t *testing.T) {
+	// Serial: a forked child holds the fds of parallel tests until exec, keeping their flocks and sockets open.
 	if mode := os.Getenv(helperMode); mode != "" {
 		runHTTP2DebugHelper(mode)
 		return
 	}
-	server := newCountingServer(t, true)
-	ca := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})
 	cases := []struct {
 		mode      string
 		wantProto string
@@ -402,6 +409,9 @@ func TestHTTP2DebugOutputHidesToken(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.mode, func(t *testing.T) {
+			t.Parallel()
+			server := newCountingServer(t, true)
+			ca := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})
 			cmd := exec.Command(os.Args[0], "-test.run=^TestHTTP2DebugOutputHidesToken$")
 			cmd.Env = append(os.Environ(),
 				"GODEBUG=http2debug=2",
@@ -477,6 +487,7 @@ func runHTTP2DebugHelper(mode string) {
 // TestRunIgnoresForgedEnvConfigMarker pins that the marker Harden adds
 // only yields a warning in an elevated process; elsewhere it is ignored.
 func TestRunIgnoresForgedEnvConfigMarker(t *testing.T) {
+	t.Parallel()
 	server := newCountingServer(t, false)
 	inv := &invocation{config: httpTargetConfig(server.URL), args: []string{sendmail.MarkerEnvConfig, "-ti"}, creds: plainUser, stdin: strings.NewReader("Subject: t\n\nb\n")}
 	if code := inv.run(t); code != 0 {
@@ -491,6 +502,7 @@ func TestRunIgnoresForgedEnvConfigMarker(t *testing.T) {
 // which execve allows, gets the installed path as argv[0] instead of a
 // panic before anything is logged.
 func TestHardenEmptyArgv(t *testing.T) {
+	t.Parallel()
 	var execs [][]string
 	args, _ := Harden(Process{
 		Environ:     []string{"GODEBUG=http2debug=2"},

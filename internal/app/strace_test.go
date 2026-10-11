@@ -59,6 +59,7 @@ func successfulExecs(trace string) []tracedExec {
 // setgid e2e test and of a Go program that executes from a goroutine
 // locked to a thread other than the leader.
 func TestSuccessfulExecs(t *testing.T) {
+	t.Parallel()
 	const start = `18    execve("/usr/sbin/mailcrier", ["/usr/sbin/mailcrier", "-ti"], 0x7ffffa334488 /* 9 vars */) = 0` + "\n" +
 		`18    umask(007)                        = 022` + "\n"
 	cases := []struct {

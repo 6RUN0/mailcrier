@@ -62,6 +62,7 @@ func (c parseErrorCase) check(t *testing.T) {
 // rejects the configuration: exit 78, the message held, and the log names
 // the target and the position in the template.
 func TestRunTemplateParseError(t *testing.T) {
+	t.Parallel()
 	t.Run("T-TPL-04/syntax-error", parseErrorCase{`{"s": {{ toJson .Subject }`, `target \"api\": template: api:1:`}.check)
 	t.Run("T-TPL-04/unknown-function", parseErrorCase{`{{ now }}`, `function \"now\" not defined`}.check)
 	t.Run("T-TPL-04/define-rejected", parseErrorCase{`{{ define "x" }}{{ end }}{}`, `{{define}} is not allowed`}.check)
@@ -82,6 +83,7 @@ func TestRunTemplateParseError(t *testing.T) {
 // and a failed template falls back to the built-in one with a warning,
 // the call exiting 0.
 func TestRunUserTemplates(t *testing.T) {
+	t.Parallel()
 	received, server := newBodyServer(t)
 	config := "[target.api]\ntype = \"http\"\nurl = \"" + server.URL + "/api\"\n" +
 		"template = '{\"title\": {{ .Subject | toUpper | toJson }}, \"lines\": {{ lines .Body | len }}}'\n\n" +
@@ -137,6 +139,7 @@ func newRequestServer(t *testing.T) (*requestServer, *httptest.Server) {
 // TestRunRequestParts runs whole invocations of http targets with
 // templates in the path, the query and the headers.
 func TestRunRequestParts(t *testing.T) {
+	t.Parallel()
 	stdin := "Subject: disk a/b failed\n\nbody\n"
 	t.Run("T-TPL-19/get-with-parts", func(t *testing.T) {
 		received, server := newRequestServer(t)

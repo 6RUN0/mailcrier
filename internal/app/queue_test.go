@@ -206,6 +206,7 @@ func elevated(uid int) Credentials {
 // TestSpoolDelivery covers the first delivery of a message with the spool
 // on: the entry is written ahead and stays only for what is still due.
 func TestSpoolDelivery(t *testing.T) {
+	t.Parallel()
 	t.Run("T-ADJ-15/success-sends-once-and-leaves-nothing", func(t *testing.T) {
 		c := newSpoolCase(t)
 		code, inv := c.send("ok", elevatedUser)
@@ -276,6 +277,7 @@ func TestSpoolDelivery(t *testing.T) {
 // target waits for it, instead of removing it as a rejection does: a
 // retry would repeat the bug, and mailq shows the message.
 func TestSpoolInternalError(t *testing.T) {
+	t.Parallel()
 	t.Run("own-message", func(t *testing.T) {
 		c := newSpoolCase(t)
 		c.service.reply("a", delivery.Perm)
@@ -399,6 +401,7 @@ func (h panicErrorHandler) WithGroup(name string) slog.Handler {
 // run after the message is skipped; and a message read but not yet in the
 // spool is held with the reason internal error.
 func TestRunPanic(t *testing.T) {
+	t.Parallel()
 	t.Run("T-TPL-12/panic-record-redacted", func(t *testing.T) {
 		dir := t.TempDir()
 		inv := &invocation{
@@ -554,6 +557,7 @@ func statusServer(t *testing.T, status *atomic.Int32) *httptest.Server {
 // loses no result: every target is logged and recorded, and the entry
 // keeps the target still pending instead of going to failed/.
 func TestSpoolCallbackPanic(t *testing.T) {
+	t.Parallel()
 	var statusA, statusB atomic.Int32
 	statusA.Store(http.StatusOK)
 	statusB.Store(http.StatusServiceUnavailable)
@@ -671,6 +675,7 @@ func (h panicOnceHandler) WithGroup(name string) slog.Handler {
 // more after the targets finished, applies it to the entry only once, and
 // moves the entry to failed/ when the recording panics again.
 func TestSendRecordsAfterCallbackPanic(t *testing.T) {
+	t.Parallel()
 	tmpl, err := render.Builtin(text.FormatPlain)
 	if err != nil {
 		t.Fatal(err)
@@ -761,6 +766,7 @@ func TestSendRecordsAfterCallbackPanic(t *testing.T) {
 // written: the message is delivered directly, and a temporary failure is
 // then lost and reported.
 func TestSpoolNotAvailable(t *testing.T) {
+	t.Parallel()
 	t.Run("T-MTA-36/missing-directory-exits-73", func(t *testing.T) {
 		c := newSpoolCase(t)
 		c.dir = filepath.Join(c.dir, "missing")
@@ -821,6 +827,7 @@ func TestSpoolNotAvailable(t *testing.T) {
 // takes no new entry: --status prints its counts and exits 74, -q exits
 // 74 without a run, which could deliver entries it cannot record.
 func TestSpoolNotWritable(t *testing.T) {
+	t.Parallel()
 	if os.Geteuid() == 0 {
 		t.Skip("root ignores directory modes")
 	}
@@ -846,6 +853,7 @@ func TestSpoolNotWritable(t *testing.T) {
 
 // TestQueueRun covers -q over entries queued by earlier calls.
 func TestQueueRun(t *testing.T) {
+	t.Parallel()
 	t.Run("T-ADJ-18/due-entries-delivered-others-wait", func(t *testing.T) {
 		c := newSpoolCase(t)
 		c.service.reply("a", delivery.Temp)
@@ -1083,6 +1091,7 @@ func TestQueueRun(t *testing.T) {
 
 // TestQueueRunClock covers what depends on time, with the clock replaced.
 func TestQueueRunClock(t *testing.T) {
+	t.Parallel()
 	t.Run("backoff-doubles", func(t *testing.T) {
 		c := newSpoolCase(t)
 		c.service.reply("a", delivery.Temp, delivery.Temp)
@@ -1231,6 +1240,7 @@ func (c *spoolCase) entry2(area string, i int) *spool.Entry {
 // TestQueueOwners covers who runs which entries: a user elevated by the
 // setgid bit only their own, root and the service user all of them.
 func TestQueueOwners(t *testing.T) {
+	t.Parallel()
 	t.Run("user-runs-own-entries-only", func(t *testing.T) {
 		c := newSpoolCase(t)
 		c.service.reply("a", delivery.Temp, delivery.Temp)
@@ -1295,6 +1305,7 @@ func TestQueueOwners(t *testing.T) {
 
 // TestQueueQuota covers the limits of the spool.
 func TestQueueQuota(t *testing.T) {
+	t.Parallel()
 	const limits = "[spool]\nmax_queue_messages = 10\nmax_queue_messages_per_uid = 2\n\n"
 	t.Run("user-quota-exhausted", func(t *testing.T) {
 		c := newSpoolCase(t)
@@ -1332,6 +1343,7 @@ func TestQueueQuota(t *testing.T) {
 
 // TestHold covers messages kept while the configuration is rejected.
 func TestHold(t *testing.T) {
+	t.Parallel()
 	t.Run("T-ADJ-28/invalid-configuration-holds-the-message", func(t *testing.T) {
 		c := newSpoolCase(t)
 		c.config = "[target.a]\ntype = \"http\"\n"
@@ -1437,6 +1449,7 @@ func TestHold(t *testing.T) {
 
 // TestListQueue covers mailq, -bp and --status.
 func TestListQueue(t *testing.T) {
+	t.Parallel()
 	c := newSpoolCase(t)
 	c.service.reply("a", delivery.Temp)
 	c.send("queued", elevatedUser)
@@ -1498,6 +1511,7 @@ func (failingWriter) Write([]byte) (int, error) { return 0, syscall.ENOSPC }
 // exit 74. A non-empty directory in place of the message file lets the
 // sidecar go and fails the unlink of the message.
 func TestQueueRemoveFailureSaves(t *testing.T) {
+	t.Parallel()
 	c := newSpoolCase(t)
 	c.service.reply("a", delivery.Temp)
 	if code, _ := c.send("s", elevatedUser); code != 0 {
@@ -1554,6 +1568,7 @@ func (c *spoolCase) corrupt(area string, written time.Time) string {
 // older than the TTL of its area, then moves the entry to failed/, whose
 // failed_ttl deletes it.
 func TestQueueCorruptSidecar(t *testing.T) {
+	t.Parallel()
 	t.Run("queue-entry-fails-after-queue-ttl", func(t *testing.T) {
 		c := newSpoolCase(t)
 		c.service.reply("a", delivery.Temp)
@@ -1609,6 +1624,7 @@ func TestQueueCorruptSidecar(t *testing.T) {
 // TestQueueErrorRedacted pins that the error stored in the sidecar and
 // shown by mailq passes through the redactor.
 func TestQueueErrorRedacted(t *testing.T) {
+	t.Parallel()
 	const token = "123456:SECRET-TOKEN-VALUE"
 	c := newSpoolCase(t)
 	c.config = "[target.tg]\ntype = \"telegram\"\ntoken = \"" + token + "\"\nchat_id = 1\n"
@@ -1633,6 +1649,7 @@ func TestQueueErrorRedacted(t *testing.T) {
 // TestHoldInDefaultSpool covers a message held in the default directory
 // while the file, which names a directory of its own, was rejected.
 func TestHoldInDefaultSpool(t *testing.T) {
+	t.Parallel()
 	c := newSpoolCase(t)
 	own := t.TempDir()
 	c.config = "[spool]\ndir = \"" + own + "\"\n\n[target.a]\ntype = \"http\"\n"
@@ -1665,6 +1682,7 @@ func TestHoldInDefaultSpool(t *testing.T) {
 // held message is: the hold/ of the default directory beside a dir of the
 // file, and the dir of a file whose targets are rejected.
 func TestListHoldOfDefaultSpool(t *testing.T) {
+	t.Parallel()
 	t.Run("default-hold-beside-own-dir", func(t *testing.T) {
 		c := newSpoolCase(t)
 		own := t.TempDir()
@@ -1763,6 +1781,7 @@ func TestListHoldOfDefaultSpool(t *testing.T) {
 // TestHoldReleaseRestartsTTL pins that queue_ttl counts from the release,
 // not from the time the message was held.
 func TestHoldReleaseRestartsTTL(t *testing.T) {
+	t.Parallel()
 	c := newSpoolCase(t)
 	c.config = "[target.a]\ntype = \"http\"\n"
 	c.send("held", elevatedUser)
@@ -1786,6 +1805,7 @@ func TestHoldReleaseRestartsTTL(t *testing.T) {
 // TestListMissingSpool covers the listing modes against a directory that
 // does not exist, or exists empty.
 func TestListMissingSpool(t *testing.T) {
+	t.Parallel()
 	c := newSpoolCase(t)
 	c.dir = filepath.Join(c.dir, "missing")
 	if code, inv := c.queueRun(elevatedUser, "-bp"); code != 0 || inv.stdout.String() != "queue is empty\n" {
@@ -1810,6 +1830,7 @@ func TestListMissingSpool(t *testing.T) {
 // failed/, where failed_ttl deletes it, and removes the stale files of the
 // default directory.
 func TestDefaultSpoolExpiredAndStale(t *testing.T) {
+	t.Parallel()
 	c := newSpoolCase(t)
 	own := t.TempDir()
 	c.config = "[spool]\ndir = \"" + own + "\"\n\n[target.a]\ntype = \"http\"\n"
@@ -1847,6 +1868,7 @@ func TestDefaultSpoolExpiredAndStale(t *testing.T) {
 // killed before the removal already put into the queue does not replace
 // that copy, which another process may be delivering.
 func TestReleaseKeepsExistingCopy(t *testing.T) {
+	t.Parallel()
 	c := newSpoolCase(t)
 	own := t.TempDir()
 	c.config = "[spool]\ndir = \"" + own + "\"\n\n[target.a]\ntype = \"http\"\n"
@@ -1898,6 +1920,7 @@ func TestReleaseKeepsExistingCopy(t *testing.T) {
 // loads but whose targets fail logs the rejection under the syslog tag of
 // that configuration.
 func TestLoadTargetsKeepsConfigTag(t *testing.T) {
+	t.Parallel()
 	inv := &invocation{
 		config: "[general]\nsyslog_tag = \"custom\"\n\n[target.dc]\ntype = \"discord\"\nurl = \"https://example.org/x\"\ntemplate = \"{{ .Nope\"\n",
 		args:   []string{"-q"},
@@ -1948,6 +1971,7 @@ func BenchmarkOwnMessage(b *testing.B) {
 // message alone for an elevated one, nothing when the log goes to stderr
 // already.
 func TestQueueModesTellUser(t *testing.T) {
+	t.Parallel()
 	missing := filepath.Join(t.TempDir(), "missing")
 	cases := []struct {
 		name         string
@@ -2015,6 +2039,7 @@ func TestQueueModesTellUser(t *testing.T) {
 // read, as a queue run logs it: a sidecar that is not a JSON object, and
 // one of another id, which a queue run refuses as well.
 func TestListQueueUnreadable(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name    string
 		sidecar func(id string, valid []byte) []byte
@@ -2052,6 +2077,7 @@ func TestListQueueUnreadable(t *testing.T) {
 // entry alone, and a held entry already copied into this spool is only
 // removed there.
 func TestQueueRunPanicSteps(t *testing.T) {
+	t.Parallel()
 	panicOn := func(id string) func(string) {
 		return func(locked string) {
 			if locked == id {
@@ -2143,6 +2169,7 @@ func (c *spoolCase) hasFile(path string) bool {
 // it is, and a move whose files are renamed but whose old sidecar cannot
 // be removed counts as done.
 func TestSpoolMoveToFailed(t *testing.T) {
+	t.Parallel()
 	t.Run("recorded-again-in-failed", func(t *testing.T) {
 		dir := t.TempDir()
 		// The record of the move panics once, so that the result whose
@@ -2196,6 +2223,7 @@ func TestSpoolMoveToFailed(t *testing.T) {
 // after a call are about the entries it takes: they carry the id of the
 // held entry it releases, not the Message-ID of the message of the call.
 func TestDrainLogsWithoutCallMessage(t *testing.T) {
+	t.Parallel()
 	c := newSpoolCase(t)
 	c.config = "[target.a]\ntype = \"http\"\n"
 	if code, _ := c.send("held", elevatedUser); code != 78 {

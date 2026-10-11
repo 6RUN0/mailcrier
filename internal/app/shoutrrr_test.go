@@ -18,6 +18,7 @@ const shoutrrrRejection = `target \"bus\": unknown shoutrrr service \"nosuch\"`
 // generic webhook service of shoutrrr: the plain text arrives, and a
 // rejection by the receiver is classified by its status.
 func TestRunDeliversToShoutrrrTarget(t *testing.T) {
+	t.Parallel()
 	bodies := make(chan string, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -43,6 +44,7 @@ func TestRunDeliversToShoutrrrTarget(t *testing.T) {
 // transport panics with the URL in the value: the panic is a failure of
 // the target, and the token reaches neither syslog nor stderr.
 func TestRunKeepsTokenOutOfShoutrrrPanic(t *testing.T) {
+	t.Parallel()
 	t.Run("T-TPL-12/shoutrrr-panic", func(t *testing.T) {
 		config := "[target.bus]\ntype = \"shoutrrr\"\nurl = \"generic+https://hooks.example.org/hook/" + secretToken + "\"\n"
 		inv := &invocation{config: config, client: &http.Client{Transport: panickingTransport{}}, stdin: strings.NewReader("Subject: t\n\nb\n")}
@@ -66,6 +68,7 @@ const shoutrrrTargetConfig = "[target.bus]\ntype = \"shoutrrr\"\nurl = \"generic
 // TestCheckConfigShoutrrr runs --check-config on the shoutrrr URLs that
 // only the library can judge.
 func TestCheckConfigShoutrrr(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		checkConfigCase

@@ -228,6 +228,7 @@ func httpTargetConfig(url string) string {
 // receiver: the message read from stdin arrives as the generic-json
 // document and the exit status is 0.
 func TestRunDeliversToHTTPTarget(t *testing.T) {
+	t.Parallel()
 	type request struct {
 		method, path, contentType string
 		body                      map[string]string
@@ -271,6 +272,7 @@ func TestRunDeliversToHTTPTarget(t *testing.T) {
 }
 
 func TestRunUsesConfiguredSyslogTag(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	defer server.Close()
 
@@ -294,6 +296,7 @@ func TestRunUsesConfiguredSyslogTag(t *testing.T) {
 // come before what the user reads there: the report of --check-config,
 // whose last line counts the findings, and the line of a usage error.
 func TestLogBeforeUserLine(t *testing.T) {
+	t.Parallel()
 	t.Run("check-config", func(t *testing.T) {
 		inv := &invocation{config: "[target.backup]\ntype = \"discord\"\nurl = \"https://example.org/x\"\n[[route]]\nsubject = \"*\"\ntargets = [\"backup\"]\n",
 			args: []string{"--check-config"}, creds: plainUser, stdin: iotest.ErrReader(errors.New("stdin read")), isSyslogDown: true}
@@ -321,6 +324,7 @@ func TestLogBeforeUserLine(t *testing.T) {
 }
 
 func TestRunRejectsConfiguration(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		config  string
@@ -348,6 +352,7 @@ func TestRunRejectsConfiguration(t *testing.T) {
 }
 
 func TestRunReportsUndeliveredMessage(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name   string
 		status int
@@ -374,6 +379,7 @@ func TestRunReportsUndeliveredMessage(t *testing.T) {
 }
 
 func TestRunReportsUnreadableInput(t *testing.T) {
+	t.Parallel()
 	inv := &invocation{config: httpTargetConfig("http://127.0.0.1:1"), stdin: iotest.ErrReader(errors.New("input/output error"))}
 	if code := inv.run(t); code != 66 {
 		t.Fatalf("Run() = %d, want 66", code)
@@ -397,6 +403,7 @@ func hangingServer(t *testing.T) *httptest.Server {
 // the whole delivery. Each limit is set far below the other, so the elapsed
 // time shows which one fired.
 func TestRunTimeLimits(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		general string
@@ -433,6 +440,7 @@ func TestRunTimeLimits(t *testing.T) {
 // success, on a rejection whose response echoes the request, and on a
 // configuration error.
 func TestRunKeepsMessageOutOfLogs(t *testing.T) {
+	t.Parallel()
 	const marker = "MARKER-7f3a"
 	input := "Subject: disk " + marker + "\nMessage-ID: <42@db1.example.org>\nX-Job: " + marker + "\n\nbody " + marker + "\n"
 	echo := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -473,6 +481,7 @@ func TestRunKeepsMessageOutOfLogs(t *testing.T) {
 // TestRunLogsResultFields pins the logfmt fields of a failed target, which
 // operators filter syslog by.
 func TestRunLogsResultFields(t *testing.T) {
+	t.Parallel()
 	server := echoServer(t, http.StatusBadGateway)
 	inv := &invocation{config: httpTargetConfig(server.URL), stdin: strings.NewReader("Message-ID: <1@h>\n\nb\n")}
 	if code := inv.run(t); code != 69 {
@@ -488,6 +497,7 @@ func TestRunLogsResultFields(t *testing.T) {
 // every record of a call carries the same call id, and msgid appears only
 // when the message has a Message-ID, cut to 256 bytes.
 func TestRunTagsRecordsWithCall(t *testing.T) {
+	t.Parallel()
 	server := echoServer(t, http.StatusBadGateway)
 	cases := []struct {
 		name      string
@@ -525,6 +535,7 @@ func TestRunTagsRecordsWithCall(t *testing.T) {
 // the size limit: the bytes read and the limit, which say how much was
 // lost.
 func TestRunLogsSizeLimit(t *testing.T) {
+	t.Parallel()
 	input := "Subject: big\n\n" + strings.Repeat("x", message.MaxSize)
 	inv := &invocation{config: twoTargets, stdin: strings.NewReader(input), deliver: (&recorder{}).deliver}
 	if code := inv.run(t); code != 0 {

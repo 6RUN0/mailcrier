@@ -25,6 +25,7 @@ import (
 // service when it is the only target: without a queue a temporary failure
 // loses the message like a permanent one, so both exit 69.
 func TestRunServiceStatuses(t *testing.T) {
+	t.Parallel()
 	t.Run("T-ADJ-27/rate-limited-without-spool", serviceStatusCase{httpTargetConfig, http.StatusTooManyRequests, "temp"}.check)
 	t.Run("T-ADJ-27/internal-error-without-spool", serviceStatusCase{httpTargetConfig, http.StatusInternalServerError, "temp"}.check)
 	t.Run("T-ADJ-27/bad-gateway-without-spool", serviceStatusCase{httpTargetConfig, http.StatusBadGateway, "temp"}.check)
@@ -79,6 +80,7 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { re
 // targets, each with its own token and channel; " #alerts" reaches the
 // API as "#alerts".
 func TestRunSeveralSlackTargets(t *testing.T) {
+	t.Parallel()
 	var mu sync.Mutex
 	posts := map[string]string{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -107,6 +109,7 @@ func TestRunSeveralSlackTargets(t *testing.T) {
 // the payload formats of a webhook need: username and channel for
 // Mattermost, extra headers for any receiver.
 func TestRunWebhookPresets(t *testing.T) {
+	t.Parallel()
 	var mu sync.Mutex
 	requests := map[string]*http.Request{}
 	bodies := map[string]map[string]any{}
@@ -157,6 +160,7 @@ func TestRunWebhookPresets(t *testing.T) {
 // The limit counts the JSON document, where a line break takes two units,
 // so a text of short lines keeps somewhat less.
 func TestRunSlackWebhookLimit(t *testing.T) {
+	t.Parallel()
 	var body map[string]string
 	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -181,6 +185,7 @@ func TestRunSlackWebhookLimit(t *testing.T) {
 // the service: max_lines cuts the body, and long_file = "eml" sends the
 // message itself, without its Bcc field, as message.eml.
 func TestRunLongTextAsMessage(t *testing.T) {
+	t.Parallel()
 	var mu sync.Mutex
 	var published, file string
 	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
@@ -211,6 +216,7 @@ func TestRunLongTextAsMessage(t *testing.T) {
 // TestBuildTargetsCarriesLimits pins that the limits of a target in the
 // configuration reach delivery, where they replace those of the service.
 func TestBuildTargetsCarriesLimits(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{Targets: map[string]config.Target{"phone": {
 		Type: config.TypeNtfy, URL: "https://ntfy.example.org/alerts", MaxText: 1000, MaxLines: 40, MaxFileSize: 2000000,
 	}}}
@@ -227,6 +233,7 @@ func TestBuildTargetsCarriesLimits(t *testing.T) {
 // text: sent as file only when the file went through, so that a failed
 // retry does not claim a delivery.
 func TestLogTextRejected(t *testing.T) {
+	t.Parallel()
 	rejected := &backend.Error{Class: backend.Permanent, Status: 400, Err: errors.New("can't parse entities"), IsTextRejected: true}
 	for _, tc := range []struct {
 		name   string
@@ -253,6 +260,7 @@ func TestLogTextRejected(t *testing.T) {
 // TestLogOverOutput pins the warning for a text cut because the template
 // wrote past its output limit, which the template must fix.
 func TestLogOverOutput(t *testing.T) {
+	t.Parallel()
 	var b strings.Builder
 	logResult(slog.New(slog.NewTextHandler(&b, nil)), &redact.Redactor{}, delivery.Result{TargetID: "api", Status: delivery.OK, IsTruncated: true, IsOverOutput: true}, true)
 	if want := `level=WARN msg="template output limit reached" target=api`; !strings.Contains(b.String(), want) {
@@ -264,6 +272,7 @@ func TestLogOverOutput(t *testing.T) {
 // temporary failure the spool retries, an error for one nothing retries
 // and for a permanent failure, which someone must look at.
 func TestLogResultLevel(t *testing.T) {
+	t.Parallel()
 	temp := delivery.Result{TargetID: "api", Status: delivery.Temp, Err: &backend.Error{Class: backend.Temporary, Status: 503, Err: errors.New("Service Unavailable")}}
 	perm := delivery.Result{TargetID: "api", Status: delivery.Perm, Err: &backend.Error{Class: backend.Permanent, Status: 400, Err: errors.New("Bad Request")}}
 	for _, tc := range []struct {
@@ -290,6 +299,7 @@ func TestLogResultLevel(t *testing.T) {
 // the whole value and the credential after a scheme, but not a value too
 // short to be a credential, which would mask parts of every record.
 func TestRegisterHeaderSecrets(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{Targets: map[string]config.Target{"api": {Type: config.TypeHTTP, Headers: map[string]string{
 		"Authorization": "Bearer api-token-123", "X-Api-Key": "k3y-v4lue-long", "X-Retry": "1",
 	}}}}
@@ -305,6 +315,7 @@ func TestRegisterHeaderSecrets(t *testing.T) {
 // templates outside the actions is masked like a plain value, and that
 // the path is masked like the segments of a URL.
 func TestRegisterTemplateSecrets(t *testing.T) {
+	t.Parallel()
 	cfg := &config.Config{Targets: map[string]config.Target{"api": {
 		Type: config.TypeHTTP, URL: "https://api.example.org/in", Path: "/hooks/path-secret-0123456789/{{ .Hostname }}",
 		Headers: map[string]string{"Authorization": "Bearer hdr-token-123{{ .Hostname }}"},
@@ -332,6 +343,7 @@ func TestRegisterTemplateSecrets(t *testing.T) {
 // TestBuildTargetsErrorWrapsCause pins that the *config.Error of a target
 // keeps its cause for errors.As, here the error of a template.
 func TestBuildTargetsErrorWrapsCause(t *testing.T) {
+	t.Parallel()
 	cfg, err := config.Load(fstest.MapFS{"etc/mailcrier.conf": {Data: []byte("[target.dc]\ntype = \"discord\"\nurl = \"https://example.org/x\"\ntemplate = \"{{ .Subject | nosuch }}\"\n")}}, "etc/mailcrier.conf")
 	if err != nil {
 		t.Fatal(err)

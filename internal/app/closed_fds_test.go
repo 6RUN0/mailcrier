@@ -63,6 +63,7 @@ func TestClosedFdsHelper(t *testing.T) {
 // exit status 0: the Go runtime reopens fds 0-2 on /dev/null before main,
 // so no file of the process takes their place.
 func TestRunClosedStdoutStderr(t *testing.T) {
+	// Serial: a forked child holds the fds of parallel tests until exec, keeping their flocks and sockets open.
 	t.Run("T-CALL-28/closed-stdout-stderr", func(t *testing.T) {
 		if runtime.GOOS != "linux" {
 			t.Skip("reads /proc/self/fd")

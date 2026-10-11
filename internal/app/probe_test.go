@@ -86,6 +86,7 @@ func (tc probeCase) check(t *testing.T) {
 }
 
 func TestProbe(t *testing.T) {
+	t.Parallel()
 	t.Run("T-ADJ-31/all-ok", probeCase{200, 200, 0}.check)
 	t.Run("T-ADJ-31/perm", probeCase{400, 400, 69}.check)
 	t.Run("T-ADJ-31/temp", probeCase{503, 503, 75}.check)
@@ -238,6 +239,7 @@ func TestProbe(t *testing.T) {
 // TestProbeRunsHooks pins that an exec target gets the sample message on
 // stdin and decides the exit status like any target.
 func TestProbeRunsHooks(t *testing.T) {
+	// Serial: a forked child holds the fds of parallel tests until exec, keeping their flocks and sockets open.
 	for _, tc := range []struct {
 		name   string
 		status string
@@ -261,6 +263,7 @@ func TestProbeRunsHooks(t *testing.T) {
 // releases held messages, nor writes anything to the spool: the entries a
 // call left are byte for byte the same afterwards.
 func TestProbeLeavesSpool(t *testing.T) {
+	t.Parallel()
 	c := newSpoolCase(t)
 	c.service.reply("a", delivery.Temp)
 	if code, inv := c.send("queued", plainUser); code != 0 {

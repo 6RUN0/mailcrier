@@ -28,6 +28,7 @@ func writeHookScript(t *testing.T, body string) string {
 // 200 KB cut in the environment, no blind copy anywhere, and its output
 // in the log with the secrets of the configuration masked.
 func TestRunDeliversToExecTarget(t *testing.T) {
+	// Serial: a forked child holds the fds of parallel tests until exec, keeping their flocks and sockets open.
 	const secretURL = "http://127.0.0.1:1/api/webhooks/SECRET-TOKEN-0123456789"
 	path := writeHookScript(t, "env > \"$0.env\"\ncat > \"$0.stdin\"\necho \"posting to "+secretURL+"\"\n")
 	config := "[target.run]\ntype = \"exec\"\nargv = [\"" + path + "\"]\n\n" +
@@ -68,6 +69,7 @@ func TestRunDeliversToExecTarget(t *testing.T) {
 // target does, and that the output of the hook names the spool entry, in
 // the call and in a queue run.
 func TestRunQueuesHookTempFailure(t *testing.T) {
+	// Serial: a forked child holds the fds of parallel tests until exec, keeping their flocks and sockets open.
 	path := writeHookScript(t, "cat >/dev/null\necho busy\nexit 75\n")
 	dir := t.TempDir()
 	config := "[target.run]\ntype = \"exec\"\nargv = [\"" + path + "\"]\n"
@@ -96,6 +98,7 @@ func TestRunQueuesHookTempFailure(t *testing.T) {
 // process has the group of the setgid binary, those of the process
 // otherwise.
 func TestHookProcess(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name  string
 		creds Credentials

@@ -63,6 +63,7 @@ func echoServer(t *testing.T, status int) *httptest.Server {
 // configuration can take with a token in the target URL, and checks that
 // the token appears in neither syslog nor stderr.
 func TestRunKeepsTokenOutOfLogs(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		// setup returns the configuration and the HTTP client to use.
@@ -177,6 +178,7 @@ func TestRunKeepsTokenOutOfLogs(t *testing.T) {
 // after the redaction: cut first, a secret across the cut would lose its
 // tail and no longer match, leaving its head in the log.
 func TestStackText(t *testing.T) {
+	t.Parallel()
 	redactor := &redact.Redactor{}
 	redactor.Add(secretToken)
 	stack := strings.Repeat("x", maxStackLength-5) + secretToken + strings.Repeat("y", 100)
@@ -195,6 +197,7 @@ func slackConfig(token string) string {
 // package, where net/http prints its HTTP/2 debug output, including the
 // request path.
 func TestRunRedactsStandardLog(t *testing.T) {
+	t.Parallel()
 	server := echoServer(t, http.StatusOK)
 	inv := &invocation{config: httpTargetConfig(server.URL + "/hook/" + secretToken), stdin: strings.NewReader("Subject: t\n\nb\n")}
 	if code := inv.run(t); code != 0 {

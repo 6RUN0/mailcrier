@@ -327,6 +327,7 @@ func realInvocation(config, dir string, creds Credentials, args ...string) *invo
 // the sidecar records the first target: a later queue run sends only to
 // the target that is left.
 func TestSpoolCrashAfterFirstTarget(t *testing.T) {
+	// Serial: a forked child holds the fds of parallel tests until exec, keeping their flocks and sockets open.
 	r := newReceiver(t)
 	r.setHang("/b", true)
 	dir := t.TempDir()
@@ -354,6 +355,7 @@ func TestSpoolCrashAfterFirstTarget(t *testing.T) {
 // the result of its only target is recorded: the entry is gone already,
 // no sidecar with every target finished is left for a queue run.
 func TestSpoolCrashAfterLastTarget(t *testing.T) {
+	// Serial: a forked child holds the fds of parallel tests until exec, keeping their flocks and sockets open.
 	r := newReceiver(t)
 	dir := t.TempDir()
 	config := r.config("a")
@@ -376,6 +378,7 @@ func TestSpoolCrashAfterLastTarget(t *testing.T) {
 // its only target hangs: the message stays queued, -q delivers it, and
 // mailq shows an empty queue afterwards.
 func TestSpoolKilledWhileReceiverHangs(t *testing.T) {
+	// Serial: a forked child holds the fds of parallel tests until exec, keeping their flocks and sockets open.
 	r := newReceiver(t)
 	r.setHang("/a", true)
 	dir := t.TempDir()
@@ -406,6 +409,7 @@ func TestSpoolKilledWhileReceiverHangs(t *testing.T) {
 // target is recorded as delivered: every target of every entry gets the
 // message exactly once.
 func TestSpoolConcurrentRuns(t *testing.T) {
+	// Serial: a forked child holds the fds of parallel tests until exec, keeping their flocks and sockets open.
 	r := newReceiver(t)
 	dir := t.TempDir()
 	config := r.config("a", "b")
@@ -445,6 +449,7 @@ func TestSpoolConcurrentRuns(t *testing.T) {
 // holds the user's run lock and one entry: the service user's run
 // delivers every other entry, the user's own entries included.
 func TestSpoolStoppedUserRun(t *testing.T) {
+	// Serial: a forked child holds the fds of parallel tests until exec, keeping their flocks and sockets open.
 	r := newReceiver(t)
 	dir := t.TempDir()
 	config := r.config("a")

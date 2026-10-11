@@ -54,6 +54,7 @@ func (tw tripwireTransport) RoundTrip(req *http.Request) (*http.Response, error)
 }
 
 func TestCheckConfig(t *testing.T) {
+	t.Parallel()
 	t.Run("T-TPL-15/parse-error", func(t *testing.T) {
 		code, inv := checkConfig(t, "[target.api]\ntype = \"http\"\nurl = \"https://example.org/x\"\ntemplate = \"{{ .Subject \"\n", nil)
 		if code != 78 {
@@ -245,6 +246,7 @@ func (tc checkConfigCase) check(t *testing.T) {
 // every call checks, through the mode, and the warnings only the mode
 // gives.
 func TestCheckConfigRoadmapItems(t *testing.T) {
+	t.Parallel()
 	const tg = "[target.tg]\ntype = \"telegram\"\ntoken = \"1:a\"\nchat_id = 1\n"
 	cases := []struct {
 		name string
@@ -291,6 +293,7 @@ func TestCheckConfigRoadmapItems(t *testing.T) {
 // counts as secret is masked in the log: a marker in the value of each key
 // is registered.
 func TestRegisterSecretsCoversSecretKeys(t *testing.T) {
+	t.Parallel()
 	const marker = "MARKER0123456789abcdef"
 	docs := map[string]string{
 		"token":   "[target.tg]\ntype = \"telegram\"\ntoken = \"" + marker + "\"\nchat_id = 1\n",
@@ -328,6 +331,7 @@ func (capsSender) Send(context.Context, backend.Payload) error { return nil }
 // a target, a finding of --check-config by its value alone, leaves its
 // stack in the log.
 func TestRenderSampleLogsPanic(t *testing.T) {
+	t.Parallel()
 	tmpl, err := render.Builtin(text.FormatPlain)
 	if err != nil {
 		t.Fatal(err)

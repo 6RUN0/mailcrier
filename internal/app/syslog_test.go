@@ -96,6 +96,7 @@ const stuckSyslogTests = "^(TestSyslogWriterBounded|TestRunWithStuckSyslog|TestS
 // write expected to time out went through. Skipped where unprivileged user
 // namespaces are refused.
 func TestStuckSyslogLongQueue(t *testing.T) {
+	// Serial: a forked child holds the fds of parallel tests until exec, keeping their flocks and sockets open.
 	if os.Getenv(dgramQueueEnv) != "" {
 		t.Skip("already in the namespace")
 	}
@@ -131,6 +132,7 @@ func isTimeout(err error) bool {
 // reads gives up after the timeout: a datagram socket with a full queue,
 // and a stream socket whose buffer is full, the connection never accepted.
 func TestSyslogWriterBounded(t *testing.T) {
+	t.Parallel()
 	t.Run("datagram-queue-full", func(t *testing.T) {
 		writer, err := dialSyslogAt([]string{stuckDatagramSocket(t)}, "mailcrier", testSyslogTimeout)
 		if err != nil {
@@ -170,6 +172,7 @@ func TestSyslogWriterBounded(t *testing.T) {
 // not the EPROTOTYPE of the datagram dial before it, and a missing first
 // socket gives way to one that exists.
 func TestDialSyslogNamesCause(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "log")
 	fd, err := syscall.Socket(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
@@ -207,6 +210,7 @@ func TestDialSyslogNamesCause(t *testing.T) {
 // the rest go to stderr after one warning, and the message is in the
 // spool, where a hang would have left it nowhere.
 func TestRunWithStuckSyslog(t *testing.T) {
+	t.Parallel()
 	c := newSpoolCase(t)
 	c.service.reply("a", delivery.Temp)
 	inv := c.invocation(elevatedUser, nil)
@@ -230,6 +234,7 @@ func TestRunWithStuckSyslog(t *testing.T) {
 // targets of a delivery log, wait out the timeout of a stuck daemon once
 // together, not once each in turn behind the lock of the writer.
 func TestSyslogStuckInParallel(t *testing.T) {
+	// Serial: bounds the elapsed time by 3 x testSyslogTimeout, which neighbouring tests stretch.
 	writer, err := dialSyslogAt([]string{stuckDatagramSocket(t)}, "mailcrier", testSyslogTimeout)
 	if err != nil {
 		t.Fatal(err)
@@ -259,6 +264,7 @@ func TestSyslogStuckInParallel(t *testing.T) {
 // same timeout: when the new daemon reads nothing either, the record still
 // waits one timeout, not two.
 func TestSyslogRetryWithinTimeout(t *testing.T) {
+	// Serial: bounds the elapsed time by 2 x testSyslogTimeout, which neighbouring tests stretch.
 	path := filepath.Join(t.TempDir(), "log")
 	old, err := net.ListenPacket("unixgram", path)
 	if err != nil {

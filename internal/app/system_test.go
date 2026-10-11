@@ -16,6 +16,7 @@ import (
 // TestSyslogHandler sends records to a UDP listener standing in for the
 // syslog daemon and checks the priority and the logfmt text of each.
 func TestSyslogHandler(t *testing.T) {
+	t.Parallel()
 	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -78,6 +79,7 @@ func pidOf(packet string) string {
 // warning that carries the fields of the logger, also when a logger with
 // another tag follows, which does not dial again.
 func TestFallbackLoggerUsesStderr(t *testing.T) {
+	t.Parallel()
 	var stderr bytes.Buffer
 	dials := 0
 	dial := func(string) (*syslogWriter, error) {
@@ -104,6 +106,7 @@ func TestFallbackLoggerUsesStderr(t *testing.T) {
 // records loses none: the record that failed goes to stderr after one
 // warning, and so do the records after it.
 func TestSyslogWriteFailure(t *testing.T) {
+	t.Parallel()
 	socket := filepath.Join(t.TempDir(), "log")
 	conn, err := net.ListenPacket("unixgram", socket)
 	if err != nil {
@@ -143,6 +146,7 @@ func TestSyslogWriteFailure(t *testing.T) {
 // caller only the constant messages of warnings and errors: configuration
 // positions, target names and statuses stay in syslog.
 func TestFallbackLoggerElevated(t *testing.T) {
+	t.Parallel()
 	var stderr bytes.Buffer
 	dial := func(string) (*syslogWriter, error) {
 		return nil, errors.New("dial unix /dev/log: connect: no such file or directory")
@@ -160,6 +164,7 @@ func TestFallbackLoggerElevated(t *testing.T) {
 // TestTransportProxy pins where the proxy comes from: the environment
 // without elevation (a container behind a proxy), nowhere with it.
 func TestTransportProxy(t *testing.T) {
+	t.Parallel()
 	if newTransport(false).Proxy == nil {
 		t.Error("unelevated transport ignores the proxy variables")
 	}

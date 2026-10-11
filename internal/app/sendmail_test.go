@@ -73,6 +73,7 @@ const twoTargets = "[target.a]\ntype = \"http\"\npreset = \"generic-json\"\nurl 
 // TestExitStatusValues pins the sysexits.h values the program uses, which
 // are its own constants rather than an import.
 func TestExitStatusValues(t *testing.T) {
+	t.Parallel()
 	t.Run("T-MTA-35/sysexits-values", func(t *testing.T) {
 		got := []int{exitOK, exitUsage, exitUnavailable, exitNoInput, exitSoftware, exitCantCreate, exitIOErr, exitTempFail, exitNoPerm, exitConfig}
 		want := []int{0, 64, 69, 66, 70, 73, 74, 75, 77, 78}
@@ -87,6 +88,7 @@ func TestExitStatusValues(t *testing.T) {
 // the summary record the row asks for. A message lost gets that one
 // record, not "message not delivered" besides.
 func TestRunExitStatusMatrix(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name     string
 		statuses map[string]delivery.Status
@@ -147,6 +149,7 @@ func TestRunExitStatusMatrix(t *testing.T) {
 // TestRunRejectsCommandLine pins the usage errors: exit 64 with the reason
 // on stderr, before stdin is read and without quoting an address.
 func TestRunRejectsCommandLine(t *testing.T) {
+	t.Parallel()
 	t.Run("T-ADJ-12/sender-option-without-value", runRejectsCommandLineCase{[]string{"-t", "-f"}, "option -f requires a value"}.check)
 	t.Run("T-MTA-42/line-break-in-sender", runRejectsCommandLineCase{[]string{"-f", "root\nBcc: x@example.org", "-t"}, "line break in the sender address"}.check)
 	t.Run("T-MTA-42/line-break-in-recipient", runRejectsCommandLineCase{[]string{"root\r\nBcc: x@example.org"}, "line break in a recipient address"}.check)
@@ -178,6 +181,7 @@ func (tc runRejectsCommandLineCase) check(t *testing.T) {
 
 // TestRunModes covers the modes that read no message.
 func TestRunModes(t *testing.T) {
+	t.Parallel()
 	t.Run("T-MTA-32/newaliases", runModesCase{"/usr/bin/newaliases", nil, 0, ""}.check)
 	t.Run("T-MTA-32/bi", runModesCase{"", []string{"-bi"}, 0, ""}.check)
 	t.Run("T-MTA-32/capital-i", runModesCase{"", []string{"-I"}, 0, ""}.check)
@@ -215,6 +219,7 @@ func (tc runModesCase) check(t *testing.T) {
 // every target is a catch-all, so a message without any recipient is
 // delivered.
 func TestRunWithoutRecipients(t *testing.T) {
+	t.Parallel()
 	t.Run("T-MTA-18/no-t-no-arguments", runWithoutRecipientsCase{[]string{}, "Subject: t\n\nb\n"}.check)
 	t.Run("T-MTA-19/t-without-recipient-headers", runWithoutRecipientsCase{[]string{"-t"}, "Subject: t\n\nb\n"}.check)
 	t.Run("T-ADJ-08/t-without-headers-or-arguments", runWithoutRecipientsCase{[]string{"-t"}, "b\n"}.check)
@@ -244,6 +249,7 @@ func (tc runWithoutRecipientsCase) check(t *testing.T) {
 // TestRunEmptyBody pins that input without visible text is delivered with
 // a marker, because services reject an empty message.
 func TestRunEmptyBody(t *testing.T) {
+	t.Parallel()
 	t.Run("T-ADJ-10/empty-stdin", runEmptyBodyCase{[]string{"-t"}, ""}.check)
 	t.Run("T-MTA-07/empty-stdin-with-argument-recipient", runEmptyBodyCase{[]string{"root"}, ""}.check)
 	t.Run("T-CALL-21/headers-only", runEmptyBodyCase{[]string{"-i", "alice"}, "Subject: Output from your job 7\nTo: alice\n\n"}.check)
@@ -287,6 +293,7 @@ func (tc runEmptyBodyCase) check(t *testing.T) {
 // TestRunConfiguredNotice pins that [strings] replaces the notice for an
 // empty body.
 func TestRunConfiguredNotice(t *testing.T) {
+	t.Parallel()
 	rec := &recorder{}
 	inv := &invocation{config: "[strings]\nempty_body = \"(leer)\"\n\n" + twoTargets, args: []string{"root"}, stdin: strings.NewReader(""), deliver: rec.deliver}
 	if code := inv.run(t); code != 0 {
@@ -299,6 +306,7 @@ func TestRunConfiguredNotice(t *testing.T) {
 
 // TestRunDefaultSender pins the sender of a message without -f and From.
 func TestRunDefaultSender(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name    string
 		creds   Credentials
@@ -330,6 +338,7 @@ func TestRunDefaultSender(t *testing.T) {
 // template data and the hook environment take -f and -F, else the process
 // user at the host name, while the message itself stays without From.
 func TestRunMissingFrom(t *testing.T) {
+	// Serial: a forked child holds the fds of parallel tests until exec, keeping their flocks and sockets open.
 	t.Run("T-MTA-22/f-and-full-name", func(t *testing.T) {
 		rec := &recorder{}
 		inv := &invocation{config: twoTargets, args: []string{"-f", "cron@example.org", "-F", "Cron Daemon", "root"}, stdin: strings.NewReader("Subject: t\n\nb\n"), deliver: rec.deliver}
@@ -387,6 +396,7 @@ func TestRunMissingFrom(t *testing.T) {
 // TestRunLogsOptionWarnings pins that an unknown flag is logged by name,
 // without its value, and does not stop the delivery or add a recipient.
 func TestRunLogsOptionWarnings(t *testing.T) {
+	t.Parallel()
 	t.Run("T-MTA-28/unknown-flag-logged", func(t *testing.T) {
 		rec := &recorder{}
 		inv := &invocation{config: twoTargets, args: []string{"-x", "--color=secret-value", "-bv", "root"}, stdin: strings.NewReader("Subject: t\n\nb\n"), deliver: rec.deliver}
@@ -426,6 +436,7 @@ func TestRunLogsOptionWarnings(t *testing.T) {
 // TestRunLargeHeaderKeepsBcc pins that a Bcc field after more than 1 MiB
 // of headers routes the message and stays out of the notification text.
 func TestRunLargeHeaderKeepsBcc(t *testing.T) {
+	t.Parallel()
 	t.Run("T-MTA-16/bcc-after-large-header", func(t *testing.T) {
 		input := "Subject: s\nX-Filler: " + strings.Repeat("a", 1<<20) + "\nBcc: secret@example.org\n\nbody\n"
 		rec := &recorder{}
@@ -447,6 +458,7 @@ func TestRunLargeHeaderKeepsBcc(t *testing.T) {
 // TestRunReadWarnings pins that a malformed message is delivered as it
 // came and the reader's warning reaches the log.
 func TestRunReadWarnings(t *testing.T) {
+	t.Parallel()
 	t.Run("T-ADJ-24/malformed-message-delivered", func(t *testing.T) {
 		rec := &recorder{}
 		inv := &invocation{config: twoTargets, args: []string{"root"}, stdin: strings.NewReader("Subject: t\nnot a header\nbody\n"), deliver: rec.deliver}
@@ -483,6 +495,7 @@ func TestRunReadWarnings(t *testing.T) {
 // TestRunDotConvention pins fail2ban's call, which passes no -i: a line
 // with a single dot ends the message. With -i the whole input arrives.
 func TestRunDotConvention(t *testing.T) {
+	t.Parallel()
 	input := "Subject: [Fail2Ban] sshd: banned 192.0.2.1\n\nwhois:\n.\nrest of whois\n"
 	cases := []struct {
 		name     string
@@ -513,6 +526,7 @@ func TestRunDotConvention(t *testing.T) {
 //
 // The message arrives and the exit status is 0.
 func TestRunCronieCommandLine(t *testing.T) {
+	t.Parallel()
 	t.Run("T-MTA-44/cronie-to-http-receiver", func(t *testing.T) {
 		bodies := make(chan map[string]string, 1)
 		server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
@@ -548,6 +562,7 @@ func TestRunCronieCommandLine(t *testing.T) {
 // TestNotices pins that every configured notice replaces its built-in
 // one and an absent one keeps it.
 func TestNotices(t *testing.T) {
+	t.Parallel()
 	got := notices(config.Strings{NoSubject: "a", EmptyBody: "b", Truncated: "c", TruncatedSize: "%s f", MoreAttachments: "%d d", NotSent: "e"})
 	want := render.Strings{NoSubject: "a", EmptyBody: "b", Truncated: "c", TruncatedSize: "%s f", MoreAttachments: "%d d", NotSent: "e"}
 	if got != want {
@@ -562,6 +577,7 @@ func TestNotices(t *testing.T) {
 // without truncated_size ends a cut text that goes without its full
 // text, in place of the English default with the size.
 func TestRunKeepsConfiguredTruncated(t *testing.T) {
+	t.Parallel()
 	bodies := make(chan map[string]string, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		var body map[string]string

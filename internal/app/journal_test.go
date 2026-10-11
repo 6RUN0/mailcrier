@@ -36,6 +36,7 @@ func journalText(text, dir string) string {
 // go test ./internal/app -run TestJournalGolden -update and review the
 // diff.
 func TestJournalGolden(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		run  func(c *spoolCase) (int, *invocation)
