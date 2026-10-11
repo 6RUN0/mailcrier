@@ -29,9 +29,25 @@ import (
 // and golden output would be kept up for nothing.
 func TestBuiltinTemplatesSelected(t *testing.T) {
 	t.Parallel()
-	selected := []text.Format{text.FormatTelegramHTML, text.FormatDiscord, text.FormatSlackMrkdwn, text.FormatNtfy, text.FormatGenericJSON, text.FormatPlain}
-	for _, format := range presetFormats {
-		selected = append(selected, format)
+	doc := "[target.tg]\ntype = \"telegram\"\ntoken = \"123:abc\"\nchat_id = 1\n" +
+		"[target.dc]\ntype = \"discord\"\nurl = \"https://example.org/dc\"\n" +
+		"[target.sl]\ntype = \"slack\"\ntoken = \"xoxb-1\"\nchannel = \"C1\"\n" +
+		"[target.nt]\ntype = \"ntfy\"\nurl = \"https://example.org/topic\"\n" +
+		"[target.run]\ntype = \"exec\"\nargv = [\"/bin/true\"]\n" + shoutrrrTargetConfig
+	for preset := range presetFormats {
+		doc += "[target.http-" + preset + "]\ntype = \"http\"\npreset = \"" + preset + "\"\nurl = \"https://example.org/in\"\n"
+	}
+	cfg, err := config.Load(fstest.MapFS{"etc/mailcrier.conf": {Data: []byte(doc)}}, "etc/mailcrier.conf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	targets, err := buildTargets(cfg, http.DefaultClient, hook.Process{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var selected []text.Format
+	for _, target := range targets {
+		selected = append(selected, target.Template.Format())
 	}
 	entries, err := os.ReadDir("../render/defaults")
 	if err != nil {

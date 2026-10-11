@@ -214,6 +214,11 @@ func (t *Template) IsOverOutput() bool {
 	return t.overOutput != nil && t.overOutput.Load()
 }
 
+// Format returns the markup of the target t writes for.
+func (t *Template) Format() text.Format {
+	return t.format
+}
+
 //go:embed defaults/*.tmpl
 var defaults embed.FS
 
