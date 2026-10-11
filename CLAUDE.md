@@ -411,6 +411,17 @@ with "build constraints exclude all Go files".
   (`make setgid-e2e`). `internal/spool/move_crash_test.go` kills a helper
   at a named step of `Create` and `Move` the same way
   (`MAILCRIER_MOVE_HELPER_*`).
+- Tests of `internal/app` run with `t.Parallel()`, except those that start
+  a process (hook, helper, the test binary) and the syslog tests bounded
+  by `testSyslogTimeout` (`// Serial:` names the reason). Between fork and
+  exec a child holds a copy of every fd of its process, so a flock that
+  another goroutine releases then stays taken. The program does not hit
+  this: entries are delivered one at a time and an entry lock is released
+  only after its hooks started; delivering entries in parallel in one
+  process would make a concurrent `LOCK_NB` fail as "locked by another
+  process" until the next queue run.
+- `make test` sets `GORACE=atexit_sleep_ms=0`: a binary built with -race
+  sleeps 1 s before it exits, every helper process included.
 - `packaging/` holds the systemd unit and timer and the cron files of the
   queue run (`TestQueueRunnerFiles` pins their key lines), the
   configuration file of the packages and their maintainer scripts in
