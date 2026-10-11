@@ -38,11 +38,51 @@ const (
 // log/syslog, "<priority>Mmm dd hh:mm:ss tag[pid]: line", each write
 // bounded by timeout.
 type syslogWriter struct {
-	conn    net.Conn
-	path    string
-	tag     string
-	timeout time.Duration
+	conn     net.Conn
+	path     string
+	tag      string
+	timeout  time.Duration
+	mu       sync.Mutex
+	isClosed bool
+}
+
+// close closes the connection; a later write fails without dialing again.
+func (w *syslogWriter) close() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.isClosed = true
+	_ = w.conn.Close()
+}
+
+// syslogWriters holds the writers of an invocation, up to one per syslog
+// tag, so that Run closes their sockets when it returns instead of leaving
+// that to the exit of the process, which a caller of Run may not make.
+type syslogWriters struct {
 	mu      sync.Mutex
+	writers []*syslogWriter
+}
+
+// track returns dial that also keeps every writer it opens.
+func (s *syslogWriters) track(dial func(tag string) (*syslogWriter, error)) func(tag string) (*syslogWriter, error) {
+	return func(tag string) (*syslogWriter, error) {
+		writer, err := dial(tag)
+		if err == nil {
+			s.mu.Lock()
+			s.writers = append(s.writers, writer)
+			s.mu.Unlock()
+		}
+		return writer, err
+	}
+}
+
+// close closes every writer track kept.
+func (s *syslogWriters) close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, writer := range s.writers {
+		writer.close()
+	}
+	s.writers = nil
 }
 
 // write sends line with severity within one timeout. A write refused at
@@ -53,6 +93,9 @@ type syslogWriter struct {
 func (w *syslogWriter) write(severity int, line string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if w.isClosed {
+		return net.ErrClosed
+	}
 	deadline := time.Now().Add(w.timeout)
 	record := []byte(fmt.Sprintf("<%d>%s %s[%d]: %s\n", facilityMail|severity, time.Now().Format(time.Stamp), w.tag, os.Getpid(), strings.TrimSuffix(line, "\n")))
 	err := w.send(record, deadline)

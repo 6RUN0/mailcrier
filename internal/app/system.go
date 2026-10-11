@@ -54,10 +54,12 @@ func SystemDeps() Deps {
 		ServiceUID: lookupServiceUID(),
 	}
 	fallback := newStderrLog(os.Stderr, creds.isElevated())
+	opened := &syslogWriters{}
 	return Deps{
 		NewLogger: func(tag string) *slog.Logger {
-			return newFallbackLogger(tag, dialSyslog, fallback)
+			return newFallbackLogger(tag, opened.track(dialSyslog), fallback)
 		},
+		CloseLog:       opened.close,
 		IsLogOnStderr:  fallback.isDown,
 		ConfigFS:       os.DirFS("/"),
 		ConfigPath:     SystemConfigPath,

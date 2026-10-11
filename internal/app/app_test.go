@@ -131,12 +131,13 @@ func (inv *invocation) run(t testing.TB) int {
 		stdout = inv.stdoutWriter
 	}
 	fallback := newStderrLog(&inv.stderr, inv.creds.isElevated())
+	opened := &syslogWriters{}
 	deps := Deps{
 		NewLogger: func(tag string) *slog.Logger {
 			if inv.syslogSocket != "" {
-				return newFallbackLogger(tag, func(tag string) (*syslogWriter, error) {
+				return newFallbackLogger(tag, opened.track(func(tag string) (*syslogWriter, error) {
 					return dialSyslogAt([]string{inv.syslogSocket}, tag, testSyslogTimeout)
-				}, fallback)
+				}), fallback)
 			}
 			if inv.isSyslogDown {
 				return newFallbackLogger(tag, func(string) (*syslogWriter, error) { return nil, errors.New("dial unixgram /dev/log: no such file") }, fallback)
@@ -165,6 +166,7 @@ func (inv *invocation) run(t testing.TB) int {
 			name, ok := testUsers[uid]
 			return name, ok
 		},
+		CloseLog:         opened.close,
 		IsLogOnStderr:    func() bool { return inv.isSyslogDown || fallback.isDown() },
 		SpoolDir:         inv.spoolDir,
 		CatchSignals:     inv.catchSignals,

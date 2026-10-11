@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"errors"
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -165,6 +166,40 @@ func TestSyslogWriterBounded(t *testing.T) {
 			t.Errorf("write() = %v after the buffer filled, want a timeout", err)
 		}
 	})
+}
+
+// TestRunClosesSyslog pins that Run closes every syslog connection it
+// opened, that of the default tag and that of syslog_tag, when it returns:
+// the daemon reads both to the end.
+func TestRunClosesSyslog(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "log")
+	listener, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = listener.Close() }()
+	inv := &invocation{
+		config:       "[general]\nsyslog_tag = \"other\"\n" + httpTargetConfig("http://127.0.0.1:1"),
+		args:         []string{"--check-config"},
+		creds:        rootCaller,
+		syslogSocket: path,
+	}
+	inv.run(t)
+	for _, tag := range []string{"mailcrier", "other"} {
+		conn, err := listener.Accept()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		data, err := io.ReadAll(conn)
+		_ = conn.Close()
+		if err != nil {
+			t.Errorf("connection %s not closed after Run: %v; read %q", tag, err, data)
+		}
+	}
 }
 
 // TestDialSyslogNamesCause pins the error of a dial that fails: a stream

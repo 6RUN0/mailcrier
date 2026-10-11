@@ -96,6 +96,9 @@ type Deps struct {
 	// NewLogger returns the logger for a syslog tag. Run calls it once with
 	// the default tag and again when the configuration sets another one.
 	NewLogger func(tag string) *slog.Logger
+	// CloseLog closes what the loggers of NewLogger opened; Run calls it
+	// when it returns, after its last record. nil closes nothing.
+	CloseLog func()
 	// ConfigFS is the file system root, "/" in a real invocation; ConfigPath
 	// is the default configuration file relative to it. An absolute path
 	// from --config or MAILCRIER_CONFIG and the secret files named in the
@@ -168,6 +171,10 @@ type Deps struct {
 // through one redactor, which learns the secrets of the configuration
 // right after loading it, before the first record that could quote them.
 func Run(ctx context.Context, d Deps, args []string, stdin io.Reader) (code int) {
+	if d.CloseLog != nil {
+		// Deferred first, so it runs after the record of a panic.
+		defer d.CloseLog()
+	}
 	redactor := &redact.Redactor{}
 	d.SetLogOutput(redactor.Writer(d.Stderr))
 	// call ties the records of one invocation together: cron sets no
