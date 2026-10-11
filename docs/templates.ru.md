@@ -3,7 +3,8 @@
 Свои шаблоны заменяют встроенный текст цели: ключи `template` и
 `template_file`, данные и функции, доступные шаблону, и что происходит,
 когда шаблон не сработал или слишком длинный. Разобранный пример -
-[`packaging/examples/templates.conf`](../packaging/examples/templates.conf).
+[`packaging/examples/templates.conf`](../packaging/examples/templates.conf),
+устанавливается как `/usr/share/doc/mailcrier/examples/templates.conf`.
 
 ```toml
 [target.ops-telegram]

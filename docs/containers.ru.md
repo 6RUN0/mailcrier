@@ -47,6 +47,7 @@
   `mailcrier -q` из планировщика вроде supercronic повторяет остальное,
   см. [Спул и очередь](spool.ru.md#прогоны-очереди).
 - Полный пример со спулом на томе и секретами в `/run/secrets`:
-  [`packaging/examples/container.conf`](../packaging/examples/container.conf).
+  [`packaging/examples/container.conf`](../packaging/examples/container.conf),
+  устанавливается как `/usr/share/doc/mailcrier/examples/container.conf`.
 
 English: [containers.md](containers.md).

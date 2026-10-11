@@ -45,6 +45,7 @@ belongs:
   see [Spool and queue](spool.md#queue-runs).
 - A complete example with the spool on a volume and secrets in
   `/run/secrets`:
-  [`packaging/examples/container.conf`](../packaging/examples/container.conf).
+  [`packaging/examples/container.conf`](../packaging/examples/container.conf),
+  installed as `/usr/share/doc/mailcrier/examples/container.conf`.
 
 Russian: [containers.ru.md](containers.ru.md).

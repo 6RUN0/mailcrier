@@ -3,7 +3,8 @@
 Templates of your own replace the built-in text of a target: the keys
 `template` and `template_file`, the data and functions a template has,
 and what happens when one fails or is too long. A worked example is
-[`packaging/examples/templates.conf`](../packaging/examples/templates.conf).
+[`packaging/examples/templates.conf`](../packaging/examples/templates.conf),
+installed as `/usr/share/doc/mailcrier/examples/templates.conf`.
 
 ```toml
 [target.ops-telegram]
