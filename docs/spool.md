@@ -58,8 +58,9 @@ preset = "generic-json"
   then exits 74. A corrupt sidecar has lost the dates of the entry, so
   the message file stands in for them: written with the entry and never
   rewritten, once it is older than `queue_ttl` (`hold_ttl` in `hold/`)
-  the entry moves to `failed/` with the reason `corrupt sidecar` and a
-  new sidecar without targets, owned by the owner of the file. Owner and
+  the entry moves to `failed/` with the decode error as its reason,
+  such as `corrupt sidecar: unexpected end of JSON input`, and a new
+  sidecar without targets, owned by the owner of the file. Owner and
   age are approximate: a message that `-q` copied from `hold/` of the
   default directory belongs to the user of that run and dates from the
   copy, and one released from `hold/` counts from the time it was held,

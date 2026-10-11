@@ -439,8 +439,8 @@ An entry whose state file cannot be read is left alone, and
 .Fl q
 exits 74; when the file is corrupt, the entry moves to
 .Pa failed/
-with the reason
-.Dq corrupt sidecar
+with the decode error as its reason, such as
+.Dq corrupt sidecar: unexpected end of JSON input ,
 once its message file is older than the same limit, counted from the time
 the file was written.
 A retry renders the message with the configuration of the moment, to the

@@ -35,9 +35,6 @@ const (
 	reasonNoRoute       = "no route"
 	reasonExpired       = "expired"
 	reasonTargetRemoved = "target removed"
-	// reasonCorrupt moves an entry whose sidecar does not decode to
-	// failed/, once its message file is older than the TTL of its area.
-	reasonCorrupt = "corrupt sidecar"
 	// reasonInternal moves an entry to failed/ once no target waits for
 	// it, when a target failed by a panic: a retry would repeat the bug,
 	// and the message stays where mailq shows it.
@@ -497,7 +494,7 @@ func (q *queue) lockFailed(sp *spool.Spool, area, id string, err error) {
 	case errors.Is(err, spool.ErrBusy), errors.Is(err, spool.ErrGone):
 	case errors.Is(err, spool.ErrUnknownVersion):
 		q.log.Warn("spool entry of another version left alone", "id", id, "area", area, "err", err)
-	case errors.Is(err, spool.ErrCorrupt) && q.failCorrupt(sp, area, id):
+	case errors.Is(err, spool.ErrCorrupt) && q.failCorrupt(sp, area, id, err):
 	default:
 		q.hasIOError = true
 		q.log.Warn("spool entry unreadable, left alone", "id", id, "area", area, "err", err)
@@ -505,12 +502,13 @@ func (q *queue) lockFailed(sp *spool.Spool, area, id string, err error) {
 }
 
 // failCorrupt moves the entry id of area in sp, whose sidecar is corrupt,
-// to failed/ with reasonCorrupt once its message file is older than
-// queue_ttl, or hold_ttl in hold/. It reports false when the entry stays
+// to failed/ once its message file is older than queue_ttl, or hold_ttl in
+// hold/; the reason is the redacted text of decodeErr, which starts with
+// "corrupt sidecar" and keeps what the defect was. It reports false when the entry stays
 // where it is, unexpired or unreadable for another reason; fail logs a
 // failed move. The sidecar that holds the dates is unreadable, and the
 // message file is written once, when the entry is.
-func (q *queue) failCorrupt(sp *spool.Spool, area, id string) (isHandled bool) {
+func (q *queue) failCorrupt(sp *spool.Spool, area, id string, decodeErr error) (isHandled bool) {
 	rec, err := sp.LockCorrupt(area, id)
 	switch {
 	case errors.Is(err, spool.ErrBusy), errors.Is(err, spool.ErrGone):
@@ -529,7 +527,7 @@ func (q *queue) failCorrupt(sp *spool.Spool, area, id string) (isHandled bool) {
 	if !spool.Expired(rec.Entry, q.d.Now(), ttl) {
 		return false
 	}
-	q.fail(rec, reasonCorrupt)
+	q.fail(rec, q.redactor.String(decodeErr.Error()))
 	return true
 }
 

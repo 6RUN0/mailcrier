@@ -1599,10 +1599,10 @@ func TestQueueCorruptSidecar(t *testing.T) {
 		}
 		c.corrupt(spool.QueueDir, testNow.Add(-7*24*time.Hour-time.Minute))
 		code, inv = c.queueRun(serviceCaller)
-		if code != 0 || !strings.Contains(inv.output(), `level=ERROR msg="message failed" id=`+id+` area=queue reason="corrupt sidecar"`) {
+		if code != 0 || !strings.Contains(inv.output(), `level=ERROR msg="message failed" id=`+id+` area=queue reason="corrupt sidecar: unexpected end of JSON input"`) {
 			t.Fatalf("-q = %d, want 0 and the entry failed; output:\n%s", code, inv.output())
 		}
-		if e := c.entry(spool.FailedDir); e.ID != id || e.OwnerUID != os.Getuid() || e.Reason != reasonCorrupt || !e.FailedAt.Equal(c.clock.now()) {
+		if e := c.entry(spool.FailedDir); e.ID != id || e.OwnerUID != os.Getuid() || e.Reason != "corrupt sidecar: unexpected end of JSON input" || !e.FailedAt.Equal(c.clock.now()) {
 			t.Errorf("failed entry = %+v", e)
 		}
 		if _, inv := c.queueRun(serviceCaller, "-bp"); !strings.Contains(inv.stdout.String(), id+` failed uid=`) {
